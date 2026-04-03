@@ -1,0 +1,46 @@
+export type EdgeType = "calls" | "depends" | "data-flow" | "event" | "extends" | "composes"
+export type GraphStatus = "pending" | "decomposing" | "writing" | "checking" | "done" | "error"
+
+export interface GraphEdge {
+  target: string
+  type: EdgeType
+  description: string
+  detail?: string
+}
+
+export interface GraphNodeChild {
+  type: "graph" | "page"
+  ref: string
+}
+
+export interface GraphNode {
+  name: string
+  description: string
+  edges: GraphEdge[]
+  codeScope: string[]
+  child: GraphNodeChild
+}
+
+export interface ScaffoldNode {
+  name: string
+  description: string
+  scope: string[]
+  edges: { type: EdgeType; target: string; description: string; detail?: string }[]
+}
+
+export interface TopGraph {
+  status: "done"
+  retryCount: 0
+  sessionId: string
+  description: string
+  nodes: ScaffoldNode[]
+}
+
+export interface SubGraph {
+  status: GraphStatus
+  retryCount: number
+  sessionId: string
+  description: string
+  codeScope: string[]
+  nodes: GraphNode[]
+}
