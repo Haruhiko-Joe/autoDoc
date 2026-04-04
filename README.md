@@ -36,6 +36,16 @@ Decomposer ──► Checker   Decomposer ──► Checker   ...
 - **对话面板** — 在文档页对任意内容追问，通过 fork Agent 会话实现
 - **实时进度** — 在首页实时查看文档生成进度
 
+### Demo
+
+| 顶层架构总览 | 子模块关系图 |
+|:---:|:---:|
+| ![overview](fig/overview.png) | ![module](fig/module.png) |
+
+| Markdown 文档页 | 向 Agent 追问 |
+|:---:|:---:|
+| ![finalpage](fig/finalpage.png) | ![continuechat](fig/continuechat.png) |
+
 ## 文档可插拔
 
 每个模块的文档都是自包含的独立单元——一个包含 Graph JSON 和 Markdown 文件的目录。你可以自由地增删替换任意模块，无需重新生成整个文档站。

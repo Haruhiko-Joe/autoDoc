@@ -38,6 +38,16 @@ The generated documentation site features:
 - **Chat panel** — ask follow-up questions about any doc page by forking the agent session
 - **Real-time progress** — watch documentation generation progress from the home page
 
+### Demo
+
+| Architecture Overview | Sub-module Graph |
+|:---:|:---:|
+| ![overview](fig/overview.png) | ![module](fig/module.png) |
+
+| Markdown Doc Page | Chat with Agent |
+|:---:|:---:|
+| ![finalpage](fig/finalpage.png) | ![continuechat](fig/continuechat.png) |
+
 ## Pluggable Documentation
 
 Each module's documentation is a self-contained unit — a directory with its own Graph JSON and Markdown files. You can freely add, remove, or replace any module without regenerating the entire site.

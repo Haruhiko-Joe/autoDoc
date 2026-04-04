@@ -36,6 +36,16 @@ Decomposer ──► Checker   Decomposer ──► Checker   ...
 - **チャットパネル** — エージェントセッションをフォークして、ドキュメントページ上で質問が可能
 - **リアルタイム進捗** — ホームページからドキュメント生成の進捗をリアルタイムで確認
 
+### デモ
+
+| アーキテクチャ総覧 | サブモジュール関係図 |
+|:---:|:---:|
+| ![overview](fig/overview.png) | ![module](fig/module.png) |
+
+| Markdown ドキュメントページ | エージェントへの質問 |
+|:---:|:---:|
+| ![finalpage](fig/finalpage.png) | ![continuechat](fig/continuechat.png) |
+
 ## プラガブルなドキュメント
 
 各モジュールのドキュメントは自己完結型の独立ユニットです——Graph JSON と Markdown ファイルを含むディレクトリ単位で管理されます。サイト全体を再生成することなく、任意のモジュールを自由に追加・削除・差し替えできます。
