@@ -119,4 +119,4 @@ autoDoc/
 
 ## License
 
-ISC
+Apache-2.0

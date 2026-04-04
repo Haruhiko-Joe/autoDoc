@@ -117,4 +117,4 @@ autoDoc/
 
 ## 许可证
 
-ISC
+Apache-2.0

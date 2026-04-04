@@ -117,4 +117,4 @@ autoDoc/
 
 ## ライセンス
 
-ISC
+Apache-2.0
