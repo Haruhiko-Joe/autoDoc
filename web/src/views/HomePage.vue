@@ -12,6 +12,7 @@ const router = useRouter()
 const setSessionId = inject<(id: string) => void>('setSessionId')
 const topGraph = ref<TopGraph | null>(null)
 const repoPath = ref('')
+const maxConcurrency = ref(8)
 const projects = ref<string[]>([])
 const selectedProject = ref('')
 const status = ref<RunStatus>({ phase: 'idle' })
@@ -88,7 +89,7 @@ async function handleRun() {
   topGraph.value = null
   try {
     const project = getProjectName(repoPath.value)
-    await startRun(repoPath.value.trim())
+    await startRun(repoPath.value.trim(), maxConcurrency.value)
     status.value = { phase: 'running', repoPath: repoPath.value.trim(), currentProject: project }
     selectedProject.value = project
     mergeProjects([...projects.value, project])
@@ -230,6 +231,14 @@ const progressPhaseLabel = computed(() => {
             {{ status.phase === 'running' ? '...' : 'Run' }}
           </button>
         </div>
+        <label class="input-label select-label">Max Concurrency</label>
+        <select
+          v-model.number="maxConcurrency"
+          class="project-select"
+          :disabled="status.phase === 'running'"
+        >
+          <option v-for="n in [1, 2, 4, 8, 16, 32]" :key="n" :value="n">{{ n }}</option>
+        </select>
         <label class="input-label select-label">Saved Projects</label>
         <select
           v-model="selectedProject"

@@ -39,7 +39,7 @@ async function listProjects(): Promise<string[]> {
   return projects.filter((project): project is string => Boolean(project)).sort();
 }
 
-async function handleRun(body: { repoPath: string }): Promise<{ ok: boolean }> {
+async function handleRun(body: { repoPath: string; maxConcurrency?: number }): Promise<{ ok: boolean }> {
   if (state.phase === "running") {
     throw new Error("Already running");
   }
@@ -51,7 +51,7 @@ async function handleRun(body: { repoPath: string }): Promise<{ ok: boolean }> {
     throw new Error("Invalid path: not a directory");
   }
 
-  const arranger = new Arranger();
+  const arranger = new Arranger({ maxConcurrency: body.maxConcurrency });
   state = { phase: "running", repoPath, project, docDir, arranger };
 
   arranger.run(repoPath, docDir).then(
@@ -126,7 +126,7 @@ const server = createServer(async (req, res) => {
 
   try {
     if (req.method === "POST" && url.pathname === "/api/run") {
-      const body = await parseBody(req) as { repoPath: string };
+      const body = await parseBody(req) as { repoPath: string; maxConcurrency?: number };
       const result = await handleRun(body);
       res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(result));
     } else if (req.method === "GET" && url.pathname === "/api/projects") {

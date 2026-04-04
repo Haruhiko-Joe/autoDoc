@@ -180,11 +180,11 @@ autoDoc 是一个自动文档生成系统：给定任意代码仓库，自动生
 \`\`\`
 
 字段说明：
-- \`nodes[].name\`：子单元名称，简洁明了
-- \`nodes[].description\`：子单元职责描述
+- \`nodes[].name\`：子单元名称，使用英文单词/模块名，简洁明了
+- \`nodes[].description\`：子单元职责描述，使用中文
 - \`nodes[].edges[].target\`：边指向的目标节点名称，必须是同一张图中另一个节点的 name
 - \`nodes[].edges[].type\`：边类型
-- \`nodes[].edges[].description\`：边的语义描述
+- \`nodes[].edges[].description\`：边的语义描述，使用中文
 - \`nodes[].codeScope\`：代码路径数组，必须是实际存在的路径且是父级 codeScope 的子集
 - \`nodes[].child.type\`：\`"graph"\` 继续展开，\`"page"\` 终止为文档
 - \`nodes[].child.ref\`：引用标识符，用于生成文件路径。简洁英文标识符，不含空格和特殊字符

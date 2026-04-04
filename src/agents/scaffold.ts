@@ -12,6 +12,13 @@ export class Scaffold {
   private sessionId: string | undefined;
   private cwd: string | undefined;
 
+  getSessionId(): string | undefined { return this.sessionId; }
+
+  restore(sessionId: string, workpath: string): void {
+    this.sessionId = sessionId;
+    this.cwd = workpath;
+  }
+
   async run(prompt: string, workpath: string): Promise<AgentResult<RawTopGraph>> {
     if (this.sessionId) {
       throw new Error("Session already active. Use continue() or create a new Scaffold instance.");

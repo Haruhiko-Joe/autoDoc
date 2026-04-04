@@ -20,9 +20,7 @@ import type {
 
 // ─── Checker issue 分类与格式化 ───
 
-/** 图结构相关的 issue type */
 const GRAPH_ISSUE_TYPES = new Set(["broken-target", "invalid-path", "empty-content", "missing-ref"]);
-/** 文档内容相关的 issue type */
 const DOC_ISSUE_TYPES = new Set(["missing-section", "empty-content", "invalid-path", "missing-ref"]);
 
 function formatIssue(issue: CheckerIssueType, index: number): string {
@@ -66,7 +64,6 @@ function buildWriterFixPrompt(issues: CheckerIssueType[], nodeName: string): str
   const relevant = issues.filter(
     (i) => DOC_ISSUE_TYPES.has(i.type) && i.description.toLowerCase().includes(nodeName.toLowerCase()),
   );
-  // 如果没有匹配到特定节点的 issue，则传入所有文档相关的 issue
   const toShow = relevant.length > 0 ? relevant : issues.filter((i) => DOC_ISSUE_TYPES.has(i.type));
   if (toShow.length === 0) return "";
 
@@ -114,17 +111,44 @@ export interface Progress {
   nodes: NodeProgress[]
 }
 
+// ─── 并发限流 ───
+
+class Semaphore {
+  private queue: Array<() => void> = [];
+  private running = 0;
+
+  constructor(private readonly max: number) {}
+
+  async acquire(): Promise<void> {
+    if (this.running < this.max) {
+      this.running++;
+      return;
+    }
+    return new Promise<void>((resolve) => this.queue.push(resolve));
+  }
+
+  release(): void {
+    const next = this.queue.shift();
+    if (next) {
+      next();
+    } else {
+      this.running--;
+    }
+  }
+}
+
 export class Arranger {
-  private readonly maxRetries: number;
+  private readonly maxConcurrency: number;
+  private readonly sem: Semaphore;
   private repoPath = "";
   private docDir = "";
   private currentPhase: Progress["phase"] = "idle";
 
-  constructor(options?: { maxRetries?: number }) {
-    this.maxRetries = options?.maxRetries ?? 3;
+  constructor(options?: { maxConcurrency?: number }) {
+    this.maxConcurrency = options?.maxConcurrency ?? 8;
+    this.sem = new Semaphore(this.maxConcurrency);
   }
 
-  /** 公开接口：查询当前进度（供 server 的 /api/status 调用） */
   async getProgress(): Promise<Progress> {
     if (!this.docDir) return { phase: "idle", counts: {}, nodes: [] };
     const counts = await this.countStatuses();
@@ -145,7 +169,7 @@ export class Arranger {
     this.repoPath = repoPath;
     this.docDir = docDir;
 
-    await this.ensureDocDirs();
+    await mkdir(this.docDir, { recursive: true });
 
     const topExists = await this.fileExists(path.join(this.docDir, "top.json"));
     if (!topExists) {
@@ -162,13 +186,7 @@ export class Arranger {
     console.log("[Arranger] Done.");
   }
 
-  // ─── 目录初始化 ───
-
-  private async ensureDocDirs(): Promise<void> {
-    await mkdir(this.docDir, { recursive: true });
-  }
-
-  // ─── Scaffold（含 Checker 校验）───
+  // ─── Scaffold + Checker ───
 
   private async runScaffold(): Promise<void> {
     const scaffold = new Scaffold();
@@ -180,45 +198,37 @@ export class Arranger {
     let topResult: RawTopGraphType = result;
     let finalSessionId = sessionId;
 
-    // Checker 校验 Scaffold 产出，不通过则 scaffold.continue() 重试
     const checker = new Checker();
-    let retryCount = 0;
-    for (;;) {
-      const graphContent = JSON.stringify(topResult, null, 2);
+    for (let retry = 0; ; retry++) {
       const checkerPrompt = [
         `Validate the scaffold output for the top-level module graph.`,
         `Repository root: ${this.repoPath}`,
         ``,
         `## Graph JSON content:`,
         "```json",
-        graphContent,
+        JSON.stringify(topResult, null, 2),
         "```",
       ].join("\n");
 
-      const checkerResult = retryCount === 0
-        ? await checker.run(checkerPrompt, this.repoPath)
-        : await checker.continue(checkerPrompt);
+      const checkerResult = checker.getSessionId()
+        ? await checker.continue(checkerPrompt)
+        : await checker.run(checkerPrompt, this.repoPath);
 
       if (checkerResult.result.passed) {
         console.log("[Arranger] Scaffold check passed.");
         break;
       }
+      if (retry >= 3) throw new Error(`Scaffold check failed after 3 retries: ${JSON.stringify(checkerResult.result.issues)}`);
 
-      retryCount++;
-      if (retryCount > this.maxRetries) {
-        throw new Error(`Scaffold failed after ${this.maxRetries} retries: ${JSON.stringify(checkerResult.result.issues)}`);
-      }
-
-      console.log(`[Arranger] Scaffold check failed (retry ${retryCount}/${this.maxRetries})`);
+      console.log(`[Arranger] Scaffold check failed (retry ${retry + 1}/3)`);
       const fixed = await scaffold.continue(buildScaffoldFixPrompt(checkerResult.result.issues));
       topResult = fixed.result;
       finalSessionId = fixed.sessionId;
     }
 
-    // 校验通过，写入磁盘
     const topGraph: TopGraphType = {
       status: "done",
-      retryCount,
+      retryCount: 0,
       sessionId: finalSessionId,
       description: topResult.description,
       nodes: topResult.nodes,
@@ -227,43 +237,38 @@ export class Arranger {
     console.log(`[Arranger] Scaffold complete. ${topResult.nodes.length} top-level modules.`);
 
     for (const node of topResult.nodes) {
-      const nodeId = node.name;
-      const pending: GraphType = {
+      await this.writeGraph(node.name, {
         status: "pending",
         retryCount: 0,
         sessionId: "",
         description: node.description,
         codeScope: node.codeScope,
         nodes: [],
-      };
-      await this.writeGraph(nodeId, pending);
+      });
     }
   }
 
-  // ─── 主循环 ───
+  // ─── 滑动窗口主循环 ───
+
+  private static readonly ACTIONABLE: ReadonlySet<GraphStatusType> = new Set([
+    "pending", "decomposing", "writing", "checking",
+  ]);
 
   private async processLoop(): Promise<void> {
-    // 恢复中断：decomposing/writing/checking 状态说明上次在管线中途崩溃，重置为 pending
-    for (const status of ["decomposing", "writing", "checking"] as const) {
-      const interrupted = await this.findGraphsByStatus(status);
-      for (const { nodeId } of interrupted) {
-        await this.updateGraphStatus(nodeId, "pending");
-        console.log(`[Arranger] Reset interrupted graph: ${nodeId} (${status}) → pending`);
-      }
-    }
-
     for (let iteration = 1; ; iteration++) {
-      const pending = await this.findGraphsByStatus("pending");
-      if (pending.length === 0) break;
+      const actionable = await this.findActionableNodes();
+      if (actionable.length === 0) break;
 
       const allStatuses = await this.countStatuses();
       console.log(
-        `[Arranger] Iteration ${iteration}: ${allStatuses.pending} pending, ${allStatuses.done} done, ${allStatuses.error} error`,
+        `[Arranger] Iteration ${iteration}: `
+        + `${allStatuses.pending ?? 0} pending, ${allStatuses.decomposing ?? 0} decomposing, `
+        + `${allStatuses.writing ?? 0} writing, ${allStatuses.checking ?? 0} checking, `
+        + `${allStatuses.done ?? 0} done, ${allStatuses.error ?? 0} error`,
       );
 
-      // 并行处理所有 pending 节点（每个节点内部是原子管线）
       const results = await Promise.allSettled(
-        pending.map(({ nodeId }) => this.processNode(nodeId)),
+        actionable.map(({ nodeId }) => this.processNode(nodeId)),
       );
       for (const r of results) {
         if (r.status === "rejected") {
@@ -273,189 +278,253 @@ export class Arranger {
     }
   }
 
-  // ─── 单节点原子管线：Decomposer → Writer → Checker（循环直到通过）───
+  private async withSemaphore<T>(fn: () => Promise<T>): Promise<T> {
+    await this.sem.acquire();
+    try {
+      return await fn();
+    } finally {
+      this.sem.release();
+    }
+  }
 
-  private async processNode(nodeId: string): Promise<void> {
-    const graph = await this.readGraph(nodeId);
-    await this.updateGraphStatus(nodeId, "decomposing");
-    console.log(`[Arranger] Processing: ${nodeId}`);
+  private async findActionableNodes(): Promise<Array<{ nodeId: string; graph: GraphType }>> {
+    const allNodeIds = await this.scanGraphNodes(this.docDir, "");
+    const results: Array<{ nodeId: string; graph: GraphType }> = [];
+    for (const nodeId of allNodeIds) {
+      try {
+        const graph = await this.readGraph(nodeId);
+        if (Arranger.ACTIONABLE.has(graph.status)) {
+          results.push({ nodeId, graph });
+        }
+      } catch {
+        console.warn(`[Arranger] Skipping unreadable graph: ${nodeId}`);
+      }
+    }
+    return results;
+  }
 
-    const ancestorContext = await this.buildAncestorContext(nodeId);
+  // ─── Prompt 构建 ───
 
-    // 1. 首次运行 Decomposer
-    const decomposer = new Decomposer();
-    const decompParts = [
+  private buildDecompPrompt(
+    nodeId: string,
+    graph: GraphType,
+    ancestorContext: AncestorContextType | null,
+  ): string {
+    const parts = [
       `Analyze the code scope and produce a sub-graph for the module "${nodeId}".`,
       `Description: ${graph.description}`,
       `Code scope (files/directories to analyze): ${graph.codeScope.join(", ")}`,
       `Repository root: ${this.repoPath}`,
     ];
     if (ancestorContext) {
-      decompParts.push(`\nAncestor context (the module hierarchy above this node):\n${JSON.stringify(ancestorContext, null, 2)}`);
+      parts.push(`\nAncestor context (the module hierarchy above this node):\n${JSON.stringify(ancestorContext, null, 2)}`);
     }
-    let decompResult: { sessionId: string; result: RawGraphType };
+    return parts.join("\n");
+  }
+
+  private buildGraphCheckerPrompt(nodeId: string, rawGraph: RawGraphType): string {
+    return [
+      `Validate the decomposer output (graph structure only) for module "${nodeId}".`,
+      `Repository root: ${this.repoPath}`,
+      ``,
+      `## Graph JSON content:`,
+      "```json",
+      JSON.stringify(rawGraph, null, 2),
+      "```",
+      ``,
+      `Note: Leaf Markdown documents have not been generated yet — validate graph structure only.`,
+    ].join("\n");
+  }
+
+  private buildDocCheckerPrompt(
+    nodeId: string,
+    rawGraph: RawGraphType,
+    pageContents: Map<string, string>,
+  ): string {
+    const pageNodes = rawGraph.nodes.filter((n) => n.child.type === "page");
+    const mdSections: string[] = [];
+    for (const node of pageNodes) {
+      const content = pageContents.get(node.child.ref);
+      if (content) {
+        mdSections.push(`--- FILE: ${node.child.ref}.md (node: ${node.name}) ---\n${content}\n--- END FILE ---`);
+      } else {
+        mdSections.push(`--- FILE: ${node.child.ref}.md (node: ${node.name}) ---\n[WRITER FAILED]\n--- END FILE ---`);
+      }
+    }
+    return [
+      `Validate the writer output for module "${nodeId}".`,
+      `Repository root: ${this.repoPath}`,
+      ``,
+      `## Graph JSON content:`,
+      "```json",
+      JSON.stringify(rawGraph, null, 2),
+      "```",
+      ``,
+      ...(mdSections.length > 0
+        ? [`## Leaf Markdown documents:`, ``, ...mdSections]
+        : [`## Leaf Markdown documents: (none)`]),
+    ].join("\n");
+  }
+
+  // ─── Agent 循环 ───
+
+  private async decomposeAndCheck(
+    nodeId: string,
+    prompt: string,
+  ): Promise<{ rawGraph: RawGraphType; decomposer: Decomposer }> {
+    const decomposer = new Decomposer();
+    const checker = new Checker();
+    let rawGraph = (await this.withSemaphore(() => decomposer.run(prompt, this.repoPath))).result;
+
+    for (let retry = 0; ; retry++) {
+      const checkerPrompt = this.buildGraphCheckerPrompt(nodeId, rawGraph);
+      const checkerResult = await this.withSemaphore(() =>
+        checker.getSessionId()
+          ? checker.continue(checkerPrompt)
+          : checker.run(checkerPrompt, this.repoPath),
+      );
+
+      if (checkerResult.result.passed) {
+        console.log(`[Arranger] Decomposer check passed: ${nodeId}`);
+        return { rawGraph, decomposer };
+      }
+      if (retry >= 3) throw new Error(`Decomposer check failed after 3 retries for ${nodeId}`);
+
+      console.log(`[Arranger] Decomposer check failed: ${nodeId} (retry ${retry + 1}/3)`);
+      rawGraph = (await this.withSemaphore(() => decomposer.continue(buildDecomposerFixPrompt(checkerResult.result.issues)))).result;
+    }
+  }
+
+  private async writeAndCheck(
+    nodeId: string,
+    rawGraph: RawGraphType,
+    ancestorContext: AncestorContextType | null,
+  ): Promise<Map<string, string>> {
+    const pageContents = new Map<string, string>();
+    const pageNodes = rawGraph.nodes.filter((n) => n.child.type === "page");
+    if (pageNodes.length === 0) return pageContents;
+
+    const checker = new Checker();
+    const writers = new Map<string, Writer>();
+
+    await Promise.allSettled(
+      pageNodes.map(async (node) => {
+        const writer = new Writer();
+        writers.set(node.child.ref, writer);
+        const content = await this.withSemaphore(() =>
+          this.generatePageContent(writer, node, ancestorContext),
+        );
+        pageContents.set(node.child.ref, content);
+      }),
+    );
+
+    for (let retry = 0; ; retry++) {
+      const checkerPrompt = this.buildDocCheckerPrompt(nodeId, rawGraph, pageContents);
+      const checkerResult = await this.withSemaphore(() =>
+        checker.getSessionId()
+          ? checker.continue(checkerPrompt)
+          : checker.run(checkerPrompt, this.repoPath),
+      );
+
+      if (checkerResult.result.passed) {
+        console.log(`[Arranger] Writer check passed: ${nodeId}`);
+        return pageContents;
+      }
+      if (retry >= 3) throw new Error(`Writer check failed after 3 retries for ${nodeId}`);
+
+      console.log(`[Arranger] Writer check failed: ${nodeId} (retry ${retry + 1}/3)`);
+      await Promise.allSettled(
+        pageNodes.map(async (node) => {
+          const writer = writers.get(node.child.ref);
+          if (!writer) return;
+          const fixPrompt = buildWriterFixPrompt(checkerResult.result.issues, node.name);
+          if (!fixPrompt) return;
+          const { result } = await this.withSemaphore(() => writer.continue(fixPrompt));
+          pageContents.set(node.child.ref, result.content);
+        }),
+      );
+    }
+  }
+
+  // ─── 单节点管线 ───
+
+  private async processNode(nodeId: string): Promise<void> {
+    let graph = await this.readGraph(nodeId);
+    const ancestorContext = await this.buildAncestorContext(nodeId);
+
+    console.log(`[Arranger] ${graph.status === "pending" ? "Processing" : `Resuming (${graph.status})`}: ${nodeId}`);
+
+    // ── Phase 1: Decompose + Check ──
+    let rawGraph: RawGraphType;
+    let decomposerSessionId: string;
+
+    if (graph.nodes.length > 0) {
+      rawGraph = { nodes: graph.nodes };
+      decomposerSessionId = graph.decomposerSessionId ?? graph.sessionId;
+    } else {
+      await this.updateGraph(nodeId, { status: "decomposing" });
+      try {
+        const prompt = this.buildDecompPrompt(nodeId, graph, ancestorContext);
+        const result = await this.decomposeAndCheck(nodeId, prompt);
+        rawGraph = result.rawGraph;
+        decomposerSessionId = result.decomposer.getSessionId() ?? "";
+      } catch (e) {
+        console.error(`[Arranger] Decompose+check error for ${nodeId}:`, e);
+        await this.updateGraph(nodeId, { status: "error" });
+        return;
+      }
+      await this.updateGraph(nodeId, {
+        status: "writing",
+        nodes: rawGraph.nodes,
+        decomposerSessionId,
+      });
+    }
+
+    console.log(`[Arranger] Decomposed: ${nodeId} → ${rawGraph.nodes.length} child nodes`);
+
+    // ── Phase 2: Write + Check ──
+    await this.updateGraph(nodeId, { status: "writing" });
+
+    let pageContents: Map<string, string>;
     try {
-      decompResult = await decomposer.run(decompParts.join("\n"), this.repoPath);
+      pageContents = await this.writeAndCheck(nodeId, rawGraph, ancestorContext);
     } catch (e) {
-      console.error(`[Arranger] Decomposer error for ${nodeId}:`, e);
-      await this.updateGraphStatus(nodeId, "error");
+      console.error(`[Arranger] Write+check error for ${nodeId}:`, e);
+      await this.updateGraph(nodeId, { status: "error" });
       return;
     }
 
-    // 2. 循环：Writer → Checker → (不通过则 Decomposer.continue)
-    const checker = new Checker();
-    // 为每个叶子节点维护 Writer 实例，以便 continue() 传递 Checker 反馈
-    const writerInstances = new Map<string, Writer>();
-    let lastCheckerIssues: CheckerIssueType[] | null = null;
-    let retryCount = 0;
-
-    for (;;) {
-      const rawGraph = decompResult.result;
-      console.log(`[Arranger] Decomposed: ${nodeId} → ${rawGraph.nodes.length} child nodes`);
-
-      // 状态观测：writing
-      await this.updateGraphStatus(nodeId, "writing");
-
-      // 2a. 并行运行 Writer 为所有叶子节点生成 MD（内存中）
-      //     首次用 run()，重试时用 continue() 传递 Checker 的反馈
-      const pageNodes = rawGraph.nodes.filter((n) => n.child.type === "page");
-      const pageContents = new Map<string, string>(); // ref → md content
-      if (pageNodes.length > 0) {
-        const writerResults = await Promise.allSettled(
-          pageNodes.map(async (node) => {
-            const ref = node.child.ref;
-            const existingWriter = writerInstances.get(ref);
-
-            let content: string;
-            if (existingWriter && lastCheckerIssues) {
-              // 重试：continue() 传递 Checker 反馈
-              const writerFixPrompt = buildWriterFixPrompt(lastCheckerIssues, node.name);
-              const { result } = await existingWriter.continue(writerFixPrompt || "请重新输出修正后的文档。");
-              content = result.content;
-            } else {
-              // 首次生成
-              const writer = new Writer();
-              writerInstances.set(ref, writer);
-              content = await this.generatePageContent(writer, node, ancestorContext);
-            }
-            return { ref, content };
-          }),
-        );
-        for (const r of writerResults) {
-          if (r.status === "fulfilled") {
-            pageContents.set(r.value.ref, r.value.content);
-          } else {
-            console.error("[Arranger] Writer failed:", r.reason);
-          }
-        }
-      }
-
-      // 状态观测：checking
-      await this.updateGraphStatus(nodeId, "checking");
-
-      // 2b. Checker 校验（graph JSON + MD 内容全部通过 prompt 传入）
-      const graphContent = JSON.stringify(rawGraph, null, 2);
-      const mdSections: string[] = [];
-      for (const node of pageNodes) {
-        const content = pageContents.get(node.child.ref);
-        if (content) {
-          mdSections.push(`--- FILE: ${node.child.ref}.md (node: ${node.name}) ---\n${content}\n--- END FILE ---`);
-        } else {
-          mdSections.push(`--- FILE: ${node.child.ref}.md (node: ${node.name}) ---\n[WRITER FAILED]\n--- END FILE ---`);
-        }
-      }
-
-      const checkerPrompt = [
-        `Validate the decomposer and writer output for module "${nodeId}".`,
-        `Repository root: ${this.repoPath}`,
-        ``,
-        `## Graph JSON content:`,
-        "```json",
-        graphContent,
-        "```",
-        ``,
-        ...(mdSections.length > 0
-          ? [`## Leaf Markdown documents:`, ``, ...mdSections]
-          : [`## Leaf Markdown documents: (none)`]),
-      ].join("\n");
-
-      let checkerResult;
-      try {
-        checkerResult = retryCount === 0
-          ? await checker.run(checkerPrompt, this.repoPath)
-          : await checker.continue(checkerPrompt);
-      } catch (e) {
-        console.error(`[Arranger] Checker error for ${nodeId}:`, e);
-        await this.updateGraphStatus(nodeId, "error");
-        return;
-      }
-
-      // 2c. 通过 → 写入磁盘
-      if (checkerResult.result.passed) {
-        console.log(`[Arranger] Check passed: ${nodeId}`);
-        // 写入 graph JSON（状态直接为 done）
-        const finalGraph: GraphType = {
-          ...graph,
-          status: "done",
-          sessionId: decompResult.sessionId,
-          nodes: rawGraph.nodes,
-        };
-        await this.writeGraph(nodeId, finalGraph);
-
-        // 写入所有 MD 文件
-        for (const [ref, content] of pageContents) {
-          const filePath = path.join(this.docDir, nodeId, `${ref}.md`);
-          await mkdir(path.dirname(filePath), { recursive: true });
-          await writeFile(filePath, content);
-        }
-
-        // 为 graph 类型子节点创建 pending 文件
-        const graphNodes = rawGraph.nodes.filter((n) => n.child.type === "graph");
-        for (const node of graphNodes) {
-          const childId = `${nodeId}/${node.child.ref}`;
-          const childPending: GraphType = {
-            status: "pending",
-            retryCount: 0,
-            sessionId: "",
-            description: node.description,
-            codeScope: node.codeScope,
-            nodes: [],
-          };
-          await this.writeGraph(childId, childPending);
-        }
-
-        return; // 管线结束
-      }
-
-      // 2d. 不通过 → 保存 issues，Decomposer.continue() 修复
-      lastCheckerIssues = checkerResult.result.issues;
-      retryCount++;
-
-      if (retryCount > this.maxRetries) break;
-
-      console.log(`[Arranger] Check failed: ${nodeId} (retry ${retryCount}/${this.maxRetries})`);
-      try {
-        decompResult = await decomposer.continue(buildDecomposerFixPrompt(lastCheckerIssues));
-        // Decomposer 返回新图，可能产生新的 page 节点 → 旧 Writer 实例不再适用
-        // 清除不再存在的 Writer 实例
-        const newRefs = new Set(decompResult.result.nodes.filter((n) => n.child.type === "page").map((n) => n.child.ref));
-        for (const ref of writerInstances.keys()) {
-          if (!newRefs.has(ref)) writerInstances.delete(ref);
-        }
-      } catch (e) {
-        console.error(`[Arranger] Decomposer continue error for ${nodeId}:`, e);
-        await this.updateGraphStatus(nodeId, "error");
-        return;
-      }
+    // ── Finalize ──
+    const destDir = path.join(this.docDir, nodeId);
+    for (const [ref, content] of pageContents) {
+      await writeFile(path.join(destDir, `${ref}.md`), content);
     }
 
-    // 超出最大重试次数
-    console.error(`[Arranger] Max retries reached: ${nodeId}, marking as error`);
-    const errorGraph: GraphType = { ...graph, status: "error", retryCount };
-    await this.writeGraph(nodeId, errorGraph);
+    graph = await this.readGraph(nodeId);
+    await this.writeGraph(nodeId, {
+      ...graph,
+      status: "done",
+      sessionId: decomposerSessionId,
+      nodes: rawGraph.nodes,
+      decomposerSessionId: undefined,
+      checkerSessionId: undefined,
+      writerSessionIds: undefined,
+    });
+
+    for (const node of rawGraph.nodes.filter((n) => n.child.type === "graph")) {
+      const childId = `${nodeId}/${node.child.ref}`;
+      await this.writeGraph(childId, {
+        status: "pending",
+        retryCount: 0,
+        sessionId: "",
+        description: node.description,
+        codeScope: node.codeScope,
+        nodes: [],
+      });
+    }
   }
 
-  // ─── Writer（返回内容，不写入磁盘）───
+  // ─── Writer ───
 
   private async generatePageContent(
     writer: Writer,
@@ -497,7 +566,6 @@ export class Arranger {
         })),
       );
 
-    // Layer 0: top.json
     const top = await this.readTopGraph();
     ancestors.push({
       name: "top",
@@ -506,7 +574,6 @@ export class Arranger {
       edges: extractEdges(top.nodes),
     });
 
-    // Layer 1+: each intermediate graph
     for (let i = 0; i < segments.length - 1; i++) {
       const parentId = segments.slice(0, i + 1).join("/");
       const parentGraph = await this.readGraph(parentId);
@@ -523,24 +590,6 @@ export class Arranger {
 
   // ─── 文件扫描 ───
 
-  private async findGraphsByStatus(
-    status: GraphStatusType,
-  ): Promise<Array<{ nodeId: string; graph: GraphType }>> {
-    const allNodeIds = await this.scanGraphNodes(this.docDir, "");
-    const results: Array<{ nodeId: string; graph: GraphType }> = [];
-    for (const nodeId of allNodeIds) {
-      try {
-        const graph = await this.readGraph(nodeId);
-        if (graph.status === status) {
-          results.push({ nodeId, graph });
-        }
-      } catch {
-        console.warn(`[Arranger] Skipping unreadable graph: ${nodeId}`);
-      }
-    }
-    return results;
-  }
-
   private async countStatuses(): Promise<Record<string, number>> {
     const counts: Record<string, number> = { pending: 0, decomposing: 0, writing: 0, checking: 0, done: 0, error: 0 };
     const allNodeIds = await this.scanGraphNodes(this.docDir, "");
@@ -553,7 +602,6 @@ export class Arranger {
     return counts;
   }
 
-  /** 递归扫描 doc/ 下匹配 {dirName}/{dirName}.json 模式的目录，返回 nodeId 列表 */
   private async scanGraphNodes(dir: string, prefix: string): Promise<string[]> {
     let entries: import("node:fs").Dirent[];
     try {
@@ -563,7 +611,7 @@ export class Arranger {
     }
     const nodeIds: string[] = [];
     for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
+      if (!entry.isDirectory() || entry.name === "_pending") continue;
       const nodeId = prefix ? `${prefix}/${entry.name}` : entry.name;
       const selfJson = path.join(dir, entry.name, `${entry.name}.json`);
       if (await this.fileExists(selfJson)) {
@@ -593,9 +641,9 @@ export class Arranger {
     await writeFile(filePath, JSON.stringify(graph, null, 2));
   }
 
-  private async updateGraphStatus(nodeId: string, status: GraphStatusType): Promise<void> {
+  private async updateGraph(nodeId: string, patch: Partial<GraphType>): Promise<void> {
     const graph = await this.readGraph(nodeId);
-    graph.status = status;
+    Object.assign(graph, patch);
     await this.writeGraph(nodeId, graph);
   }
 
@@ -609,7 +657,6 @@ export class Arranger {
     const filePath = path.join(this.docDir, "top.json");
     await writeFile(filePath, JSON.stringify(topGraph, null, 2));
   }
-
 
   // ─── 工具 ───
 

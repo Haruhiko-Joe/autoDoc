@@ -80,6 +80,9 @@ export const Graph = z.object({
   description: z.string(),
   codeScope: z.array(z.string()),
   nodes: z.array(GraphNode),
+  decomposerSessionId: z.string().optional(),
+  checkerSessionId: z.string().optional(),
+  writerSessionIds: z.record(z.string(), z.string()).optional(),
 })
 
 // --- Writer ---
