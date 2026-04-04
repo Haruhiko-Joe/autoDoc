@@ -5,7 +5,7 @@ import { fetchTopGraph, startRun, fetchStatus, fetchProjects, type RunStatus } f
 import GraphView from '../components/GraphView.vue'
 import EdgeLegend from '../components/EdgeLegend.vue'
 import DocTree from '../components/DocTree.vue'
-import type { TopGraph } from '../types'
+import type { TopGraph, GraphNode } from '../types'
 
 const route = useRoute()
 const router = useRouter()
@@ -173,7 +173,7 @@ function graphNodes() {
   }))
 }
 
-function onNodeClick(node: { child?: { type: string; ref: string } }) {
+function onNodeClick(node: Pick<GraphNode, 'child'>) {
   if (!node.child || !selectedProject.value) return
   if (node.child.type === 'graph') {
     router.push({ name: 'graph', params: { path: node.child.ref }, query: { project: selectedProject.value } })

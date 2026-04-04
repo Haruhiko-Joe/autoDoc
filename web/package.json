@@ -9,10 +9,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "vue": "^3.5.30",
-    "vue-router": "^4.5.1",
     "@antv/g6": "^5.0.47",
-    "marked": "^15.0.7"
+    "dompurify": "^3.3.3",
+    "marked": "^15.0.7",
+    "vue": "^3.5.30",
+    "vue-router": "^4.5.1"
   },
   "devDependencies": {
     "@types/node": "^24.12.0",

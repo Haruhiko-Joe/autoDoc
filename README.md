@@ -1,12 +1,12 @@
 # autoDoc
 
-**[English](README.md)** | [中文](README.zh-CN.md) | [日本語](README.ja.md)
+**中文** | [English](README.en.md) | [日本語](README.ja.md)
 
-Point autoDoc at any code repository and get an interactive documentation site — automatically.
+将 autoDoc 指向任意代码仓库，自动生成一个可交互的文档站。
 
-autoDoc uses a pipeline of 4 Claude AI agents to analyze your codebase, decompose it into modules, and generate a navigable, graph-based documentation site with progressive disclosure: start from a high-level architecture overview and drill down into any module until you reach detailed Markdown docs.
+autoDoc 使用 4 个 Claude AI Agent 组成的流水线，分析代码库、分解模块结构，生成基于图的可导航文档站。文档采用渐进式披露设计：从顶层架构总览出发，逐层深入至任意模块的详细 Markdown 文档。
 
-## How It Works
+## 工作原理
 
 ```
 Scaffold ──► Checker
@@ -19,104 +19,92 @@ Decomposer ──► Checker   Decomposer ──► Checker   ...
   Writer ──► Checker       Writer ──► Checker
                 │                       │
                 ▼                       ▼
-              Done                    Done
+              完成                     完成
 ```
 
-1. **Scaffold** — Analyzes the entire repo, produces a top-level module graph, validated by Checker
-2. **Decomposer** — Recursively splits each module into sub-graphs or leaf pages, validated by Checker
-3. **Writer** — Generates detailed Markdown documentation for each leaf node, validated by Checker
-4. **Checker** — Runs after every agent; validates graph structure or content quality (max 3 retries)
+1. **Scaffold** — 分析整个仓库，生成顶层模块关系图，经 Checker 校验
+2. **Decomposer** — 递归拆分每个模块为子图或叶子页面，经 Checker 校验
+3. **Writer** — 为每个叶子节点生成详细的 Markdown 文档，经 Checker 校验
+4. **Checker** — 在每个 Agent 完成后运行，校验图结构或文档质量（最多重试 3 次）
 
-All agents are orchestrated by the **Arranger** state machine with a **sliding-window concurrency model** — the number of concurrent Claude sessions is configurable from the frontend (default 8). The Arranger manages state per node and supports crash recovery.
+所有 Agent 由 **Arranger** 状态机统一调度，采用**滑动窗口并发模型**——并发 Claude 会话数可在前端配置（默认 8）。按节点管理状态，支持崩溃恢复。
 
-## Output
+## 生成的文档站
 
-The generated documentation site features:
+- **可交互有向图**（基于 [AntV G6](https://g6.antv.antgroup.com/)），展示模块间关系，支持多种边类型（调用、依赖、数据流、事件、继承、组合）
+- **渐进式披露** — 点击任意图节点，进入子图或到达叶子 Markdown 文档
+- **对话面板** — 在文档页对任意内容追问，通过 fork Agent 会话实现
+- **实时进度** — 在首页实时查看文档生成进度
 
-- **Interactive directed graphs** (powered by [AntV G6](https://g6.antv.antgroup.com/)) showing module relationships with typed edges (calls, depends, data-flow, event, extends, composes)
-- **Progressive disclosure** — click any graph node to drill into sub-graphs or reach leaf Markdown docs
-- **Chat panel** — ask follow-up questions about any doc page by forking the agent session
-- **Real-time progress** — watch documentation generation progress from the home page
+## 文档可插拔
 
-## Pluggable Documentation
+每个模块的文档都是自包含的独立单元——一个包含 Graph JSON 和 Markdown 文件的目录。你可以自由地增删替换任意模块，无需重新生成整个文档站。
 
-Each module's documentation is a self-contained unit — a directory with its own Graph JSON and Markdown files. You can freely add, remove, or replace any module without regenerating the entire site.
+- **拔** — 删除某个模块目录并移除父级 Graph JSON 中的引用，其余文档不受影响
+- **插** — 创建新的模块目录（Graph JSON + Markdown），或将某个节点的 status 改为 `pending` 后重新运行 Arranger 自动生成
+- **换** — 直接编辑或覆盖任意 Markdown 文件，只要节点 status 为 `done`，Arranger 不会覆盖它
+- **增量生成** — 重新运行时，仅处理未完成的节点，已完成的模块全部跳过
 
-- **Remove** — delete a module directory and its reference in the parent Graph JSON; the rest of the site remains intact
-- **Add** — create a new module directory with Graph JSON + Markdown, or set a node's status to `pending` and re-run the Arranger to generate it
-- **Replace** — directly edit or overwrite any Markdown file; as long as the node status is `done`, the Arranger will not touch it
-- **Incremental re-generation** — on re-run, only nodes that are not `done` are processed; completed modules are skipped entirely
+> **注意：** Agent 会话历史仅保存在本地。如果你将生成的 `doc/` 文件分享给他人，对话追问功能（基于 Agent session fork）将不可用。图浏览和 Markdown 渲染不受影响。
 
-> **Note:** Agent session history is stored locally only. If you share the generated `doc/` files with others, the interactive chat feature (which forks from agent sessions) will not be available to them. Graph navigation and Markdown rendering work normally.
+## 技术栈
 
-## Tech Stack
+| 层级 | 技术 |
+|------|------|
+| 后端 | TypeScript, [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (via Claude Agent SDK), Zod |
+| 前端 | Vue 3, TypeScript, AntV G6, Vite |
+| 工程 | pnpm workspaces |
 
-| Layer | Stack |
-|-------|-------|
-| Backend | TypeScript, [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk), Zod |
-| Frontend | Vue 3, TypeScript, AntV G6, Vite |
-| Monorepo | pnpm workspaces |
+## 快速开始
 
-## Getting Started
-
-### Prerequisites
+### 环境要求
 
 - Node.js >= 18
 - pnpm >= 10
-- An Anthropic API key (`ANTHROPIC_API_KEY` environment variable)
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) 已安装且可正常运行（官方订阅、Claude Code API 或第三方 API 接入均可）
 
-### Install
+### 安装
 
 ```bash
-git clone https://github.com/YanboQiao/autoDoc.git
+git clone https://github.com/Haruhiko-Joe/autoDoc.git
 cd autoDoc
 pnpm install
 cd web && pnpm install && cd ..
 ```
 
-### Run
+### 运行
 
 ```bash
-# Start both backend (port 3100) and frontend dev server
+# 同时启动后端（端口 3100）和前端开发服务器
 pnpm start
-
-# Or run them separately:
-pnpm dev              # Backend only
-cd web && pnpm dev    # Frontend only (proxies /api to :3100)
 ```
 
-Open the frontend, enter a repository path, and autoDoc will begin generating documentation.
+打开前端页面，输入仓库路径，autoDoc 即开始生成文档。
 
-### Build
-
-```bash
-cd web && pnpm build
-```
-
-## Project Structure
+## 项目结构
 
 ```
 autoDoc/
 ├── src/
-│   ├── agents/              # 4 Claude agents
-│   │   ├── scaffold.ts      # Top-level repo analysis
-│   │   ├── decomposer.ts    # Recursive module splitting
-│   │   ├── writer.ts        # Markdown doc generation
-│   │   ├── checker.ts       # Quality validation
-│   │   ├── instructions/    # Agent prompts (Chinese)
-│   │   └── schemas/         # Zod schemas for structured output
+│   ├── agents/              # 4 个 Claude Agent
+│   │   ├── scaffold.ts      # 顶层仓库分析
+│   │   ├── decomposer.ts    # 递归模块拆分
+│   │   ├── writer.ts        # Markdown 文档生成
+│   │   ├── checker.ts       # 质量校验
+│   │   ├── instructions/    # Agent 提示词（中文）
+│   │   └── schemas/         # Zod 结构化输出 schema
 │   ├── workflow/
-│   │   └── arranger.ts      # Pipeline orchestration state machine
-│   └── server.ts            # API server
-├── web/                     # Vue 3 frontend
+│   │   └── arranger.ts      # 流水线调度状态机
+│   └── server.ts            # API 服务器
+├── web/                     # Vue 3 前端
 │   ├── src/
 │   │   ├── views/           # GraphPage, DocPage, HomePage
-│   │   └── services/        # API client
-│   └── doc/                 # Generated documentation output
+│   │   └── services/        # API 客户端
+│   └── doc/                 # 生成的文档输出目录
 ├── package.json
 └── pnpm-workspace.yaml
 ```
 
-## License
+## 许可证
 
 Apache-2.0

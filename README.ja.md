@@ -1,6 +1,6 @@
 # autoDoc
 
-[English](README.md) | [中文](README.zh-CN.md) | **[日本語](README.ja.md)**
+[中文](README.md) | [English](README.en.md) | **日本語**
 
 autoDoc を任意のコードリポジトリに向けるだけで、インタラクティブなドキュメントサイトを自動生成します。
 
@@ -51,7 +51,7 @@ Decomposer ──► Checker   Decomposer ──► Checker   ...
 
 | レイヤー | 技術 |
 |----------|------|
-| バックエンド | TypeScript, [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk), Zod |
+| バックエンド | TypeScript, [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (via Claude Agent SDK), Zod |
 | フロントエンド | Vue 3, TypeScript, AntV G6, Vite |
 | モノレポ | pnpm workspaces |
 
@@ -61,12 +61,12 @@ Decomposer ──► Checker   Decomposer ──► Checker   ...
 
 - Node.js >= 18
 - pnpm >= 10
-- Anthropic API キー（`ANTHROPIC_API_KEY` 環境変数に設定）
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) がインストール済みで正常に動作すること（公式サブスクリプション、Claude Code API、またはサードパーティ API 接続のいずれでも可）
 
 ### インストール
 
 ```bash
-git clone https://github.com/YanboQiao/autoDoc.git
+git clone https://github.com/Haruhiko-Joe/autoDoc.git
 cd autoDoc
 pnpm install
 cd web && pnpm install && cd ..
@@ -77,10 +77,6 @@ cd web && pnpm install && cd ..
 ```bash
 # バックエンド（ポート 3100）とフロントエンド開発サーバーを同時に起動
 pnpm start
-
-# または個別に起動：
-pnpm dev              # バックエンドのみ
-cd web && pnpm dev    # フロントエンドのみ（/api を :3100 にプロキシ）
 ```
 
 フロントエンドを開き、リポジトリのパスを入力すると、autoDoc がドキュメント生成を開始します。

@@ -2,28 +2,14 @@
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { Graph, NodeEvent, EdgeEvent } from '@antv/g6'
 import { EDGE_STYLES } from '../services/edgeStyles'
-import type { EdgeType } from '../types'
-
-interface EdgeItem {
-  target: string
-  type: EdgeType
-  description: string
-  detail?: string
-}
-
-interface NodeItem {
-  name: string
-  description: string
-  edges: EdgeItem[]
-  child?: { type: 'graph' | 'page'; ref: string }
-}
+import type { GraphNode, EdgeType } from '../types'
 
 const props = defineProps<{
-  nodes: NodeItem[]
+  nodes: GraphNode[]
 }>()
 
 const emit = defineEmits<{
-  nodeClick: [node: NodeItem]
+  nodeClick: [node: GraphNode]
 }>()
 
 const containerRef = ref<HTMLDivElement>()
@@ -32,8 +18,7 @@ let graph: Graph | null = null
 const CARD_WIDTH = 468
 const CARD_HEIGHT = 234
 
-// Edge detail popover state
-const popover = ref<{
+interface PopoverState {
   visible: boolean
   x: number
   y: number
@@ -42,7 +27,9 @@ const popover = ref<{
   type: EdgeType
   description: string
   detail: string
-}>({
+}
+
+const popover = ref<PopoverState>({
   visible: false,
   x: 0,
   y: 0,
@@ -57,10 +44,18 @@ function closePopover() {
   popover.value.visible = false
 }
 
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
 function renderCard(name: string, description: string): string {
   return `<div class="node-card">
-    <div class="node-card-name">${name}</div>
-    <div class="node-card-desc">${description}</div>
+    <div class="node-card-name">${escapeHtml(name)}</div>
+    <div class="node-card-desc">${escapeHtml(description)}</div>
   </div>`
 }
 
@@ -80,7 +75,14 @@ function polygonPositions(n: number, canvasW: number, canvasH: number) {
   })
 }
 
-function buildData(nodes: NodeItem[], canvasW: number, canvasH: number) {
+type G6EdgeData = Record<string, unknown> & {
+  edgeType: EdgeType
+  description: string
+  detail: string
+  sourceName: string
+}
+
+function buildData(nodes: GraphNode[], canvasW: number, canvasH: number) {
   const positions = polygonPositions(nodes.length, canvasW, canvasH)
 
   const g6Nodes = nodes.map((n, i) => ({
@@ -96,7 +98,7 @@ function buildData(nodes: NodeItem[], canvasW: number, canvasH: number) {
     id: string
     source: string
     target: string
-    data: { edgeType: EdgeType; description: string; detail: string; sourceName: string }
+    data: G6EdgeData
   }[] = []
 
   for (const node of nodes) {
@@ -169,38 +171,33 @@ function createGraph() {
     behaviors: ['zoom-canvas', 'drag-canvas', 'drag-element'],
   })
 
-  graph.on(NodeEvent.CLICK, (e: any) => {
+  graph.on(NodeEvent.CLICK, (evt) => {
     closePopover()
-    const nodeId: string = e.target?.id
+    const e = evt as unknown as { target?: { id?: string } }
+    const nodeId = e.target?.id
     if (!nodeId) return
     const found = props.nodes.find((n) => n.name === nodeId)
     if (found) emit('nodeClick', found)
   })
 
-  graph.on(EdgeEvent.CLICK, (e: any) => {
-    const edgeId: string = e.target?.id
+  graph.on(EdgeEvent.CLICK, (evt) => {
+    const e = evt as unknown as { target?: { id?: string }; client?: { x: number; y: number } }
+    const edgeId = e.target?.id
     if (!edgeId || !graph) return
 
-    // Bring clicked edge to top layer
     graph.frontElement(edgeId)
 
     const edgeData = graph.getEdgeData(edgeId)
     if (!edgeData?.data) return
 
-    const d = edgeData.data as {
-      edgeType: EdgeType
-      description: string
-      detail: string
-      sourceName: string
-    }
-
+    const d = edgeData.data as unknown as G6EdgeData
     if (!d.detail) return
 
     const containerRect = containerRef.value!.getBoundingClientRect()
     popover.value = {
       visible: true,
-      x: (e.client?.x ?? e.clientX ?? 0) - containerRect.left,
-      y: (e.client?.y ?? e.clientY ?? 0) - containerRect.top,
+      x: (e.client?.x ?? 0) - containerRect.left,
+      y: (e.client?.y ?? 0) - containerRect.top,
       source: d.sourceName,
       target: edgeData.target as string,
       type: d.edgeType,
@@ -235,38 +232,47 @@ watch(
 
 <template>
   <div ref="containerRef" class="graph-container">
-    <div
-      v-if="popover.visible"
-      class="edge-popover"
-      :style="{ left: popover.x + 'px', top: popover.y + 'px' }"
-    >
-      <div class="edge-popover-header">
-        <div class="edge-popover-route">
-          <span class="edge-popover-node">{{ popover.source }}</span>
-          <span class="edge-popover-arrow">→</span>
-          <span class="edge-popover-node">{{ popover.target }}</span>
+    <Transition name="popover">
+      <div
+        v-if="popover.visible"
+        class="edge-popover"
+        :style="{ left: popover.x + 'px', top: popover.y + 'px' }"
+      >
+        <div class="edge-popover-header">
+          <div class="edge-popover-route">
+            <span class="edge-popover-node">{{ popover.source }}</span>
+            <span class="edge-popover-arrow">&rarr;</span>
+            <span class="edge-popover-node">{{ popover.target }}</span>
+          </div>
+          <span
+            class="edge-popover-type"
+            :style="{
+              background: EDGE_STYLES[popover.type].stroke + '20',
+              color: EDGE_STYLES[popover.type].stroke,
+            }"
+          >
+            {{ popover.type }}
+          </span>
+          <button class="edge-popover-close" @click="closePopover">&times;</button>
         </div>
-        <span class="edge-popover-type" :style="{ background: EDGE_STYLES[popover.type].stroke + '20', color: EDGE_STYLES[popover.type].stroke }">
-          {{ popover.type }}
-        </span>
-        <button class="edge-popover-close" @click="closePopover">&times;</button>
+        <div class="edge-popover-desc">{{ popover.description }}</div>
+        <div class="edge-popover-detail">{{ popover.detail }}</div>
       </div>
-      <div class="edge-popover-desc">{{ popover.description }}</div>
-      <div class="edge-popover-detail">{{ popover.detail }}</div>
-    </div>
+    </Transition>
   </div>
 </template>
 
-<style>
+<style scoped>
 .graph-container {
   width: 100%;
   height: 100%;
   position: relative;
 }
 
-.node-card {
-  width: 468px;
-  height: 234px;
+/* G6 html node 内部渲染，需要全局样式 */
+:global(.node-card) {
+  width: 100%;
+  height: 100%;
   box-sizing: border-box;
   padding: 26px 30px;
   background: #fff;
@@ -280,12 +286,12 @@ watch(
   overflow: hidden;
 }
 
-.node-card:hover {
+:global(.node-card:hover) {
   border-color: #1890ff;
   box-shadow: 0 6px 20px rgba(24, 144, 255, 0.18);
 }
 
-.node-card-name {
+:global(.node-card-name) {
   font-size: 17px;
   font-weight: 600;
   color: #1a1a1a;
@@ -293,13 +299,12 @@ watch(
   flex-shrink: 0;
 }
 
-.node-card-desc {
+:global(.node-card-desc) {
   font-size: 13px;
   color: #666;
   line-height: 1.6;
 }
 
-/* Edge detail popover */
 .edge-popover {
   position: absolute;
   z-index: 100;
@@ -310,7 +315,14 @@ watch(
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
   padding: 16px 20px;
   transform: translate(-50%, 12px);
+}
+
+.popover-enter-active {
   animation: popover-in 0.15s ease-out;
+}
+
+.popover-leave-active {
+  animation: popover-in 0.15s ease-in reverse;
 }
 
 @keyframes popover-in {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, nextTick, watch } from 'vue'
 import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 import { sendChat, type ChatEvent } from '../services/doc'
 
 const props = defineProps<{
@@ -71,7 +72,7 @@ async function send() {
 }
 
 function renderMd(md: string): string {
-  return marked.parse(md) as string
+  return DOMPurify.sanitize(marked.parse(md) as string)
 }
 </script>
 

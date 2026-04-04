@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 
 const props = defineProps<{
   content: string
@@ -9,7 +10,7 @@ const props = defineProps<{
 const html = ref('')
 
 function render(md: string) {
-  html.value = marked.parse(md) as string
+  html.value = DOMPurify.sanitize(marked.parse(md) as string)
 }
 
 render(props.content)
