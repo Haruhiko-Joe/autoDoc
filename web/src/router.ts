@@ -7,8 +7,9 @@ const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/', name: 'home', component: HomePage },
-    { path: '/graph/:path(.*)', name: 'graph', component: GraphPage },
-    { path: '/page/:path(.*)', name: 'page', component: DocPage },
+    { path: '/:project', name: 'project', component: HomePage },
+    { path: '/:project/graph/:path(.*)', name: 'graph', component: GraphPage },
+    { path: '/:project/page/:path(.*)', name: 'page', component: DocPage },
   ],
 })
 

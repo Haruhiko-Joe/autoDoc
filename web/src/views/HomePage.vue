@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, inject, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { fetchTopGraph, startRun, fetchStatus, fetchProjects, type RunStatus } from '../services/doc'
+import { fetchTopGraph, startRun, fetchStatus, fetchProjects, subscribeStatus, type RunStatus } from '../services/doc'
 import GraphView from '../components/GraphView.vue'
 import EdgeLegend from '../components/EdgeLegend.vue'
 import DocTree from '../components/DocTree.vue'
@@ -18,11 +18,12 @@ const selectedProject = ref('')
 const status = ref<RunStatus>({ phase: 'idle' })
 const errorMsg = ref('')
 const graphLoading = ref(false)
-let pollTimer: ReturnType<typeof setInterval> | null = null
+let unsubscribeSSE: (() => void) | null = null
 
 function getRouteProject(): string {
-  const project = route.query.project
-  return Array.isArray(project) ? (project[0] ?? '') : (project ?? '')
+  const p = route.params.project
+  if (!p) return ''
+  return Array.isArray(p) ? (p[0] ?? '') : p
 }
 
 function getProjectName(repoPathValue: string): string {
@@ -58,7 +59,7 @@ onMounted(async () => {
   selectedProject.value = routeProject || s.currentProject || projects.value[0] || ''
 
   if (!routeProject && selectedProject.value) {
-    await router.replace({ name: 'home', query: { project: selectedProject.value } })
+    await router.replace({ name: 'project', params: { project: selectedProject.value } })
   }
 
   if (selectedProject.value) {
@@ -66,13 +67,13 @@ onMounted(async () => {
   }
 
   if (s.phase === 'running') {
-    startPolling()
+    startSSE()
   }
 })
 
-onUnmounted(() => stopPolling())
+onUnmounted(() => stopSSE())
 
-watch(() => route.query.project, async () => {
+watch(() => route.params.project, async () => {
   const routeProject = getRouteProject()
   if (routeProject === selectedProject.value) return
   selectedProject.value = routeProject
@@ -93,17 +94,16 @@ async function handleRun() {
     status.value = { phase: 'running', repoPath: repoPath.value.trim(), currentProject: project }
     selectedProject.value = project
     mergeProjects([...projects.value, project])
-    await router.replace({ name: 'home', query: { project } })
-    startPolling()
+    await router.replace({ name: 'project', params: { project } })
+    startSSE()
   } catch (e) {
     errorMsg.value = e instanceof Error ? e.message : String(e)
   }
 }
 
-function startPolling() {
-  stopPolling()
-  pollTimer = setInterval(async () => {
-    const s = await fetchStatus()
+function startSSE() {
+  stopSSE()
+  unsubscribeSSE = subscribeStatus(async (s) => {
     status.value = s
     mergeProjects(projects.value)
     if (s.phase === 'running') {
@@ -111,20 +111,20 @@ function startPolling() {
         await tryLoadGraph(selectedProject.value)
       }
     } else if (s.phase === 'done') {
-      stopPolling()
+      stopSSE()
       await refreshProjects()
       if (selectedProject.value) await loadGraph(selectedProject.value)
     } else if (s.phase === 'error') {
-      stopPolling()
+      stopSSE()
       errorMsg.value = s.message ?? 'Unknown error'
     }
-  }, 2000)
+  })
 }
 
-function stopPolling() {
-  if (pollTimer) {
-    clearInterval(pollTimer)
-    pollTimer = null
+function stopSSE() {
+  if (unsubscribeSSE) {
+    unsubscribeSSE()
+    unsubscribeSSE = null
   }
 }
 
@@ -159,7 +159,7 @@ async function handleProjectChange() {
     await router.replace({ name: 'home' })
     return
   }
-  await router.replace({ name: 'home', query: { project: selectedProject.value } })
+  await router.replace({ name: 'project', params: { project: selectedProject.value } })
   await loadGraph(selectedProject.value)
 }
 
@@ -169,16 +169,18 @@ function graphNodes() {
     name: n.name,
     description: n.description,
     edges: n.edges,
+    codeScope: n.codeScope,
     child: { type: 'graph' as const, ref: n.name },
   }))
 }
 
 function onNodeClick(node: Pick<GraphNode, 'child'>) {
   if (!node.child || !selectedProject.value) return
+  const project = selectedProject.value
   if (node.child.type === 'graph') {
-    router.push({ name: 'graph', params: { path: node.child.ref }, query: { project: selectedProject.value } })
+    router.push(`/${project}/graph/${node.child.ref}`)
   } else {
-    router.push({ name: 'page', params: { path: node.child.ref }, query: { project: selectedProject.value } })
+    router.push(`/${project}/page/${node.child.ref}`)
   }
 }
 

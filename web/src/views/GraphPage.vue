@@ -21,8 +21,9 @@ function getPath(): string {
 }
 
 function getProject(): string {
-  const project = route.query.project
-  return Array.isArray(project) ? (project[0] ?? '') : (project ?? '')
+  const p = route.params.project
+  if (!p) return ''
+  return Array.isArray(p) ? (p[0] ?? '') : p
 }
 
 async function load() {
@@ -52,7 +53,7 @@ async function load() {
 }
 
 onMounted(load)
-watch(() => [route.params.path, route.query.project], () => {
+watch(() => [route.params.path, route.params.project], () => {
   topGraph.value = null
   load()
 })
@@ -61,21 +62,23 @@ function onNodeClick(node: { child?: GraphNode['child'] }) {
   if (!node.child) return
   const basePath = getPath()
   const nextPath = `${basePath}/${node.child.ref}`
+  const project = getProject()
   if (node.child.type === 'graph') {
-    router.push({ name: 'graph', params: { path: nextPath }, query: { project: getProject() } })
+    router.push(`/${project}/graph/${nextPath}`)
   } else {
-    router.push({ name: 'page', params: { path: nextPath }, query: { project: getProject() } })
+    router.push(`/${project}/page/${nextPath}`)
   }
 }
 
 function goBack() {
   const path = getPath()
   const parts = path.split('/')
+  const project = getProject()
   if (parts.length <= 1) {
-    router.push({ name: 'home', query: { project: getProject() } })
+    router.push({ name: 'project', params: { project } })
   } else {
     parts.pop()
-    router.push({ name: 'graph', params: { path: parts.join('/') }, query: { project: getProject() } })
+    router.push(`/${project}/graph/${parts.join('/')}`)
   }
 }
 
@@ -107,10 +110,10 @@ const breadcrumbs = () => {
       <template v-else-if="subGraph">
         <div class="canvas-header">
           <nav class="breadcrumb">
-            <a class="crumb" @click="router.push({ name: 'home', query: { project: getProject() } })">Home</a>
+            <a class="crumb" @click="router.push({ name: 'project', params: { project: getProject() } })">Home</a>
             <template v-for="bc in breadcrumbs()" :key="bc.path">
               <span class="sep">/</span>
-              <a class="crumb" @click="router.push({ name: 'graph', params: { path: bc.path }, query: { project: getProject() } })">
+              <a class="crumb" @click="router.push(`/${getProject()}/graph/${bc.path}`)">
                 {{ bc.label }}
               </a>
             </template>

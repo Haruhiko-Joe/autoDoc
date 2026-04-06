@@ -24,7 +24,7 @@ export interface GraphNode {
 export interface ScaffoldNode {
   name: string
   description: string
-  scope: string[]
+  codeScope: string[]
   edges: { type: EdgeType; target: string; description: string; detail?: string }[]
 }
 

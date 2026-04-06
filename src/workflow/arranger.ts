@@ -143,10 +143,20 @@ export class Arranger {
   private repoPath = "";
   private docDir = "";
   private currentPhase: Progress["phase"] = "idle";
+  private listeners = new Set<() => void>();
 
   constructor(options?: { maxConcurrency?: number }) {
     this.maxConcurrency = options?.maxConcurrency ?? 8;
     this.sem = new Semaphore(this.maxConcurrency);
+  }
+
+  onProgress(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => { this.listeners.delete(listener); };
+  }
+
+  private notify(): void {
+    for (const fn of this.listeners) fn();
   }
 
   async getProgress(): Promise<Progress> {
@@ -175,14 +185,18 @@ export class Arranger {
     if (!topExists) {
       console.log("[Arranger] Running scaffold...");
       this.currentPhase = "scaffold";
+      this.notify();
       await this.runScaffold();
     } else {
       console.log("[Arranger] top.json already exists, skipping scaffold.");
     }
 
+    await this.resetRecoverableNodes();
     this.currentPhase = "processing";
+    this.notify();
     await this.processLoop();
     this.currentPhase = "idle";
+    this.notify();
     console.log("[Arranger] Done.");
   }
 
@@ -254,6 +268,10 @@ export class Arranger {
     "pending", "decomposing", "writing", "checking",
   ]);
 
+  private static readonly RECOVERABLE: ReadonlySet<GraphStatusType> = new Set([
+    "decomposing", "writing", "checking", "error",
+  ]);
+
   private async processLoop(): Promise<void> {
     for (let iteration = 1; ; iteration++) {
       const actionable = await this.findActionableNodes();
@@ -275,6 +293,26 @@ export class Arranger {
           console.error("[Arranger] Pipeline failed:", r.reason);
         }
       }
+    }
+  }
+
+  private async resetRecoverableNodes(): Promise<void> {
+    const allNodeIds = await this.scanGraphNodes(this.docDir, "");
+    let resetCount = 0;
+
+    for (const nodeId of allNodeIds) {
+      try {
+        const graph = await this.readGraph(nodeId);
+        if (!Arranger.RECOVERABLE.has(graph.status)) continue;
+        await this.writeGraph(nodeId, { ...graph, status: "pending" });
+        resetCount++;
+      } catch {
+        console.warn(`[Arranger] Skipping unreadable graph during recovery: ${nodeId}`);
+      }
+    }
+
+    if (resetCount > 0) {
+      console.log(`[Arranger] Recovered ${resetCount} node(s) to pending.`);
     }
   }
 
@@ -645,6 +683,7 @@ export class Arranger {
     const graph = await this.readGraph(nodeId);
     Object.assign(graph, patch);
     await this.writeGraph(nodeId, graph);
+    this.notify();
   }
 
   private async readTopGraph(): Promise<TopGraphType> {

@@ -14,6 +14,27 @@ type RunState =
   | { phase: "error"; repoPath: string; project: string; message: string };
 
 let state: RunState = { phase: "idle" };
+const sseClients = new Set<import("node:http").ServerResponse>();
+
+function broadcastStatus(): void {
+  if (sseClients.size === 0) return;
+  const send = async () => {
+    const data = JSON.stringify(await handleStatus());
+    for (const res of sseClients) {
+      res.write(`data: ${data}\n\n`);
+    }
+  };
+  send().catch(() => {});
+}
+
+let broadcastTimer: ReturnType<typeof setTimeout> | null = null;
+function debouncedBroadcast(): void {
+  if (broadcastTimer) return;
+  broadcastTimer = setTimeout(() => {
+    broadcastTimer = null;
+    broadcastStatus();
+  }, 500);
+}
 
 function getProjectName(repoPath: string): string {
   return path.basename(path.resolve(repoPath));
@@ -53,13 +74,16 @@ async function handleRun(body: { repoPath: string; maxConcurrency?: number }): P
 
   const arranger = new Arranger({ maxConcurrency: body.maxConcurrency });
   state = { phase: "running", repoPath, project, docDir, arranger };
+  arranger.onProgress(debouncedBroadcast);
 
   arranger.run(repoPath, docDir).then(
     () => {
       state = { phase: "done", repoPath, project, docDir };
+      broadcastStatus();
     },
     (err) => {
       state = { phase: "error", repoPath, project, message: String(err) };
+      broadcastStatus();
     },
   );
 
@@ -135,6 +159,18 @@ const server = createServer(async (req, res) => {
     } else if (req.method === "GET" && url.pathname === "/api/status") {
       const statusResult = await handleStatus();
       res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(statusResult));
+    } else if (req.method === "GET" && url.pathname === "/api/status/stream") {
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      });
+      // 立即推送当前状态
+      const initial = JSON.stringify(await handleStatus());
+      res.write(`data: ${initial}\n\n`);
+      sseClients.add(res);
+      res.on("close", () => { sseClients.delete(res); });
+      return;
     } else if (req.method === "POST" && url.pathname === "/api/chat") {
       if (state.phase !== "done" && state.phase !== "running") {
         res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "No project loaded" }));

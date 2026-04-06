@@ -59,18 +59,22 @@ function renderCard(name: string, description: string): string {
   </div>`
 }
 
-function polygonPositions(n: number, canvasW: number, canvasH: number) {
+function superellipsePositions(n: number, canvasW: number, canvasH: number) {
   const cx = canvasW / 2
   const cy = canvasH / 2
   const margin = 100
   const rx = (canvasW - margin * 2 - CARD_WIDTH) / 2
   const ry = (canvasH - margin * 2 - CARD_HEIGHT) / 2
+  const p = 6
   const startAngle = -Math.PI / 2
   return Array.from({ length: n }, (_, i) => {
     const angle = startAngle + (2 * Math.PI * i) / n
+    const cosA = Math.cos(angle)
+    const sinA = Math.sin(angle)
+    const r = (Math.abs(cosA / rx) ** p + Math.abs(sinA / ry) ** p) ** (-1 / p)
     return {
-      x: cx + rx * Math.cos(angle),
-      y: cy + ry * Math.sin(angle),
+      x: cx + r * cosA,
+      y: cy + r * sinA,
     }
   })
 }
@@ -83,7 +87,7 @@ type G6EdgeData = Record<string, unknown> & {
 }
 
 function buildData(nodes: GraphNode[], canvasW: number, canvasH: number) {
-  const positions = polygonPositions(nodes.length, canvasW, canvasH)
+  const positions = superellipsePositions(nodes.length, canvasW, canvasH)
 
   const g6Nodes = nodes.map((n, i) => ({
     id: n.name,

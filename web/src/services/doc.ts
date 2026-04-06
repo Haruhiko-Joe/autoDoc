@@ -68,6 +68,14 @@ export async function fetchStatus(): Promise<RunStatus> {
   return res.json()
 }
 
+export function subscribeStatus(onStatus: (status: RunStatus) => void): () => void {
+  const es = new EventSource(`${API}/status/stream`)
+  es.onmessage = (e) => {
+    try { onStatus(JSON.parse(e.data)) } catch { /* ignore */ }
+  }
+  return () => es.close()
+}
+
 // ─── Chat ───
 
 export interface ChatEvent {

@@ -60,7 +60,7 @@ watch(() => props.nodeStates, updateStatuses, { deep: true })
 
 async function onToggle(node: TreeNode) {
   if (node.type === 'page') {
-    router.push({ name: 'page', params: { path: node.path }, query: { project: props.project } })
+    router.push(`/${props.project}/page/${node.path}`)
     return
   }
 
@@ -92,9 +92,9 @@ async function onToggle(node: TreeNode) {
 
 function onNavigate(node: TreeNode) {
   if (node.type === 'graph') {
-    router.push({ name: 'graph', params: { path: node.path }, query: { project: props.project } })
+    router.push(`/${props.project}/graph/${node.path}`)
   } else {
-    router.push({ name: 'page', params: { path: node.path }, query: { project: props.project } })
+    router.push(`/${props.project}/page/${node.path}`)
   }
 }
 </script>
