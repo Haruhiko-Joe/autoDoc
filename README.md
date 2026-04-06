@@ -4,6 +4,9 @@
 
 将 autoDoc 指向任意代码仓库，自动生成一个可交互的文档站。
 
+[伴侣skill](https://github.com/Haruhiko-Joe/skills/tree/main/doc-drill)
+
+
 autoDoc 使用 4 个 Claude AI Agent 组成的流水线，分析代码库、分解模块结构，生成基于图的可导航文档站。文档采用渐进式披露设计：从顶层架构总览出发，逐层深入至任意模块的详细 Markdown 文档。
 
 ## 工作原理

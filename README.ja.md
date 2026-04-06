@@ -4,6 +4,8 @@
 
 autoDoc を任意のコードリポジトリに向けるだけで、インタラクティブなドキュメントサイトを自動生成します。
 
+[連携スキル](https://github.com/Haruhiko-Joe/skills/tree/main/doc-drill)
+
 autoDoc は 4 つの Claude AI エージェントによるパイプラインでコードベースを分析・モジュール分解し、グラフベースのナビゲーション可能なドキュメントサイトを生成します。段階的開示（Progressive Disclosure）設計により、トップレベルのアーキテクチャ概要から任意のモジュールの詳細な Markdown ドキュメントまで、階層的に掘り下げることができます。
 
 ## 仕組み

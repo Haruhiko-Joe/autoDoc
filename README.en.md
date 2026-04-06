@@ -4,6 +4,8 @@
 
 Point autoDoc at any code repository and get an interactive documentation site — automatically.
 
+[Companion skill](https://github.com/Haruhiko-Joe/skills/tree/main/doc-drill)
+
 autoDoc uses a pipeline of 4 Claude AI agents to analyze your codebase, decompose it into modules, and generate a navigable, graph-based documentation site with progressive disclosure: start from a high-level architecture overview and drill down into any module until you reach detailed Markdown docs.
 
 ## How It Works
