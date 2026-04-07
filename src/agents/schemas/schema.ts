@@ -91,6 +91,34 @@ export const WriterOutput = z.object({
   content: z.string(),
 })
 
+// --- FlowAnalyzer ---
+
+export const FlowParticipant = z.object({
+  name: z.string(),
+  description: z.string(),
+  docPath: z.string().optional(),
+})
+
+export const FlowStep = z.object({
+  from: z.string(),
+  to: z.string(),
+  action: z.string(),
+  detail: z.string(),
+  edgeType: EdgeType.optional(),
+  codeRef: z.string().optional(),
+})
+
+export const FlowCase = z.object({
+  title: z.string(),
+  description: z.string(),
+  participants: z.array(FlowParticipant),
+  steps: z.array(FlowStep),
+})
+
+export const FlowAnalyzerOutput = z.object({
+  flows: z.array(FlowCase),
+})
+
 // --- AncestorContext (passed to Decomposer & Writer from depth ≥ 2) ---
 
 export const AncestorSibling = z.object({
@@ -175,6 +203,10 @@ export type AncestorSibling = z.infer<typeof AncestorSibling>
 export type AncestorEdge = z.infer<typeof AncestorEdge>
 export type AncestorLayer = z.infer<typeof AncestorLayer>
 export type AncestorContext = z.infer<typeof AncestorContext>
+export type FlowParticipant = z.infer<typeof FlowParticipant>
+export type FlowStep = z.infer<typeof FlowStep>
+export type FlowCase = z.infer<typeof FlowCase>
+export type FlowAnalyzerOutput = z.infer<typeof FlowAnalyzerOutput>
 
 // ─── Utility ───
 

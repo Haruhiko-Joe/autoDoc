@@ -1,12 +1,17 @@
-import { readFile, writeFile, mkdir, readdir, access } from "node:fs/promises";
+import { readFile, writeFile, mkdir, readdir, access, copyFile, cp } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { Scaffold } from "../agents/scaffold.js";
 import { Decomposer } from "../agents/decomposer.js";
 import { claudeChecker } from "../agents/claudechecker.js";
 import { codexChecker } from "../agents/codexchecker.js";
 import { Writer } from "../agents/writer.js";
+import { FlowAnalyzer } from "../agents/flowanalyzer.js";
 import { TopGraph, Graph } from "../agents/schemas/schema.js";
 import type { IChecker } from "../agents/schemas/schema.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const SKILL_TEMPLATE_DIR = path.resolve(__dirname, "..", "skill-template");
 import type {
   TopGraph as TopGraphType,
   Graph as GraphType,
@@ -108,7 +113,7 @@ export interface NodeProgress {
 }
 
 export interface Progress {
-  phase: "scaffold" | "processing" | "idle"
+  phase: "scaffold" | "processing" | "assembling" | "flows" | "idle"
   counts: Record<string, number>
   nodes: NodeProgress[]
 }
@@ -205,6 +210,15 @@ export class Arranger {
     this.currentPhase = "processing";
     this.notify();
     await this.processLoop();
+
+    this.currentPhase = "assembling";
+    this.notify();
+    const skillDir = await this.assembleSkill();
+
+    this.currentPhase = "flows";
+    this.notify();
+    await this.runFlowAnalysis(skillDir);
+
     this.currentPhase = "idle";
     this.notify();
     console.log("[Arranger] Done.");
@@ -705,6 +719,49 @@ export class Arranger {
   private async writeTopGraph(topGraph: TopGraphType): Promise<void> {
     const filePath = path.join(this.docDir, "top.json");
     await writeFile(filePath, JSON.stringify(topGraph, null, 2));
+  }
+
+  // ─── Skill 组装 + Flow 分析 ───
+
+  private get projectName(): string {
+    return path.basename(this.docDir);
+  }
+
+  private async assembleSkill(): Promise<string> {
+    const skillDir = path.join(this.repoPath, ".claude", "skills", "doc-drill");
+
+    console.log(`[Arranger] Assembling doc-drill skill at ${skillDir}...`);
+    await mkdir(path.join(skillDir, "scripts"), { recursive: true });
+    await mkdir(path.join(skillDir, "docs"), { recursive: true });
+
+    await copyFile(
+      path.join(SKILL_TEMPLATE_DIR, "scripts", "browse.mjs"),
+      path.join(skillDir, "scripts", "browse.mjs"),
+    );
+    await copyFile(
+      path.join(SKILL_TEMPLATE_DIR, "SKILL.md"),
+      path.join(skillDir, "SKILL.md"),
+    );
+    await cp(this.docDir, path.join(skillDir, "docs", this.projectName), { recursive: true });
+
+    console.log("[Arranger] Skill assembled.");
+    return skillDir;
+  }
+
+  private async runFlowAnalysis(skillDir: string): Promise<void> {
+    const flowsPath = path.join(this.docDir, "flows.json");
+    if (await this.fileExists(flowsPath)) {
+      console.log("[Arranger] flows.json already exists, skipping flow analysis.");
+      return;
+    }
+
+    console.log("[Arranger] Running flow analysis...");
+    const analyzer = new FlowAnalyzer(skillDir, this.projectName);
+    const prompt = `Analyze the documented codebase and produce 3-7 typical business interaction flows.\nRepository root: ${this.repoPath}`;
+    const { result } = await analyzer.run(prompt, this.repoPath);
+
+    await writeFile(flowsPath, JSON.stringify(result, null, 2));
+    console.log(`[Arranger] Flow analysis complete. ${result.flows.length} flows generated.`);
   }
 
   // ─── 工具 ───

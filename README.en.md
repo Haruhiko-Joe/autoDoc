@@ -50,6 +50,10 @@ The generated documentation site features:
 |:---:|:---:|
 | ![finalpage](fig/finalpage.png) | ![continuechat](fig/continuechat.png) |
 
+| Interaction Flows |
+|:---:|
+| ![interactiveflow](fig/interactiveflow.png) |
+
 ## Pluggable Documentation
 
 Each module's documentation is a self-contained unit — a directory with its own Graph JSON and Markdown files. You can freely add, remove, or replace any module without regenerating the entire site.

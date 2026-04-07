@@ -206,6 +206,8 @@ const progressPhaseLabel = computed(() => {
   const p = progress.value?.phase
   if (p === 'scaffold') return 'Analyzing project structure...'
   if (p === 'processing') return 'Processing modules...'
+  if (p === 'assembling') return 'Assembling doc-drill skill...'
+  if (p === 'flows') return 'Generating interaction flows...'
   return 'Preparing...'
 })
 </script>
@@ -308,6 +310,7 @@ const progressPhaseLabel = computed(() => {
           <h1>{{ topGraph.description }}</h1>
           <span class="project-chip">{{ selectedProject }}</span>
           <span v-if="viewingRunningProject" class="live-badge">LIVE</span>
+          <a class="flows-link" @click="router.push(`/${selectedProject}/flows`)">Interaction Flows &rarr;</a>
         </div>
         <div class="canvas-graph">
           <GraphView :nodes="graphNodes()" @node-click="onNodeClick" />
@@ -565,6 +568,19 @@ const progressPhaseLabel = computed(() => {
   border-radius: 999px;
   padding: 3px 10px;
   flex-shrink: 0;
+}
+
+.flows-link {
+  font-size: 13px;
+  color: #1890ff;
+  cursor: pointer;
+  margin-left: auto;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.flows-link:hover {
+  text-decoration: underline;
 }
 
 .live-badge {

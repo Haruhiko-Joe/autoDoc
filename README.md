@@ -49,6 +49,10 @@ Decomposer ──► Checker   Decomposer ──► Checker   ...
 |:---:|:---:|
 | ![finalpage](fig/finalpage.png) | ![continuechat](fig/continuechat.png) |
 
+| 交互流程图 |
+|:---:|
+| ![interactiveflow](fig/interactiveflow.png) |
+
 ## 文档可插拔
 
 每个模块的文档都是自包含的独立单元——一个包含 Graph JSON 和 Markdown 文件的目录。你可以自由地增删替换任意模块，无需重新生成整个文档站。

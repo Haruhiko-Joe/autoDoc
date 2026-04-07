@@ -1,4 +1,4 @@
-import type { TopGraph, SubGraph } from '../types'
+import type { TopGraph, SubGraph, FlowsData } from '../types'
 
 const API = '/api'
 
@@ -25,13 +25,19 @@ export async function fetchPage(project: string, ref: string): Promise<string> {
   return res.text()
 }
 
+export async function fetchFlows(project: string): Promise<FlowsData> {
+  const res = await fetch(buildDocUrl('flows.json', project))
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
 export interface NodeProgress {
   nodeId: string
   status: 'pending' | 'decomposing' | 'writing' | 'checking' | 'done' | 'error'
 }
 
 export interface Progress {
-  phase: 'scaffold' | 'processing' | 'idle'
+  phase: 'scaffold' | 'processing' | 'assembling' | 'flows' | 'idle'
   counts: Record<string, number>
   nodes: NodeProgress[]
 }

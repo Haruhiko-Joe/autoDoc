@@ -44,3 +44,31 @@ export interface SubGraph {
   codeScope: string[]
   nodes: GraphNode[]
 }
+
+// ─── Flow ───
+
+export interface FlowParticipant {
+  name: string
+  description: string
+  docPath?: string
+}
+
+export interface FlowStep {
+  from: string
+  to: string
+  action: string
+  detail: string
+  edgeType?: EdgeType
+  codeRef?: string
+}
+
+export interface FlowCase {
+  title: string
+  description: string
+  participants: FlowParticipant[]
+  steps: FlowStep[]
+}
+
+export interface FlowsData {
+  flows: FlowCase[]
+}

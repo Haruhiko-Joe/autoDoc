@@ -48,6 +48,10 @@ Decomposer ──► Checker   Decomposer ──► Checker   ...
 |:---:|:---:|
 | ![finalpage](fig/finalpage.png) | ![continuechat](fig/continuechat.png) |
 
+| インタラクションフロー |
+|:---:|
+| ![interactiveflow](fig/interactiveflow.png) |
+
 ## プラガブルなドキュメント
 
 各モジュールのドキュメントは自己完結型の独立ユニットです——Graph JSON と Markdown ファイルを含むディレクトリ単位で管理されます。サイト全体を再生成することなく、任意のモジュールを自由に追加・削除・差し替えできます。
