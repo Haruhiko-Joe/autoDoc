@@ -146,6 +146,13 @@ export interface AgentResult<T = string> {
   result: T
 }
 
+export interface IChecker {
+  getSessionId(): string | undefined
+  restore(sessionId: string, workpath: string): void
+  run(prompt: string, workpath: string): Promise<AgentResult<CheckerOutput>>
+  continue(prompt: string): Promise<AgentResult<CheckerOutput>>
+}
+
 // --- Inferred types ---
 
 export type EdgeType = z.infer<typeof EdgeType>

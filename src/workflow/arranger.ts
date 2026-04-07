@@ -2,9 +2,11 @@ import { readFile, writeFile, mkdir, readdir, access } from "node:fs/promises";
 import path from "node:path";
 import { Scaffold } from "../agents/scaffold.js";
 import { Decomposer } from "../agents/decomposer.js";
-import { Checker } from "../agents/checker.js";
+import { claudeChecker } from "../agents/claudechecker.js";
+import { codexChecker } from "../agents/codexchecker.js";
 import { Writer } from "../agents/writer.js";
 import { TopGraph, Graph } from "../agents/schemas/schema.js";
+import type { IChecker } from "../agents/schemas/schema.js";
 import type {
   TopGraph as TopGraphType,
   Graph as GraphType,
@@ -137,17 +139,25 @@ class Semaphore {
   }
 }
 
+export type CheckerType = "claude" | "codex";
+
 export class Arranger {
   private readonly maxConcurrency: number;
+  private readonly checkerType: CheckerType;
   private readonly sem: Semaphore;
   private repoPath = "";
   private docDir = "";
   private currentPhase: Progress["phase"] = "idle";
   private listeners = new Set<() => void>();
 
-  constructor(options?: { maxConcurrency?: number }) {
+  constructor(options?: { maxConcurrency?: number; checkerType?: CheckerType }) {
     this.maxConcurrency = options?.maxConcurrency ?? 8;
+    this.checkerType = options?.checkerType ?? "codex";
     this.sem = new Semaphore(this.maxConcurrency);
+  }
+
+  private makeChecker(): IChecker {
+    return this.checkerType === "claude" ? new claudeChecker() : new codexChecker();
   }
 
   onProgress(listener: () => void): () => void {
@@ -212,7 +222,7 @@ export class Arranger {
     let topResult: RawTopGraphType = result;
     let finalSessionId = sessionId;
 
-    const checker = new Checker();
+    const checker = this.makeChecker();
     for (let retry = 0; ; retry++) {
       const checkerPrompt = [
         `Validate the scaffold output for the top-level module graph.`,
@@ -411,7 +421,7 @@ export class Arranger {
     prompt: string,
   ): Promise<{ rawGraph: RawGraphType; decomposer: Decomposer }> {
     const decomposer = new Decomposer();
-    const checker = new Checker();
+    const checker = this.makeChecker();
     let rawGraph = (await this.withSemaphore(() => decomposer.run(prompt, this.repoPath))).result;
 
     for (let retry = 0; ; retry++) {
@@ -442,7 +452,7 @@ export class Arranger {
     const pageNodes = rawGraph.nodes.filter((n) => n.child.type === "page");
     if (pageNodes.length === 0) return pageContents;
 
-    const checker = new Checker();
+    const checker = this.makeChecker();
     const writers = new Map<string, Writer>();
 
     await Promise.allSettled(

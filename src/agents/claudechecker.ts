@@ -8,7 +8,7 @@ const outputFormat = {
   schema: toOutputSchema(CheckerOutput),
 };
 
-export class Checker {
+export class claudeChecker {
   private sessionId: string | undefined;
   private cwd: string | undefined;
 

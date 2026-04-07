@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { query, forkSession } from "@anthropic-ai/claude-agent-sdk";
-import { Arranger, type Progress } from "./workflow/arranger.js";
+import { Arranger, type Progress, type CheckerType } from "./workflow/arranger.js";
 
 const PORT = Number(process.env.PORT ?? 3100);
 const DOC_ROOT = path.resolve("web/doc");
@@ -60,7 +60,7 @@ async function listProjects(): Promise<string[]> {
   return projects.filter((project): project is string => Boolean(project)).sort();
 }
 
-async function handleRun(body: { repoPath: string; maxConcurrency?: number }): Promise<{ ok: boolean }> {
+async function handleRun(body: { repoPath: string; maxConcurrency?: number; checkerType?: CheckerType }): Promise<{ ok: boolean }> {
   if (state.phase === "running") {
     throw new Error("Already running");
   }
@@ -72,7 +72,7 @@ async function handleRun(body: { repoPath: string; maxConcurrency?: number }): P
     throw new Error("Invalid path: not a directory");
   }
 
-  const arranger = new Arranger({ maxConcurrency: body.maxConcurrency });
+  const arranger = new Arranger({ maxConcurrency: body.maxConcurrency, checkerType: body.checkerType });
   state = { phase: "running", repoPath, project, docDir, arranger };
   arranger.onProgress(debouncedBroadcast);
 
@@ -150,7 +150,7 @@ const server = createServer(async (req, res) => {
 
   try {
     if (req.method === "POST" && url.pathname === "/api/run") {
-      const body = await parseBody(req) as { repoPath: string; maxConcurrency?: number };
+      const body = await parseBody(req) as { repoPath: string; maxConcurrency?: number; checkerType?: CheckerType };
       const result = await handleRun(body);
       res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(result));
     } else if (req.method === "GET" && url.pathname === "/api/projects") {
