@@ -177,12 +177,7 @@ function graphNodes() {
 
 function onNodeClick(node: Pick<GraphNode, 'child'>) {
   if (!node.child || !selectedProject.value) return
-  const project = selectedProject.value
-  if (node.child.type === 'graph') {
-    router.push(`/${project}/graph/${node.child.ref}`)
-  } else {
-    router.push(`/${project}/page/${node.child.ref}`)
-  }
+  router.push(`/${selectedProject.value}/doc/${node.child.ref}`)
 }
 
 const progress = computed(() => status.value.progress)

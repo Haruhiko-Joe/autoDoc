@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted, watch, inject } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { fetchTopGraph, fetchSubGraph } from '../services/doc'
+import { fetchTopGraph, fetchSubGraph, fetchPage } from '../services/doc'
 import GraphView from '../components/GraphView.vue'
+import MarkdownView from '../components/MarkdownView.vue'
 import EdgeLegend from '../components/EdgeLegend.vue'
 import DocTree from '../components/DocTree.vue'
 import type { TopGraph, SubGraph, GraphNode } from '../types'
@@ -12,6 +13,7 @@ const router = useRouter()
 const setSessionId = inject<(id: string) => void>('setSessionId')
 const topGraph = ref<TopGraph | null>(null)
 const subGraph = ref<SubGraph | null>(null)
+const pageContent = ref('')
 const loading = ref(true)
 const error = ref('')
 
@@ -37,6 +39,8 @@ async function load() {
     loading.value = false
     return
   }
+  subGraph.value = null
+  pageContent.value = ''
   try {
     const [top, sub] = await Promise.all([
       topGraph.value ? topGraph.value : fetchTopGraph(project),
@@ -46,7 +50,12 @@ async function load() {
     subGraph.value = sub
     if (sub.sessionId) setSessionId?.(sub.sessionId)
   } catch {
-    error.value = 'Failed to load graph.'
+    try {
+      if (!topGraph.value) topGraph.value = await fetchTopGraph(project)
+      pageContent.value = await fetchPage(project, getPath())
+    } catch {
+      error.value = 'Failed to load document.'
+    }
   } finally {
     loading.value = false
   }
@@ -60,14 +69,7 @@ watch(() => [route.params.path, route.params.project], () => {
 
 function onNodeClick(node: { child?: GraphNode['child'] }) {
   if (!node.child) return
-  const basePath = getPath()
-  const nextPath = `${basePath}/${node.child.ref}`
-  const project = getProject()
-  if (node.child.type === 'graph') {
-    router.push(`/${project}/graph/${nextPath}`)
-  } else {
-    router.push(`/${project}/page/${nextPath}`)
-  }
+  router.push(`/${getProject()}/doc/${getPath()}/${node.child.ref}`)
 }
 
 function goBack() {
@@ -78,7 +80,7 @@ function goBack() {
     router.push({ name: 'project', params: { project } })
   } else {
     parts.pop()
-    router.push(`/${project}/graph/${parts.join('/')}`)
+    router.push(`/${project}/doc/${parts.join('/')}`)
   }
 }
 
@@ -113,7 +115,7 @@ const breadcrumbs = () => {
             <a class="crumb" @click="router.push({ name: 'project', params: { project: getProject() } })">Home</a>
             <template v-for="bc in breadcrumbs()" :key="bc.path">
               <span class="sep">/</span>
-              <a class="crumb" @click="router.push(`/${getProject()}/graph/${bc.path}`)">
+              <a class="crumb" @click="router.push(`/${getProject()}/doc/${bc.path}`)">
                 {{ bc.label }}
               </a>
             </template>
@@ -125,6 +127,20 @@ const breadcrumbs = () => {
         </div>
         <div class="canvas-graph">
           <GraphView :nodes="subGraph.nodes" @node-click="onNodeClick" />
+        </div>
+      </template>
+      <template v-else-if="pageContent">
+        <div class="canvas-header">
+          <nav class="breadcrumb">
+            <a class="crumb" @click="router.push({ name: 'project', params: { project: getProject() } })">Home</a>
+            <template v-for="bc in breadcrumbs()" :key="bc.path">
+              <span class="sep">/</span>
+              <a class="crumb" @click="router.push(`/${getProject()}/doc/${bc.path}`)">{{ bc.label }}</a>
+            </template>
+          </nav>
+        </div>
+        <div class="canvas-page">
+          <MarkdownView :content="pageContent" />
         </div>
       </template>
     </main>
@@ -246,6 +262,11 @@ const breadcrumbs = () => {
   border: 1px solid #eee;
   border-radius: 8px;
   overflow: hidden;
+}
+
+.canvas-page {
+  flex: 1;
+  overflow-y: auto;
 }
 
 .loading,

@@ -80,7 +80,7 @@ function toggleStep(i: number) {
 
 function goToDoc(docPath?: string) {
   if (!docPath) return
-  router.push(`/${getProject()}/graph/${docPath}`)
+  router.push(`/${getProject()}/doc/${docPath}`)
 }
 
 function selectFlow(i: number) {
