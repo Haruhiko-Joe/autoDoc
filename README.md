@@ -89,6 +89,32 @@ pnpm install
 cd web && pnpm install && cd ..
 ```
 
+### Claude Code 内网代理
+
+如果你的网关要求使用内部 endpoint model（例如 `ep-...`），可以一键启动本地转发代理：
+
+```bash
+pnpm proxy:claude:setup -- \
+  --model ep-5wie4c-1770729260902533469 \
+  --base-url https://wanqing-api.corp.kuaishou.com/api/gateway/v1 \
+  --api-key <your_token>
+```
+
+脚本会自动：
+
+- 按参数启动或重启本地代理
+- 将 Claude Code 发出的模型名重写到你指定的 `--model`
+- 输出 Claude Code 需要的环境变量
+
+然后在另一个终端执行：
+
+```bash
+unset ANTHROPIC_AUTH_TOKEN
+export ANTHROPIC_BASE_URL=http://127.0.0.1:8787/v1
+export ANTHROPIC_API_KEY=<your_token>
+claude --model "claude-opus-4-6"
+```
+
 ### 运行
 
 ```bash
