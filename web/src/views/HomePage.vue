@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { fetchTopGraph, startRun, fetchStatus, fetchProjects, subscribeStatus, type RunStatus } from '../services/doc'
+import { fetchTopGraph, startRun, fetchStatus, fetchProjects, subscribeStatus, type AgentBackends, type RunStatus } from '../services/doc'
 import GraphView from '../components/GraphView.vue'
 import EdgeLegend from '../components/EdgeLegend.vue'
 import DocTree from '../components/DocTree.vue'
@@ -12,7 +12,13 @@ const router = useRouter()
 const topGraph = ref<TopGraph | null>(null)
 const repoPath = ref('')
 const maxConcurrency = ref(8)
-const agentBackend = ref<'claude' | 'codex'>('codex')
+const agentBackends = reactive<AgentBackends>({
+  scaffold: 'codex',
+  decomposer: 'codex',
+  writer: 'codex',
+  checker: 'codex',
+  flowAnalyzer: 'codex',
+})
 const language = ref<'zh' | 'en'>('zh')
 const projects = ref<string[]>([])
 const selectedProject = ref('')
@@ -20,6 +26,14 @@ const status = ref<RunStatus>({ phase: 'idle' })
 const errorMsg = ref('')
 const graphLoading = ref(false)
 let unsubscribeSSE: (() => void) | null = null
+
+const agentBackendFields: Array<{ key: keyof AgentBackends; label: string }> = [
+  { key: 'scaffold', label: 'Scaffold' },
+  { key: 'decomposer', label: 'Decomposer' },
+  { key: 'writer', label: 'Writer' },
+  { key: 'checker', label: 'Checker' },
+  { key: 'flowAnalyzer', label: 'Flow Analyzer' },
+]
 
 function getRouteProject(): string {
   const p = route.params.project
@@ -57,7 +71,7 @@ onMounted(async () => {
   if (s.repoPath) repoPath.value = s.repoPath
   if (s.config) {
     maxConcurrency.value = s.config.maxConcurrency
-    agentBackend.value = s.config.agentBackend
+    Object.assign(agentBackends, s.config.agentBackends)
     language.value = s.config.language
   }
 
@@ -96,7 +110,7 @@ async function handleRun() {
   topGraph.value = null
   try {
     const project = getProjectName(repoPath.value)
-    await startRun(repoPath.value.trim(), maxConcurrency.value, agentBackend.value, language.value)
+    await startRun(repoPath.value.trim(), maxConcurrency.value, { ...agentBackends }, language.value)
     status.value = { phase: 'running', repoPath: repoPath.value.trim(), currentProject: project }
     selectedProject.value = project
     mergeProjects([...projects.value, project])
@@ -261,15 +275,17 @@ const progressPhaseLabel = computed(() => {
         >
           <option v-for="n in [1, 2, 4, 8, 16, 32]" :key="n" :value="n">{{ n }}</option>
         </select>
-        <label class="input-label select-label">Agent Backend</label>
-        <select
-          v-model="agentBackend"
-          class="project-select"
-          :disabled="status.phase === 'running'"
-        >
-          <option value="codex">Codex (GPT)</option>
-          <option value="claude">Claude</option>
-        </select>
+        <template v-for="field in agentBackendFields" :key="field.key">
+          <label class="input-label select-label">{{ field.label }} Backend</label>
+          <select
+            v-model="agentBackends[field.key]"
+            class="project-select"
+            :disabled="status.phase === 'running'"
+          >
+            <option value="codex">Codex (GPT)</option>
+            <option value="claude">Claude</option>
+          </select>
+        </template>
         <label class="input-label select-label">Language</label>
         <select
           v-model="language"

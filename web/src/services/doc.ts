@@ -42,9 +42,13 @@ export interface Progress {
   nodes: NodeProgress[]
 }
 
+export type AgentBackend = 'claude' | 'codex'
+export type AgentRole = 'scaffold' | 'decomposer' | 'writer' | 'checker' | 'flowAnalyzer'
+export type AgentBackends = Record<AgentRole, AgentBackend>
+
 export interface RunConfig {
   maxConcurrency: number
-  agentBackend: 'claude' | 'codex'
+  agentBackends: AgentBackends
   language: 'zh' | 'en'
 }
 
@@ -64,11 +68,16 @@ export async function fetchProjects(): Promise<string[]> {
   return data.projects ?? []
 }
 
-export async function startRun(repoPath: string, maxConcurrency?: number, agentBackend?: 'claude' | 'codex', language?: 'zh' | 'en'): Promise<void> {
+export async function startRun(
+  repoPath: string,
+  maxConcurrency?: number,
+  agentBackends?: Partial<AgentBackends>,
+  language?: 'zh' | 'en',
+): Promise<void> {
   const res = await fetch(`${API}/run`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ repoPath, maxConcurrency, agentBackend, language }),
+    body: JSON.stringify({ repoPath, maxConcurrency, agentBackends, language }),
   })
   if (!res.ok) {
     const data = await res.json()

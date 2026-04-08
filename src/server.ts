@@ -5,7 +5,7 @@ import path from "node:path";
 process.setMaxListeners(0);
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import OpenAI from "openai";
-import { Arranger, type Progress, type AgentBackend, type CheckerType } from "./workflow/arranger.js";
+import { Arranger, type Progress, type AgentBackend, type AgentBackends, type CheckerType } from "./workflow/arranger.js";
 import type { Language } from "./agents/schemas/schema.js";
 
 const PORT = Number(process.env.PORT ?? 3100);
@@ -64,7 +64,14 @@ async function listProjects(): Promise<string[]> {
   return projects.filter((project): project is string => Boolean(project)).sort();
 }
 
-async function handleRun(body: { repoPath: string; maxConcurrency?: number; agentBackend?: AgentBackend; checkerType?: CheckerType; language?: Language }): Promise<{ ok: boolean }> {
+async function handleRun(body: {
+  repoPath: string
+  maxConcurrency?: number
+  agentBackend?: AgentBackend
+  agentBackends?: Partial<AgentBackends>
+  checkerType?: CheckerType
+  language?: Language
+}): Promise<{ ok: boolean }> {
   if (state.phase === "running") {
     throw new Error("Already running");
   }
@@ -76,7 +83,13 @@ async function handleRun(body: { repoPath: string; maxConcurrency?: number; agen
     throw new Error("Invalid path: not a directory");
   }
 
-  const arranger = new Arranger({ maxConcurrency: body.maxConcurrency, agentBackend: body.agentBackend, checkerType: body.checkerType, language: body.language });
+  const arranger = new Arranger({
+    maxConcurrency: body.maxConcurrency,
+    agentBackend: body.agentBackend,
+    agentBackends: body.agentBackends,
+    checkerType: body.checkerType,
+    language: body.language,
+  });
   state = { phase: "running", repoPath, project, docDir, arranger };
   arranger.onProgress(debouncedBroadcast);
 
@@ -96,7 +109,7 @@ async function handleRun(body: { repoPath: string; maxConcurrency?: number; agen
 
 interface RunConfig {
   maxConcurrency: number
-  agentBackend: AgentBackend
+  agentBackends: AgentBackends
   language: Language
 }
 
@@ -162,7 +175,14 @@ const server = createServer(async (req, res) => {
 
   try {
     if (req.method === "POST" && url.pathname === "/api/run") {
-      const body = await parseBody(req) as { repoPath: string; maxConcurrency?: number; agentBackend?: AgentBackend; checkerType?: AgentBackend; language?: Language };
+      const body = await parseBody(req) as {
+        repoPath: string
+        maxConcurrency?: number
+        agentBackend?: AgentBackend
+        agentBackends?: Partial<AgentBackends>
+        checkerType?: AgentBackend
+        language?: Language
+      };
       const result = await handleRun(body);
       res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(result));
     } else if (req.method === "GET" && url.pathname === "/api/projects") {
