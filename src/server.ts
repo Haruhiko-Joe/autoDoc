@@ -1,7 +1,9 @@
+import "dotenv/config";
 import { createServer } from "node:http";
 import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
-import { query, forkSession } from "@anthropic-ai/claude-agent-sdk";
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import OpenAI from "openai";
 import { Arranger, type Progress, type CheckerType } from "./workflow/arranger.js";
 
 const PORT = Number(process.env.PORT ?? 3100);
@@ -172,16 +174,9 @@ const server = createServer(async (req, res) => {
       res.on("close", () => { sseClients.delete(res); });
       return;
     } else if (req.method === "POST" && url.pathname === "/api/chat") {
-      if (state.phase !== "done" && state.phase !== "running") {
-        res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "No project loaded" }));
-        return;
-      }
       const body = (await parseBody(req)) as {
-        message: string
-        chatSessionId?: string    // chat 分叉后的 sessionId（续聊用）
-        agentSessionId?: string   // 原始 agent sessionId（首次消息时用于 fork）
+        messages: { role: "user" | "assistant"; content: string }[]
       };
-      const repoPath = "repoPath" in state ? state.repoPath : "";
 
       res.writeHead(200, {
         "Content-Type": "text/event-stream",
@@ -192,35 +187,21 @@ const server = createServer(async (req, res) => {
       const send = (data: unknown) => res.write(`data: ${JSON.stringify(data)}\n\n`);
 
       try {
-        let resumeId = body.chatSessionId;
+        const openai = new OpenAI({
+          apiKey: process.env.OPENAI_API_KEY,
+          baseURL: process.env.OPENAI_BASE_URL,
+        });
 
-        // 首次消息：从原始 agent session fork，保留完整上下文但不污染原始记录
-        if (!resumeId && body.agentSessionId) {
-          const { sessionId: forkedId } = await forkSession(body.agentSessionId);
-          resumeId = forkedId;
-          send({ type: "session", sessionId: forkedId });
-        }
+        const stream = await openai.chat.completions.create({
+          model: process.env.OPENAI_MODEL ?? "gpt-4o",
+          messages: body.messages,
+          stream: true,
+        });
 
-        for await (const msg of query({
-          prompt: body.message,
-          options: {
-            model: "claude-sonnet-4-6",
-            permissionMode: "dontAsk",
-            allowedTools: ["Read", "Glob", "Grep"],
-            cwd: repoPath,
-            ...(resumeId ? { resume: resumeId } : {}),
-          },
-        })) {
-          const m = msg as Record<string, unknown>;
-          if (m.type === "system" && m.subtype === "init") {
-            // 如果是全新会话（无 agentSessionId 可 fork），返回新 sessionId
-            if (!body.chatSessionId && !body.agentSessionId) {
-              send({ type: "session", sessionId: m.session_id });
-            }
-          }
-          if (m.type === "result" && m.subtype === "success") {
-            const text = typeof m.result === "string" ? m.result : JSON.stringify(m.result ?? "");
-            send({ type: "text", text });
+        for await (const chunk of stream) {
+          const delta = chunk.choices[0]?.delta?.content;
+          if (delta) {
+            send({ type: "text", text: delta });
           }
         }
       } catch (e) {

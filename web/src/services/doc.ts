@@ -84,26 +84,24 @@ export function subscribeStatus(onStatus: (status: RunStatus) => void): () => vo
 
 // ─── Chat ───
 
+export interface ChatMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
+
 export interface ChatEvent {
-  type: 'session' | 'text' | 'done' | 'error'
+  type: 'text' | 'done' | 'error'
   text?: string
-  sessionId?: string
 }
 
 export async function sendChat(
-  message: string,
-  chatSessionId: string | null,
-  agentSessionId: string | null,
+  messages: ChatMessage[],
   onEvent: (event: ChatEvent) => void,
 ): Promise<void> {
   const res = await fetch(`${API}/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      message,
-      ...(chatSessionId ? { chatSessionId } : {}),
-      ...(agentSessionId ? { agentSessionId } : {}),
-    }),
+    body: JSON.stringify({ messages }),
   })
 
   if (!res.ok || !res.body) throw new Error(await res.text())
