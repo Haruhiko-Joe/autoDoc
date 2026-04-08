@@ -1,14 +1,18 @@
 import { readFile, writeFile, mkdir, readdir, access, copyFile, cp } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { Scaffold } from "../agents/scaffold.js";
-import { Decomposer } from "../agents/decomposer.js";
+import { claudeScaffold } from "../agents/claudescaffold.js";
+import { claudeDecomposer } from "../agents/claudedecomposer.js";
 import { claudeChecker } from "../agents/claudechecker.js";
 import { codexChecker } from "../agents/codexchecker.js";
-import { Writer } from "../agents/writer.js";
-import { FlowAnalyzer } from "../agents/flowanalyzer.js";
+import { codexScaffold } from "../agents/codexscaffold.js";
+import { codexDecomposer } from "../agents/codexdecomposer.js";
+import { codexWriter } from "../agents/codexwriter.js";
+import { codexFlowAnalyzer } from "../agents/codexflowanalyzer.js";
+import { claudeWriter } from "../agents/claudewriter.js";
+import { claudeFlowAnalyzer } from "../agents/claudeflowanalyzer.js";
 import { TopGraph, Graph } from "../agents/schemas/schema.js";
-import type { IChecker, Language } from "../agents/schemas/schema.js";
+import type { IChecker, IScaffold, IDecomposer, IWriter, IFlowAnalyzer, Language } from "../agents/schemas/schema.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SKILL_TEMPLATE_DIR = path.resolve(__dirname, "..", "skill-template");
@@ -16,6 +20,7 @@ import type {
   TopGraph as TopGraphType,
   Graph as GraphType,
   GraphStatus as GraphStatusType,
+  PageTask as PageTaskType,
   AncestorContext as AncestorContextType,
   AncestorLayer as AncestorLayerType,
   AncestorEdge as AncestorEdgeType,
@@ -118,6 +123,10 @@ export interface Progress {
   nodes: NodeProgress[]
 }
 
+type ArrangerTask =
+  | { kind: "graph"; nodeId: string; graph: GraphType }
+  | { kind: "page"; nodeId: string; ref: string; graph: GraphType };
+
 // ─── 并发限流 ───
 
 class Semaphore {
@@ -144,11 +153,13 @@ class Semaphore {
   }
 }
 
-export type CheckerType = "claude" | "codex";
+export type AgentBackend = "claude" | "codex";
+/** @deprecated Use AgentBackend instead */
+export type CheckerType = AgentBackend;
 
 export class Arranger {
   private readonly maxConcurrency: number;
-  private readonly checkerType: CheckerType;
+  private readonly agentBackend: AgentBackend;
   private readonly language: Language;
   private readonly sem: Semaphore;
   private repoPath = "";
@@ -156,20 +167,42 @@ export class Arranger {
   private currentPhase: Progress["phase"] = "idle";
   private listeners = new Set<() => void>();
 
-  constructor(options?: { maxConcurrency?: number; checkerType?: CheckerType; language?: Language }) {
+  constructor(options?: { maxConcurrency?: number; checkerType?: AgentBackend; agentBackend?: AgentBackend; language?: Language }) {
     this.maxConcurrency = options?.maxConcurrency ?? 8;
-    this.checkerType = options?.checkerType ?? "codex";
+    this.agentBackend = options?.agentBackend ?? options?.checkerType ?? "codex";
     this.language = options?.language ?? "zh";
     this.sem = new Semaphore(this.maxConcurrency);
   }
 
   private makeChecker(): IChecker {
-    return this.checkerType === "claude" ? new claudeChecker(this.language) : new codexChecker(this.language);
+    return this.agentBackend === "claude" ? new claudeChecker(this.language) : new codexChecker(this.language);
+  }
+
+  private makeScaffold(): IScaffold {
+    return this.agentBackend === "claude" ? new claudeScaffold(this.language) : new codexScaffold(this.language);
+  }
+
+  private makeDecomposer(): IDecomposer {
+    return this.agentBackend === "claude" ? new claudeDecomposer(this.language) : new codexDecomposer(this.language);
+  }
+
+  private makeWriter(): IWriter {
+    return this.agentBackend === "claude" ? new claudeWriter(this.language) : new codexWriter(this.language);
+  }
+
+  private makeFlowAnalyzer(skillDir: string): IFlowAnalyzer {
+    return this.agentBackend === "claude"
+      ? new claudeFlowAnalyzer(skillDir, this.projectName, this.language)
+      : new codexFlowAnalyzer(skillDir, this.projectName, this.language);
   }
 
   onProgress(listener: () => void): () => void {
     this.listeners.add(listener);
     return () => { this.listeners.delete(listener); };
+  }
+
+  getConfig(): { maxConcurrency: number; agentBackend: AgentBackend; language: Language } {
+    return { maxConcurrency: this.maxConcurrency, agentBackend: this.agentBackend, language: this.language };
   }
 
   private notify(): void {
@@ -229,7 +262,7 @@ export class Arranger {
   // ─── Scaffold + Checker ───
 
   private async runScaffold(): Promise<void> {
-    const scaffold = new Scaffold(this.language);
+    const scaffold = this.makeScaffold();
     const { sessionId, result } = await scaffold.run(
       `Analyze the repository at ${this.repoPath} and produce the top-level module graph.`,
       this.repoPath,
@@ -291,7 +324,7 @@ export class Arranger {
   // ─── 滑动窗口主循环 ───
 
   private static readonly ACTIONABLE: ReadonlySet<GraphStatusType> = new Set([
-    "pending", "decomposing", "writing", "checking",
+    "pending", "writing", "checking",
   ]);
 
   private static readonly RECOVERABLE: ReadonlySet<GraphStatusType> = new Set([
@@ -300,8 +333,8 @@ export class Arranger {
 
   private async processLoop(): Promise<void> {
     for (let iteration = 1; ; iteration++) {
-      const actionable = await this.findActionableNodes();
-      if (actionable.length === 0) break;
+      const tasks = await this.findActionableTasks();
+      if (tasks.length === 0) break;
 
       const allStatuses = await this.countStatuses();
       console.log(
@@ -312,7 +345,11 @@ export class Arranger {
       );
 
       const results = await Promise.allSettled(
-        actionable.map(({ nodeId }) => this.processNode(nodeId)),
+        tasks.map((task) =>
+          task.kind === "graph"
+            ? this.processGraphTask(task.nodeId, task.graph)
+            : this.processPageTask(task.nodeId, task.ref, task.graph),
+        ),
       );
       for (const r of results) {
         if (r.status === "rejected") {
@@ -330,7 +367,22 @@ export class Arranger {
       try {
         const graph = await this.readGraph(nodeId);
         if (!Arranger.RECOVERABLE.has(graph.status)) continue;
-        await this.writeGraph(nodeId, { ...graph, status: "pending" });
+        const pageTasks: Record<string, PageTaskType> | undefined = graph.pageTasks
+          ? Object.fromEntries(
+            Object.entries(graph.pageTasks).map(([ref, task]) => [
+              ref,
+              { ...task, status: task.status === "done" ? "done" : "pending" } satisfies PageTaskType,
+            ]),
+          )
+          : undefined;
+        const hasPendingPages = pageTasks && Object.values(pageTasks).some((task) => task.status !== "done");
+        await this.writeGraph(nodeId, {
+          ...graph,
+          status: hasPendingPages ? "writing" : "pending",
+          pageTasks,
+          checkerSessionId: undefined,
+          writerSessionIds: undefined,
+        });
         resetCount++;
       } catch {
         console.warn(`[Arranger] Skipping unreadable graph during recovery: ${nodeId}`);
@@ -351,15 +403,25 @@ export class Arranger {
     }
   }
 
-  private async findActionableNodes(): Promise<Array<{ nodeId: string; graph: GraphType }>> {
+  private async findActionableTasks(): Promise<ArrangerTask[]> {
     const allNodeIds = await this.scanGraphNodes(this.docDir, "");
-    const results: Array<{ nodeId: string; graph: GraphType }> = [];
+    const results: ArrangerTask[] = [];
     for (const nodeId of allNodeIds) {
       try {
         const graph = await this.readGraph(nodeId);
-        if (Arranger.ACTIONABLE.has(graph.status)) {
-          results.push({ nodeId, graph });
+        if (!Arranger.ACTIONABLE.has(graph.status)) continue;
+
+        if (graph.status === "writing" && graph.pageTasks) {
+          const nextPage = Object.entries(graph.pageTasks).find(([, task]) => task.status === "pending");
+          if (nextPage) {
+            results.push({ kind: "page", nodeId, ref: nextPage[0], graph });
+          } else if (Object.values(graph.pageTasks).every((task) => task.status === "done")) {
+            await this.finishNodeIfReady(nodeId, graph);
+          }
+          continue;
         }
+
+        results.push({ kind: "graph", nodeId, graph });
       } catch {
         console.warn(`[Arranger] Skipping unreadable graph: ${nodeId}`);
       }
@@ -405,7 +467,7 @@ export class Arranger {
     rawGraph: RawGraphType,
     pageContents: Map<string, string>,
   ): string {
-    const pageNodes = rawGraph.nodes.filter((n) => n.child.type === "page");
+    const pageNodes = rawGraph.nodes.filter((n) => n.child.type === "page" && pageContents.has(n.child.ref));
     const mdSections: string[] = [];
     for (const node of pageNodes) {
       const content = pageContents.get(node.child.ref);
@@ -435,10 +497,26 @@ export class Arranger {
   private async decomposeAndCheck(
     nodeId: string,
     prompt: string,
-  ): Promise<{ rawGraph: RawGraphType; decomposer: Decomposer }> {
-    const decomposer = new Decomposer(this.language);
+    existing?: { rawGraph?: RawGraphType; decomposerSessionId?: string; checkerSessionId?: string },
+  ): Promise<{ rawGraph: RawGraphType; decomposer: IDecomposer }> {
+    const decomposer = this.makeDecomposer();
     const checker = this.makeChecker();
-    let rawGraph = (await this.withSemaphore(() => decomposer.run(prompt, this.repoPath))).result;
+
+    if (existing?.decomposerSessionId) {
+      decomposer.restore(existing.decomposerSessionId, this.repoPath);
+    }
+    if (existing?.checkerSessionId) {
+      checker.restore(existing.checkerSessionId, this.repoPath);
+    }
+
+    let rawGraph = existing?.rawGraph;
+    if (!rawGraph) {
+      rawGraph = (await this.withSemaphore(() =>
+        decomposer.getSessionId()
+          ? decomposer.continue(prompt)
+          : decomposer.run(prompt, this.repoPath),
+      )).result;
+    }
 
     for (let retry = 0; ; retry++) {
       const checkerPrompt = this.buildGraphCheckerPrompt(nodeId, rawGraph);
@@ -459,31 +537,21 @@ export class Arranger {
     }
   }
 
-  private async writeAndCheck(
+  private async writeAndCheckPage(
     nodeId: string,
     rawGraph: RawGraphType,
+    pageNode: GraphNodeType,
     ancestorContext: AncestorContextType | null,
-  ): Promise<Map<string, string>> {
-    const pageContents = new Map<string, string>();
-    const pageNodes = rawGraph.nodes.filter((n) => n.child.type === "page");
-    if (pageNodes.length === 0) return pageContents;
-
+    retryCount: number,
+  ): Promise<string> {
     const checker = this.makeChecker();
-    const writers = new Map<string, Writer>();
-
-    await Promise.allSettled(
-      pageNodes.map(async (node) => {
-        const writer = new Writer(this.language);
-        writers.set(node.child.ref, writer);
-        const content = await this.withSemaphore(() =>
-          this.generatePageContent(writer, node, ancestorContext),
-        );
-        pageContents.set(node.child.ref, content);
-      }),
+    const writer = this.makeWriter();
+    let content = await this.withSemaphore(() =>
+      this.generatePageContent(writer, pageNode, ancestorContext),
     );
 
-    for (let retry = 0; ; retry++) {
-      const checkerPrompt = this.buildDocCheckerPrompt(nodeId, rawGraph, pageContents);
+    for (let retry = retryCount; ; retry++) {
+      const checkerPrompt = this.buildDocCheckerPrompt(nodeId, rawGraph, new Map([[pageNode.child.ref, content]]));
       const checkerResult = await this.withSemaphore(() =>
         checker.getSessionId()
           ? checker.continue(checkerPrompt)
@@ -491,107 +559,101 @@ export class Arranger {
       );
 
       if (checkerResult.result.passed) {
-        console.log(`[Arranger] Writer check passed: ${nodeId}`);
-        return pageContents;
+        console.log(`[Arranger] Writer check passed: ${nodeId}/${pageNode.child.ref}`);
+        return content;
       }
-      if (retry >= 5) throw new Error(`Writer check failed after 3 retries for ${nodeId}`);
+      if (retry >= 5) throw new Error(`Writer check failed after 5 retries for ${nodeId}/${pageNode.child.ref}`);
 
-      console.log(`[Arranger] Writer check failed: ${nodeId} (retry ${retry + 1}/5)`);
-      await Promise.allSettled(
-        pageNodes.map(async (node) => {
-          const writer = writers.get(node.child.ref);
-          if (!writer) return;
-          const fixPrompt = buildWriterFixPrompt(checkerResult.result.issues, node.name);
-          if (!fixPrompt) return;
-          const { result } = await this.withSemaphore(() => writer.continue(fixPrompt));
-          pageContents.set(node.child.ref, result.content);
-        }),
-      );
+      console.log(`[Arranger] Writer check failed: ${nodeId}/${pageNode.child.ref} (retry ${retry + 1}/5)`);
+      await this.updatePageTask(nodeId, pageNode.child.ref, { retryCount: retry + 1 });
+
+      const fixPrompt = buildWriterFixPrompt(checkerResult.result.issues, pageNode.name);
+      if (!fixPrompt) {
+        throw new Error(`Writer fix prompt is empty for ${nodeId}/${pageNode.child.ref}`);
+      }
+      const { result } = await this.withSemaphore(() => writer.continue(fixPrompt));
+      content = result.content;
     }
   }
 
-  // ─── 单节点管线 ───
+  // ─── 任务调度 ───
 
-  private async processNode(nodeId: string): Promise<void> {
-    let graph = await this.readGraph(nodeId);
+  private async processGraphTask(nodeId: string, graph: GraphType): Promise<void> {
     const ancestorContext = await this.buildAncestorContext(nodeId);
 
-    console.log(`[Arranger] ${graph.status === "pending" ? "Processing" : `Resuming (${graph.status})`}: ${nodeId}`);
-
-    // ── Phase 1: Decompose + Check ──
+    console.log(`[Arranger] Processing graph task: ${nodeId}`);
     let rawGraph: RawGraphType;
     let decomposerSessionId: string;
 
-    if (graph.nodes.length > 0) {
-      rawGraph = { nodes: graph.nodes };
-      decomposerSessionId = graph.decomposerSessionId ?? graph.sessionId;
-    } else {
-      await this.updateGraph(nodeId, { status: "decomposing" });
-      try {
-        const prompt = this.buildDecompPrompt(nodeId, graph, ancestorContext);
-        const result = await this.decomposeAndCheck(nodeId, prompt);
-        rawGraph = result.rawGraph;
-        decomposerSessionId = result.decomposer.getSessionId() ?? "";
-      } catch (e) {
-        console.error(`[Arranger] Decompose+check error for ${nodeId}:`, e);
-        await this.updateGraph(nodeId, { status: "error" });
-        return;
-      }
-      await this.updateGraph(nodeId, {
-        status: "writing",
-        nodes: rawGraph.nodes,
-        decomposerSessionId,
-      });
-    }
-
-    console.log(`[Arranger] Decomposed: ${nodeId} → ${rawGraph.nodes.length} child nodes`);
-
-    // ── Phase 2: Write + Check ──
-    await this.updateGraph(nodeId, { status: "writing" });
-
-    let pageContents: Map<string, string>;
+    await this.updateGraph(nodeId, { status: "decomposing", pageTasks: undefined });
     try {
-      pageContents = await this.writeAndCheck(nodeId, rawGraph, ancestorContext);
+      const prompt = this.buildDecompPrompt(nodeId, graph, ancestorContext);
+      const result = await this.decomposeAndCheck(nodeId, prompt, {
+        rawGraph: graph.status === "checking" && graph.nodes.length > 0 ? { nodes: graph.nodes } : undefined,
+        decomposerSessionId: graph.decomposerSessionId || undefined,
+        checkerSessionId: graph.checkerSessionId || undefined,
+      });
+      rawGraph = result.rawGraph;
+      decomposerSessionId = result.decomposer.getSessionId() ?? "";
     } catch (e) {
-      console.error(`[Arranger] Write+check error for ${nodeId}:`, e);
+      console.error(`[Arranger] Decompose+check error for ${nodeId}:`, e);
       await this.updateGraph(nodeId, { status: "error" });
       return;
     }
 
-    // ── Finalize ──
-    const destDir = path.join(this.docDir, nodeId);
-    for (const [ref, content] of pageContents) {
-      await writeFile(path.join(destDir, `${ref}.md`), content);
-    }
+    console.log(`[Arranger] Decomposed: ${nodeId} → ${rawGraph.nodes.length} child nodes`);
+    await this.ensureChildGraphs(nodeId, rawGraph.nodes);
 
-    graph = await this.readGraph(nodeId);
+    const pageTasks = this.buildPageTasks(rawGraph.nodes);
+    const nextStatus: GraphStatusType = Object.keys(pageTasks).length > 0 ? "writing" : "done";
+    const latest = await this.readGraph(nodeId);
     await this.writeGraph(nodeId, {
-      ...graph,
-      status: "done",
+      ...latest,
+      status: nextStatus,
       sessionId: decomposerSessionId,
       nodes: rawGraph.nodes,
       decomposerSessionId: undefined,
       checkerSessionId: undefined,
       writerSessionIds: undefined,
+      pageTasks: Object.keys(pageTasks).length > 0 ? pageTasks : undefined,
     });
+  }
 
-    for (const node of rawGraph.nodes.filter((n) => n.child.type === "graph")) {
-      const childId = `${nodeId}/${node.child.ref}`;
-      await this.writeGraph(childId, {
-        status: "pending",
-        retryCount: 0,
-        sessionId: "",
-        description: node.description,
-        codeScope: node.codeScope,
-        nodes: [],
-      });
+  private async processPageTask(nodeId: string, ref: string, graph: GraphType): Promise<void> {
+    const ancestorContext = await this.buildAncestorContext(nodeId);
+    const pageNode = this.findPageNode(graph.nodes, ref);
+    if (!pageNode) {
+      console.error(`[Arranger] Missing page node for ${nodeId}/${ref}`);
+      await this.updateGraph(nodeId, { status: "error" });
+      return;
     }
+
+    const task = graph.pageTasks?.[ref];
+    const retryCount = task?.retryCount ?? 0;
+    await this.updatePageTask(nodeId, ref, { status: "writing" });
+
+    let content: string;
+    try {
+      content = await this.writeAndCheckPage(nodeId, { nodes: graph.nodes }, pageNode, ancestorContext, retryCount);
+    } catch (e) {
+      console.error(`[Arranger] Write+check error for ${nodeId}/${ref}:`, e);
+      await this.updatePageTask(nodeId, ref, { status: "error" });
+      await this.updateGraph(nodeId, { status: "error" });
+      return;
+    }
+
+    const destDir = path.join(this.docDir, nodeId);
+    await mkdir(destDir, { recursive: true });
+    await writeFile(path.join(destDir, `${ref}.md`), content);
+
+    await this.updatePageTask(nodeId, ref, { status: "done" });
+    await this.finishNodeIfReady(nodeId);
   }
 
   // ─── Writer ───
 
   private async generatePageContent(
-    writer: Writer,
+    writer: IWriter,
     node: GraphNodeType,
     ancestorContext: AncestorContextType | null,
   ): Promise<string> {
@@ -610,6 +672,64 @@ export class Arranger {
     const { result } = await writer.run(parts.join("\n"), this.repoPath);
     console.log(`[Arranger] Page generated: ${node.name}`);
     return result.content;
+  }
+
+  private buildPageTasks(nodes: GraphNodeType[]): Record<string, PageTaskType> {
+    return Object.fromEntries(
+      nodes
+        .filter((node) => node.child.type === "page")
+        .map((node) => [
+          node.child.ref,
+          { status: "pending", retryCount: 0 } satisfies PageTaskType,
+        ]),
+    );
+  }
+
+  private findPageNode(nodes: GraphNodeType[], ref: string): GraphNodeType | undefined {
+    return nodes.find((node) => node.child.type === "page" && node.child.ref === ref);
+  }
+
+  private async updatePageTask(nodeId: string, ref: string, patch: Partial<PageTaskType>): Promise<void> {
+    const graph = await this.readGraph(nodeId);
+    if (!graph.pageTasks?.[ref]) {
+      throw new Error(`Missing page task ${nodeId}/${ref}`);
+    }
+    graph.pageTasks[ref] = { ...graph.pageTasks[ref], ...patch };
+    await this.writeGraph(nodeId, graph);
+    this.notify();
+  }
+
+  private async ensureChildGraphs(nodeId: string, nodes: GraphNodeType[]): Promise<void> {
+    for (const node of nodes.filter((item) => item.child.type === "graph")) {
+      const childId = `${nodeId}/${node.child.ref}`;
+      if (await this.fileExists(this.graphFilePath(childId))) continue;
+      await this.writeGraph(childId, {
+        status: "pending",
+        retryCount: 0,
+        sessionId: "",
+        description: node.description,
+        codeScope: node.codeScope,
+        nodes: [],
+      });
+    }
+  }
+
+  private async finishNodeIfReady(nodeId: string, current?: GraphType): Promise<void> {
+    const graph = current ?? await this.readGraph(nodeId);
+    const pageTasks = graph.pageTasks;
+    if (!pageTasks) {
+      if (graph.status !== "done") {
+        await this.updateGraph(nodeId, { status: "done" });
+      }
+      return;
+    }
+    if (!Object.values(pageTasks).every((task) => task.status === "done")) return;
+
+    await this.writeGraph(nodeId, {
+      ...graph,
+      status: "done",
+      pageTasks: undefined,
+    });
   }
 
   // ─── AncestorContext 构造 ───
@@ -758,7 +878,7 @@ export class Arranger {
     }
 
     console.log("[Arranger] Running flow analysis...");
-    const analyzer = new FlowAnalyzer(skillDir, this.projectName, this.language);
+    const analyzer = this.makeFlowAnalyzer(skillDir);
     const prompt = `Analyze the documented codebase and produce 3-7 typical business interaction flows.\nRepository root: ${this.repoPath}`;
     const { result } = await analyzer.run(prompt, this.repoPath);
 

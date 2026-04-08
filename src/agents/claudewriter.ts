@@ -1,24 +1,20 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import { FlowAnalyzerOutput, toOutputSchema } from "./schemas/schema.js";
-import type { AgentResult, FlowAnalyzerOutput as FlowAnalyzerOutputType, Language } from "./schemas/schema.js";
-import { flowAnalyzerInstruction } from "./instructions/flowanalyzer.js";
-import { flowAnalyzerInstructionEn } from "./instructions/flowanalyzer.en.js";
+import { WriterOutput, toOutputSchema } from "./schemas/schema.js";
+import type { AgentResult, Language } from "./schemas/schema.js";
+import { writerInstruction } from "./instructions/wirter.js";
+import { writerInstructionEn } from "./instructions/wirter.en.js";
 
 const outputFormat = {
   type: "json_schema" as const,
-  schema: toOutputSchema(FlowAnalyzerOutput),
+  schema: toOutputSchema(WriterOutput),
 };
 
-export class FlowAnalyzer {
+export class claudeWriter {
   private sessionId: string | undefined;
   private cwd: string | undefined;
-  private readonly skillDir: string;
-  private readonly project: string;
   private readonly language: Language;
 
-  constructor(skillDir: string, project: string, language: Language = "zh") {
-    this.skillDir = skillDir;
-    this.project = project;
+  constructor(language: Language = "zh") {
     this.language = language;
   }
 
@@ -29,15 +25,15 @@ export class FlowAnalyzer {
     this.cwd = workpath;
   }
 
-  async run(prompt: string, workpath: string): Promise<AgentResult<FlowAnalyzerOutputType>> {
+  async run(prompt: string, workpath: string): Promise<AgentResult<WriterOutput>> {
     if (this.sessionId) {
-      throw new Error("Session already active. Use continue() or create a new FlowAnalyzer instance.");
+      throw new Error("Session already active. Use continue() or create a new claudeWriter instance.");
     }
     this.cwd = workpath;
     return this.execute(prompt);
   }
 
-  async continue(prompt: string): Promise<AgentResult<FlowAnalyzerOutputType>> {
+  async continue(prompt: string): Promise<AgentResult<WriterOutput>> {
     if (!this.sessionId) {
       throw new Error("No active session. Call run() first.");
     }
@@ -47,14 +43,9 @@ export class FlowAnalyzer {
   private async execute(
     prompt: string,
     resumeSessionId?: string,
-  ): Promise<AgentResult<FlowAnalyzerOutputType>> {
+  ): Promise<AgentResult<WriterOutput>> {
     let sessionId = "";
-    let result: FlowAnalyzerOutputType | undefined;
-
-    const baseInstruction = this.language === "en" ? flowAnalyzerInstructionEn : flowAnalyzerInstruction;
-    const systemPrompt = baseInstruction
-      .replaceAll("{{SKILL_DIR}}", this.skillDir)
-      .replaceAll("{{PROJECT}}", this.project);
+    let result: WriterOutput | undefined;
 
     for await (const message of query({
       prompt,
@@ -64,13 +55,13 @@ export class FlowAnalyzer {
         permissionMode: "bypassPermissions",
         allowDangerouslySkipPermissions: true,
         tools: { type: "preset", preset: "claude_code" },
-        allowedTools: ["Bash", "Read", "Glob", "Grep"],
+        allowedTools: ["Read", "Glob", "Grep"],
         cwd: this.cwd,
         outputFormat,
         systemPrompt: {
           type: "preset",
           preset: "claude_code",
-          append: systemPrompt,
+          append: this.language === "en" ? writerInstructionEn : writerInstruction,
         },
         ...(resumeSessionId ? { resume: resumeSessionId } : {}),
       },
@@ -83,14 +74,14 @@ export class FlowAnalyzer {
         this.sessionId = message.session_id;
         sessionId = message.session_id;
         if (message.subtype === "success" && message.structured_output) {
-          result = FlowAnalyzerOutput.parse(message.structured_output);
+          result = WriterOutput.parse(message.structured_output);
         } else {
-          throw new Error(`FlowAnalyzer failed: ${message.subtype}, result: ${JSON.stringify((message as Record<string, unknown>).result ?? "").slice(0, 500)}`);
+          throw new Error(`claudeWriter failed: ${message.subtype}, result: ${JSON.stringify((message as Record<string, unknown>).result ?? "").slice(0, 500)}`);
         }
       }
     }
 
-    if (!result) throw new Error("FlowAnalyzer returned no result");
+    if (!result) throw new Error("claudeWriter returned no result");
     return { sessionId, result };
   }
 }

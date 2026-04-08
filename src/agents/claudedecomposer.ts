@@ -1,15 +1,15 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import { RawTopGraph, toOutputSchema } from "./schemas/schema.js";
+import { RawGraph, toOutputSchema } from "./schemas/schema.js";
 import type { AgentResult, Language } from "./schemas/schema.js";
-import { scaffoldInstruction } from "./instructions/scaffold.js";
-import { scaffoldInstructionEn } from "./instructions/scaffold.en.js";
+import { decomposerInstruction } from "./instructions/decomposer.js";
+import { decomposerInstructionEn } from "./instructions/decomposer.en.js";
 
 const outputFormat = {
   type: "json_schema" as const,
-  schema: toOutputSchema(RawTopGraph),
+  schema: toOutputSchema(RawGraph),
 };
 
-export class Scaffold {
+export class claudeDecomposer {
   private sessionId: string | undefined;
   private cwd: string | undefined;
   private readonly language: Language;
@@ -25,15 +25,15 @@ export class Scaffold {
     this.cwd = workpath;
   }
 
-  async run(prompt: string, workpath: string): Promise<AgentResult<RawTopGraph>> {
+  async run(prompt: string, workpath: string): Promise<AgentResult<RawGraph>> {
     if (this.sessionId) {
-      throw new Error("Session already active. Use continue() or create a new Scaffold instance.");
+      throw new Error("Session already active. Use continue() or create a new claudeDecomposer instance.");
     }
     this.cwd = workpath;
     return this.execute(prompt);
   }
 
-  async continue(prompt: string): Promise<AgentResult<RawTopGraph>> {
+  async continue(prompt: string): Promise<AgentResult<RawGraph>> {
     if (!this.sessionId) {
       throw new Error("No active session. Call run() first.");
     }
@@ -43,9 +43,9 @@ export class Scaffold {
   private async execute(
     prompt: string,
     resumeSessionId?: string,
-  ): Promise<AgentResult<RawTopGraph>> {
+  ): Promise<AgentResult<RawGraph>> {
     let sessionId = "";
-    let result: RawTopGraph | undefined;
+    let result: RawGraph | undefined;
 
     for await (const message of query({
       prompt,
@@ -61,7 +61,7 @@ export class Scaffold {
         systemPrompt: {
           type: "preset",
           preset: "claude_code",
-          append: this.language === "en" ? scaffoldInstructionEn : scaffoldInstruction,
+          append: this.language === "en" ? decomposerInstructionEn : decomposerInstruction,
         },
         ...(resumeSessionId ? { resume: resumeSessionId } : {}),
       },
@@ -74,14 +74,14 @@ export class Scaffold {
         this.sessionId = message.session_id;
         sessionId = message.session_id;
         if (message.subtype === "success" && message.structured_output) {
-          result = RawTopGraph.parse(message.structured_output);
+          result = RawGraph.parse(message.structured_output);
         } else {
-          throw new Error(`Scaffold failed: ${message.subtype}, result: ${JSON.stringify((message as Record<string, unknown>).result ?? "").slice(0, 500)}`);
+          throw new Error(`claudeDecomposer failed: ${message.subtype}, result: ${JSON.stringify((message as Record<string, unknown>).result ?? "").slice(0, 500)}`);
         }
       }
     }
 
-    if (!result) throw new Error("Scaffold returned no result");
+    if (!result) throw new Error("claudeDecomposer returned no result");
     return { sessionId, result };
   }
 }

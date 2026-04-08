@@ -12,7 +12,7 @@ const router = useRouter()
 const topGraph = ref<TopGraph | null>(null)
 const repoPath = ref('')
 const maxConcurrency = ref(8)
-const checkerType = ref<'claude' | 'codex'>('codex')
+const agentBackend = ref<'claude' | 'codex'>('codex')
 const language = ref<'zh' | 'en'>('zh')
 const projects = ref<string[]>([])
 const selectedProject = ref('')
@@ -55,6 +55,11 @@ onMounted(async () => {
   status.value = s
   mergeProjects(existingProjects)
   if (s.repoPath) repoPath.value = s.repoPath
+  if (s.config) {
+    maxConcurrency.value = s.config.maxConcurrency
+    agentBackend.value = s.config.agentBackend
+    language.value = s.config.language
+  }
 
   const routeProject = getRouteProject()
   selectedProject.value = routeProject || s.currentProject || projects.value[0] || ''
@@ -91,7 +96,7 @@ async function handleRun() {
   topGraph.value = null
   try {
     const project = getProjectName(repoPath.value)
-    await startRun(repoPath.value.trim(), maxConcurrency.value, checkerType.value, language.value)
+    await startRun(repoPath.value.trim(), maxConcurrency.value, agentBackend.value, language.value)
     status.value = { phase: 'running', repoPath: repoPath.value.trim(), currentProject: project }
     selectedProject.value = project
     mergeProjects([...projects.value, project])
@@ -180,6 +185,23 @@ function onNodeClick(node: Pick<GraphNode, 'child'>) {
   router.push(`/${selectedProject.value}/doc/${node.child.ref}`)
 }
 
+const searchQuery = ref('')
+
+const searchMatches = computed(() => {
+  const q = searchQuery.value.trim().toLowerCase()
+  if (!q || !topGraph.value) return []
+  return topGraph.value.nodes.filter(
+    (n) => n.name.toLowerCase().includes(q) || n.description.toLowerCase().includes(q),
+  )
+})
+
+function jumpToFirstMatch() {
+  if (searchMatches.value.length > 0) {
+    onNodeClick({ child: { type: 'graph', ref: searchMatches.value[0].name } })
+    searchQuery.value = ''
+  }
+}
+
 const progress = computed(() => status.value.progress)
 const viewingRunningProject = computed(() => status.value.phase === 'running' && selectedProject.value === status.value.currentProject)
 const visibleNodeStates = computed(() => (viewingRunningProject.value ? progress.value?.nodes : undefined))
@@ -239,9 +261,9 @@ const progressPhaseLabel = computed(() => {
         >
           <option v-for="n in [1, 2, 4, 8, 16, 32]" :key="n" :value="n">{{ n }}</option>
         </select>
-        <label class="input-label select-label">Checker</label>
+        <label class="input-label select-label">Agent Backend</label>
         <select
-          v-model="checkerType"
+          v-model="agentBackend"
           class="project-select"
           :disabled="status.phase === 'running'"
         >
@@ -300,6 +322,28 @@ const progressPhaseLabel = computed(() => {
         </div>
       </div>
 
+      <div class="sidebar-search" v-if="topGraph && selectedProject">
+        <input
+          v-model="searchQuery"
+          class="search-input"
+          placeholder="Search modules..."
+          @keydown.enter="jumpToFirstMatch"
+        />
+        <ul v-if="searchQuery.trim() && searchMatches.length > 0" class="search-results">
+          <li
+            v-for="m in searchMatches"
+            :key="m.name"
+            class="search-result-item"
+            @click="onNodeClick({ child: { type: 'graph', ref: m.name } })"
+          >
+            <span class="search-result-name">{{ m.name }}</span>
+            <span class="search-result-desc">{{ m.description }}</span>
+          </li>
+        </ul>
+        <div v-if="searchQuery.trim() && searchMatches.length === 0" class="search-empty">
+          No matches
+        </div>
+      </div>
       <div class="sidebar-nav" v-if="topGraph && selectedProject">
         <DocTree :project="selectedProject" :nodes="topGraph.nodes" :node-states="visibleNodeStates" />
       </div>
@@ -526,6 +570,68 @@ const progressPhaseLabel = computed(() => {
 .stat-label {
   font-size: 11px;
   color: #999;
+}
+
+/* ─── Search ─── */
+
+.sidebar-search {
+  padding: 10px 16px 0;
+}
+
+.search-input {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  font-size: 13px;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.search-input:focus {
+  border-color: #1890ff;
+}
+
+.search-results {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.search-result-item {
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.search-result-item:hover {
+  background: #e6f7ff;
+}
+
+.search-result-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.search-result-desc {
+  font-size: 11px;
+  color: #999;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-empty {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #999;
+  text-align: center;
 }
 
 /* ─── Canvas ─── */

@@ -42,12 +42,19 @@ export interface Progress {
   nodes: NodeProgress[]
 }
 
+export interface RunConfig {
+  maxConcurrency: number
+  agentBackend: 'claude' | 'codex'
+  language: 'zh' | 'en'
+}
+
 export interface RunStatus {
   phase: 'idle' | 'running' | 'done' | 'error'
   repoPath?: string
   currentProject?: string
   message?: string
   progress?: Progress
+  config?: RunConfig
 }
 
 export async function fetchProjects(): Promise<string[]> {
@@ -57,11 +64,11 @@ export async function fetchProjects(): Promise<string[]> {
   return data.projects ?? []
 }
 
-export async function startRun(repoPath: string, maxConcurrency?: number, checkerType?: 'claude' | 'codex', language?: 'zh' | 'en'): Promise<void> {
+export async function startRun(repoPath: string, maxConcurrency?: number, agentBackend?: 'claude' | 'codex', language?: 'zh' | 'en'): Promise<void> {
   const res = await fetch(`${API}/run`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ repoPath, maxConcurrency, checkerType, language }),
+    body: JSON.stringify({ repoPath, maxConcurrency, agentBackend, language }),
   })
   if (!res.ok) {
     const data = await res.json()

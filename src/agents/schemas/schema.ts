@@ -64,6 +64,18 @@ export const RawGraph = z.object({
   nodes: z.array(GraphNode),
 })
 
+export const PageTaskStatus = z.enum([
+  "pending",
+  "writing",
+  "done",
+  "error",
+])
+
+export const PageTask = z.object({
+  status: PageTaskStatus,
+  retryCount: z.number().int().min(0),
+})
+
 export const GraphStatus = z.enum([
   "pending",
   "decomposing",
@@ -83,6 +95,7 @@ export const Graph = z.object({
   decomposerSessionId: z.string().optional(),
   checkerSessionId: z.string().optional(),
   writerSessionIds: z.record(z.string(), z.string()).optional(),
+  pageTasks: z.record(z.string(), PageTask).optional(),
 })
 
 // --- Writer ---
@@ -181,6 +194,34 @@ export interface IChecker {
   continue(prompt: string): Promise<AgentResult<CheckerOutput>>
 }
 
+export interface IScaffold {
+  getSessionId(): string | undefined
+  restore(sessionId: string, workpath: string): void
+  run(prompt: string, workpath: string): Promise<AgentResult<RawTopGraph>>
+  continue(prompt: string): Promise<AgentResult<RawTopGraph>>
+}
+
+export interface IDecomposer {
+  getSessionId(): string | undefined
+  restore(sessionId: string, workpath: string): void
+  run(prompt: string, workpath: string): Promise<AgentResult<RawGraph>>
+  continue(prompt: string): Promise<AgentResult<RawGraph>>
+}
+
+export interface IWriter {
+  getSessionId(): string | undefined
+  restore(sessionId: string, workpath: string): void
+  run(prompt: string, workpath: string): Promise<AgentResult<WriterOutput>>
+  continue(prompt: string): Promise<AgentResult<WriterOutput>>
+}
+
+export interface IFlowAnalyzer {
+  getSessionId(): string | undefined
+  restore(sessionId: string, workpath: string): void
+  run(prompt: string, workpath: string): Promise<AgentResult<FlowAnalyzerOutput>>
+  continue(prompt: string): Promise<AgentResult<FlowAnalyzerOutput>>
+}
+
 // --- Inferred types ---
 
 export type EdgeType = z.infer<typeof EdgeType>
@@ -192,6 +233,8 @@ export type TopGraph = z.infer<typeof TopGraph>
 export type GraphNodeChild = z.infer<typeof GraphNodeChild>
 export type GraphNode = z.infer<typeof GraphNode>
 export type RawGraph = z.infer<typeof RawGraph>
+export type PageTaskStatus = z.infer<typeof PageTaskStatus>
+export type PageTask = z.infer<typeof PageTask>
 export type GraphStatus = z.infer<typeof GraphStatus>
 export type Graph = z.infer<typeof Graph>
 export type CheckerIssueType = z.infer<typeof CheckerIssueType>
@@ -216,4 +259,3 @@ export function toOutputSchema(zodType: z.ZodType): Record<string, unknown> {
   const { $schema, ...schema } = z.toJSONSchema(zodType) as Record<string, unknown>;
   return schema;
 }
-
