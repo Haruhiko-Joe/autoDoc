@@ -258,9 +258,9 @@ export class Arranger {
         console.log("[Arranger] Scaffold check passed.");
         break;
       }
-      if (retry >= 3) throw new Error(`Scaffold check failed after 3 retries: ${JSON.stringify(checkerResult.result.issues)}`);
+      if (retry >= 5) throw new Error(`Scaffold check failed after 5 retries: ${JSON.stringify(checkerResult.result.issues)}`);
 
-      console.log(`[Arranger] Scaffold check failed (retry ${retry + 1}/3)`);
+      console.log(`[Arranger] Scaffold check failed (retry ${retry + 1}/5)`);
       const fixed = await scaffold.continue(buildScaffoldFixPrompt(checkerResult.result.issues));
       topResult = fixed.result;
       finalSessionId = fixed.sessionId;
@@ -452,9 +452,9 @@ export class Arranger {
         console.log(`[Arranger] Decomposer check passed: ${nodeId}`);
         return { rawGraph, decomposer };
       }
-      if (retry >= 3) throw new Error(`Decomposer check failed after 3 retries for ${nodeId}`);
+      if (retry >= 5) throw new Error(`Decomposer check failed after 5 retries for ${nodeId}`);
 
-      console.log(`[Arranger] Decomposer check failed: ${nodeId} (retry ${retry + 1}/3)`);
+      console.log(`[Arranger] Decomposer check failed: ${nodeId} (retry ${retry + 1}/5)`);
       rawGraph = (await this.withSemaphore(() => decomposer.continue(buildDecomposerFixPrompt(checkerResult.result.issues)))).result;
     }
   }
@@ -494,9 +494,9 @@ export class Arranger {
         console.log(`[Arranger] Writer check passed: ${nodeId}`);
         return pageContents;
       }
-      if (retry >= 3) throw new Error(`Writer check failed after 3 retries for ${nodeId}`);
+      if (retry >= 5) throw new Error(`Writer check failed after 3 retries for ${nodeId}`);
 
-      console.log(`[Arranger] Writer check failed: ${nodeId} (retry ${retry + 1}/3)`);
+      console.log(`[Arranger] Writer check failed: ${nodeId} (retry ${retry + 1}/5)`);
       await Promise.allSettled(
         pageNodes.map(async (node) => {
           const writer = writers.get(node.child.ref);

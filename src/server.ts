@@ -2,6 +2,7 @@ import "dotenv/config";
 import { createServer } from "node:http";
 import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
+process.setMaxListeners(0);
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import OpenAI from "openai";
 import { Arranger, type Progress, type CheckerType } from "./workflow/arranger.js";
