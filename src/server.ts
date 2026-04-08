@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { createServer } from "node:http";
 import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
