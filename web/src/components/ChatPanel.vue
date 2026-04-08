@@ -2,25 +2,17 @@
 import { ref, nextTick, watch } from 'vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
-import { sendChat, type ChatEvent } from '../services/doc'
+import { sendChat, type ChatEvent, type ChatMessage } from '../services/doc'
 
 const props = defineProps<{
   open: boolean
-  agentSessionId?: string  // 当前页面对应的原始 agent sessionId（用于 fork）
 }>()
 const emit = defineEmits<{ close: [] }>()
 
-interface Message {
-  role: 'user' | 'assistant'
-  content: string
-}
-
-const messages = ref<Message[]>([])
+const messages = ref<ChatMessage[]>([])
 const input = ref('')
 const loading = ref(false)
 const listRef = ref<HTMLDivElement>()
-// fork 出来的独立 sessionId，原始 agent session 不受影响
-let chatSessionId: string | null = null
 
 function scrollToBottom() {
   nextTick(() => {
@@ -39,17 +31,14 @@ async function send() {
   loading.value = true
   scrollToBottom()
 
-  const assistantMsg: Message = { role: 'assistant', content: '' }
+  const assistantMsg: ChatMessage = { role: 'assistant', content: '' }
   messages.value.push(assistantMsg)
 
-  // 首次消息：传 agentSessionId 让后端 fork；后续消息：传 chatSessionId 续聊
-  const agentSid = chatSessionId ? null : (props.agentSessionId ?? null)
+  // 发送完整对话历史（不含当前空的 assistant 占位）
+  const history = messages.value.slice(0, -1)
 
   try {
-    await sendChat(text, chatSessionId, agentSid, (event: ChatEvent) => {
-      if (event.type === 'session' && event.sessionId) {
-        chatSessionId = event.sessionId
-      }
+    await sendChat(history, (event: ChatEvent) => {
       if (event.type === 'text' && event.text) {
         assistantMsg.content += event.text
         scrollToBottom()

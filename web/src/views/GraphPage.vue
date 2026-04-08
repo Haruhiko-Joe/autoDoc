@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch, inject } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { fetchTopGraph, fetchSubGraph, fetchPage } from '../services/doc'
 import GraphView from '../components/GraphView.vue'
@@ -10,7 +10,6 @@ import type { TopGraph, SubGraph, GraphNode } from '../types'
 
 const route = useRoute()
 const router = useRouter()
-const setSessionId = inject<(id: string) => void>('setSessionId')
 const topGraph = ref<TopGraph | null>(null)
 const subGraph = ref<SubGraph | null>(null)
 const pageContent = ref('')
@@ -48,7 +47,7 @@ async function load() {
     ])
     topGraph.value = top
     subGraph.value = sub
-    if (sub.sessionId) setSessionId?.(sub.sessionId)
+
   } catch {
     try {
       if (!topGraph.value) topGraph.value = await fetchTopGraph(project)

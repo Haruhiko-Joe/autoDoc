@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, inject, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { fetchTopGraph, startRun, fetchStatus, fetchProjects, subscribeStatus, type RunStatus } from '../services/doc'
 import GraphView from '../components/GraphView.vue'
@@ -9,7 +9,6 @@ import type { TopGraph, GraphNode } from '../types'
 
 const route = useRoute()
 const router = useRouter()
-const setSessionId = inject<(id: string) => void>('setSessionId')
 const topGraph = ref<TopGraph | null>(null)
 const repoPath = ref('')
 const maxConcurrency = ref(8)
@@ -133,7 +132,7 @@ async function tryLoadGraph(project = selectedProject.value) {
   if (!project || topGraph.value) return
   try {
     topGraph.value = await fetchTopGraph(project)
-    if (topGraph.value?.sessionId) setSessionId?.(topGraph.value.sessionId)
+
   } catch { /* top.json not ready yet */ }
 }
 
@@ -145,7 +144,7 @@ async function loadGraph(project = selectedProject.value) {
   graphLoading.value = true
   try {
     topGraph.value = await fetchTopGraph(project)
-    if (topGraph.value?.sessionId) setSessionId?.(topGraph.value.sessionId)
+
   } catch {
     topGraph.value = null
   } finally {

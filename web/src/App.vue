@@ -8,19 +8,15 @@
       <path d="M18 6 6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
   </button>
-  <ChatPanel :open="chatOpen" :agent-session-id="currentSessionId" @close="chatOpen = false" />
+  <ChatPanel :open="chatOpen" @close="chatOpen = false" />
 </template>
 
 <script setup lang="ts">
-import { ref, provide } from 'vue'
+import { ref } from 'vue'
 import { RouterView } from 'vue-router'
 import ChatPanel from './components/ChatPanel.vue'
 
 const chatOpen = ref(false)
-
-// 子页面通过 inject('setSessionId') 上报当前模块的 agent sessionId
-const currentSessionId = ref<string>()
-provide('setSessionId', (id: string) => { currentSessionId.value = id })
 </script>
 
 <style scoped>
