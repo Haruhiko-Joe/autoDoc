@@ -8,7 +8,7 @@ import { codexChecker } from "../agents/codexchecker.js";
 import { Writer } from "../agents/writer.js";
 import { FlowAnalyzer } from "../agents/flowanalyzer.js";
 import { TopGraph, Graph } from "../agents/schemas/schema.js";
-import type { IChecker } from "../agents/schemas/schema.js";
+import type { IChecker, Language } from "../agents/schemas/schema.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SKILL_TEMPLATE_DIR = path.resolve(__dirname, "..", "skill-template");
@@ -149,20 +149,22 @@ export type CheckerType = "claude" | "codex";
 export class Arranger {
   private readonly maxConcurrency: number;
   private readonly checkerType: CheckerType;
+  private readonly language: Language;
   private readonly sem: Semaphore;
   private repoPath = "";
   private docDir = "";
   private currentPhase: Progress["phase"] = "idle";
   private listeners = new Set<() => void>();
 
-  constructor(options?: { maxConcurrency?: number; checkerType?: CheckerType }) {
+  constructor(options?: { maxConcurrency?: number; checkerType?: CheckerType; language?: Language }) {
     this.maxConcurrency = options?.maxConcurrency ?? 8;
     this.checkerType = options?.checkerType ?? "codex";
+    this.language = options?.language ?? "zh";
     this.sem = new Semaphore(this.maxConcurrency);
   }
 
   private makeChecker(): IChecker {
-    return this.checkerType === "claude" ? new claudeChecker() : new codexChecker();
+    return this.checkerType === "claude" ? new claudeChecker(this.language) : new codexChecker(this.language);
   }
 
   onProgress(listener: () => void): () => void {
@@ -227,7 +229,7 @@ export class Arranger {
   // ─── Scaffold + Checker ───
 
   private async runScaffold(): Promise<void> {
-    const scaffold = new Scaffold();
+    const scaffold = new Scaffold(this.language);
     const { sessionId, result } = await scaffold.run(
       `Analyze the repository at ${this.repoPath} and produce the top-level module graph.`,
       this.repoPath,
@@ -434,7 +436,7 @@ export class Arranger {
     nodeId: string,
     prompt: string,
   ): Promise<{ rawGraph: RawGraphType; decomposer: Decomposer }> {
-    const decomposer = new Decomposer();
+    const decomposer = new Decomposer(this.language);
     const checker = this.makeChecker();
     let rawGraph = (await this.withSemaphore(() => decomposer.run(prompt, this.repoPath))).result;
 
@@ -471,7 +473,7 @@ export class Arranger {
 
     await Promise.allSettled(
       pageNodes.map(async (node) => {
-        const writer = new Writer();
+        const writer = new Writer(this.language);
         writers.set(node.child.ref, writer);
         const content = await this.withSemaphore(() =>
           this.generatePageContent(writer, node, ancestorContext),
@@ -756,7 +758,7 @@ export class Arranger {
     }
 
     console.log("[Arranger] Running flow analysis...");
-    const analyzer = new FlowAnalyzer(skillDir, this.projectName);
+    const analyzer = new FlowAnalyzer(skillDir, this.projectName, this.language);
     const prompt = `Analyze the documented codebase and produce 3-7 typical business interaction flows.\nRepository root: ${this.repoPath}`;
     const { result } = await analyzer.run(prompt, this.repoPath);
 

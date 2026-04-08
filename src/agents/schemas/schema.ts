@@ -208,6 +208,8 @@ export type FlowStep = z.infer<typeof FlowStep>
 export type FlowCase = z.infer<typeof FlowCase>
 export type FlowAnalyzerOutput = z.infer<typeof FlowAnalyzerOutput>
 
+export type Language = "zh" | "en";
+
 // ─── Utility ───
 
 export function toOutputSchema(zodType: z.ZodType): Record<string, unknown> {

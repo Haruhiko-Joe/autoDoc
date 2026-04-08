@@ -1,7 +1,8 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { FlowAnalyzerOutput, toOutputSchema } from "./schemas/schema.js";
-import type { AgentResult, FlowAnalyzerOutput as FlowAnalyzerOutputType } from "./schemas/schema.js";
+import type { AgentResult, FlowAnalyzerOutput as FlowAnalyzerOutputType, Language } from "./schemas/schema.js";
 import { flowAnalyzerInstruction } from "./instructions/flowanalyzer.js";
+import { flowAnalyzerInstructionEn } from "./instructions/flowanalyzer.en.js";
 
 const outputFormat = {
   type: "json_schema" as const,
@@ -13,10 +14,12 @@ export class FlowAnalyzer {
   private cwd: string | undefined;
   private readonly skillDir: string;
   private readonly project: string;
+  private readonly language: Language;
 
-  constructor(skillDir: string, project: string) {
+  constructor(skillDir: string, project: string, language: Language = "zh") {
     this.skillDir = skillDir;
     this.project = project;
+    this.language = language;
   }
 
   getSessionId(): string | undefined { return this.sessionId; }
@@ -48,7 +51,8 @@ export class FlowAnalyzer {
     let sessionId = "";
     let result: FlowAnalyzerOutputType | undefined;
 
-    const systemPrompt = flowAnalyzerInstruction
+    const baseInstruction = this.language === "en" ? flowAnalyzerInstructionEn : flowAnalyzerInstruction;
+    const systemPrompt = baseInstruction
       .replaceAll("{{SKILL_DIR}}", this.skillDir)
       .replaceAll("{{PROJECT}}", this.project);
 

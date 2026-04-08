@@ -1,7 +1,8 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { RawTopGraph, toOutputSchema } from "./schemas/schema.js";
-import type { AgentResult } from "./schemas/schema.js";
+import type { AgentResult, Language } from "./schemas/schema.js";
 import { scaffoldInstruction } from "./instructions/scaffold.js";
+import { scaffoldInstructionEn } from "./instructions/scaffold.en.js";
 
 const outputFormat = {
   type: "json_schema" as const,
@@ -11,6 +12,11 @@ const outputFormat = {
 export class Scaffold {
   private sessionId: string | undefined;
   private cwd: string | undefined;
+  private readonly language: Language;
+
+  constructor(language: Language = "zh") {
+    this.language = language;
+  }
 
   getSessionId(): string | undefined { return this.sessionId; }
 
@@ -55,7 +61,7 @@ export class Scaffold {
         systemPrompt: {
           type: "preset",
           preset: "claude_code",
-          append: scaffoldInstruction,
+          append: this.language === "en" ? scaffoldInstructionEn : scaffoldInstruction,
         },
         ...(resumeSessionId ? { resume: resumeSessionId } : {}),
       },

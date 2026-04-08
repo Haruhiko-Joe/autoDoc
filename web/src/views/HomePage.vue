@@ -13,6 +13,7 @@ const topGraph = ref<TopGraph | null>(null)
 const repoPath = ref('')
 const maxConcurrency = ref(8)
 const checkerType = ref<'claude' | 'codex'>('codex')
+const language = ref<'zh' | 'en'>('zh')
 const projects = ref<string[]>([])
 const selectedProject = ref('')
 const status = ref<RunStatus>({ phase: 'idle' })
@@ -90,7 +91,7 @@ async function handleRun() {
   topGraph.value = null
   try {
     const project = getProjectName(repoPath.value)
-    await startRun(repoPath.value.trim(), maxConcurrency.value, checkerType.value)
+    await startRun(repoPath.value.trim(), maxConcurrency.value, checkerType.value, language.value)
     status.value = { phase: 'running', repoPath: repoPath.value.trim(), currentProject: project }
     selectedProject.value = project
     mergeProjects([...projects.value, project])
@@ -246,6 +247,15 @@ const progressPhaseLabel = computed(() => {
         >
           <option value="codex">Codex (GPT)</option>
           <option value="claude">Claude</option>
+        </select>
+        <label class="input-label select-label">Language</label>
+        <select
+          v-model="language"
+          class="project-select"
+          :disabled="status.phase === 'running'"
+        >
+          <option value="zh">中文</option>
+          <option value="en">English</option>
         </select>
         <label class="input-label select-label">Saved Projects</label>
         <select

@@ -57,11 +57,11 @@ export async function fetchProjects(): Promise<string[]> {
   return data.projects ?? []
 }
 
-export async function startRun(repoPath: string, maxConcurrency?: number, checkerType?: 'claude' | 'codex'): Promise<void> {
+export async function startRun(repoPath: string, maxConcurrency?: number, checkerType?: 'claude' | 'codex', language?: 'zh' | 'en'): Promise<void> {
   const res = await fetch(`${API}/run`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ repoPath, maxConcurrency, checkerType }),
+    body: JSON.stringify({ repoPath, maxConcurrency, checkerType, language }),
   })
   if (!res.ok) {
     const data = await res.json()

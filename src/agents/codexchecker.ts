@@ -1,8 +1,9 @@
 import { Codex } from "@openai/codex-sdk";
 import type { Thread } from "@openai/codex-sdk";
 import { CheckerOutput, toOutputSchema } from "./schemas/schema.js";
-import type { AgentResult, IChecker } from "./schemas/schema.js";
+import type { AgentResult, IChecker, Language } from "./schemas/schema.js";
 import { checkerInstruction } from "./instructions/checker.js";
+import { checkerInstructionEn } from "./instructions/checker.en.js";
 
 const outputSchema = toOutputSchema(CheckerOutput);
 
@@ -11,6 +12,11 @@ export class codexChecker implements IChecker {
   private thread: Thread | null = null;
   private threadId: string | undefined;
   private cwd: string | undefined;
+  private readonly language: Language;
+
+  constructor(language: Language = "zh") {
+    this.language = language;
+  }
 
   getSessionId(): string | undefined { return this.threadId; }
 
@@ -24,10 +30,11 @@ export class codexChecker implements IChecker {
       throw new Error("Session already active. Use continue() or create a new codexChecker instance.");
     }
     this.cwd = workpath;
+    const instruction = this.language === "en" ? checkerInstructionEn : checkerInstruction;
     this.codex = new Codex({
       config: {
         profile: "checker",
-        developer_instructions: checkerInstruction,
+        developer_instructions: instruction,
       },
     });
     this.thread = this.codex.startThread({
@@ -42,10 +49,11 @@ export class codexChecker implements IChecker {
       throw new Error("No active session. Call run() first.");
     }
     if (!this.codex) {
+      const instruction = this.language === "en" ? checkerInstructionEn : checkerInstruction;
       this.codex = new Codex({
         config: {
           profile: "checker",
-          developer_instructions: checkerInstruction,
+          developer_instructions: instruction,
         },
       });
     }

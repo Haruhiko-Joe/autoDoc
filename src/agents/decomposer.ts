@@ -1,7 +1,8 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { RawGraph, toOutputSchema } from "./schemas/schema.js";
-import type { AgentResult } from "./schemas/schema.js";
+import type { AgentResult, Language } from "./schemas/schema.js";
 import { decomposerInstruction } from "./instructions/decomposer.js";
+import { decomposerInstructionEn } from "./instructions/decomposer.en.js";
 
 const outputFormat = {
   type: "json_schema" as const,
@@ -11,6 +12,11 @@ const outputFormat = {
 export class Decomposer {
   private sessionId: string | undefined;
   private cwd: string | undefined;
+  private readonly language: Language;
+
+  constructor(language: Language = "zh") {
+    this.language = language;
+  }
 
   getSessionId(): string | undefined { return this.sessionId; }
 
@@ -55,7 +61,7 @@ export class Decomposer {
         systemPrompt: {
           type: "preset",
           preset: "claude_code",
-          append: decomposerInstruction,
+          append: this.language === "en" ? decomposerInstructionEn : decomposerInstruction,
         },
         ...(resumeSessionId ? { resume: resumeSessionId } : {}),
       },
