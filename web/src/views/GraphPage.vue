@@ -157,8 +157,8 @@ const breadcrumbs = () => {
   width: 20%;
   min-width: 200px;
   max-width: 280px;
-  background: #fafafa;
-  border-right: 1px solid #eee;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   padding: 24px 0;
@@ -167,24 +167,24 @@ const breadcrumbs = () => {
 
 .sidebar-header {
   padding: 0 20px 16px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--border);
 }
 
 .back-btn {
   padding: 6px 16px;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
-  background: #fff;
+  background: var(--bg-surface);
   cursor: pointer;
   font-size: 13px;
-  color: #333;
+  color: var(--text-primary);
   width: 100%;
   text-align: left;
 }
 
 .back-btn:hover {
-  border-color: #1890ff;
-  color: #1890ff;
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .sidebar-nav {
@@ -195,7 +195,7 @@ const breadcrumbs = () => {
 
 .sidebar-footer {
   padding: 16px 12px 0;
-  border-top: 1px solid #eee;
+  border-top: 1px solid var(--border);
 }
 
 .canvas {
@@ -203,6 +203,7 @@ const breadcrumbs = () => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  background: var(--bg-body);
 }
 
 .canvas-header {
@@ -215,7 +216,7 @@ const breadcrumbs = () => {
 }
 
 .crumb {
-  color: #1890ff;
+  color: var(--accent);
   cursor: pointer;
 }
 
@@ -225,7 +226,7 @@ const breadcrumbs = () => {
 
 .sep {
   margin: 0 6px;
-  color: #ccc;
+  color: var(--text-disabled);
 }
 
 .header-meta {
@@ -236,7 +237,7 @@ const breadcrumbs = () => {
 
 .desc {
   font-size: 15px;
-  color: #666;
+  color: var(--text-secondary);
   margin: 0;
 }
 
@@ -248,17 +249,17 @@ const breadcrumbs = () => {
   flex-shrink: 0;
 }
 
-.status-badge.done { background: #f6ffed; color: #52c41a; }
-.status-badge.pending { background: #fff7e6; color: #faad14; }
-.status-badge.error { background: #fff2f0; color: #ff4d4f; }
+.status-badge.done { background: var(--badge-done-bg); color: var(--color-green); }
+.status-badge.pending { background: var(--badge-pending-bg); color: var(--color-orange); }
+.status-badge.error { background: var(--badge-error-bg); color: var(--color-red); }
 .status-badge.decomposing,
 .status-badge.writing,
-.status-badge.checking { background: #e6f7ff; color: #1890ff; }
+.status-badge.checking { background: var(--badge-active-bg); color: var(--accent); }
 
 .canvas-graph {
   flex: 1;
   margin: 0 16px 16px;
-  border: 1px solid #eee;
+  border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
 }
@@ -273,10 +274,10 @@ const breadcrumbs = () => {
   text-align: center;
   padding: 80px;
   font-size: 16px;
-  color: #999;
+  color: var(--text-muted);
 }
 
 .error {
-  color: #ff4d4f;
+  color: var(--color-red);
 }
 </style>

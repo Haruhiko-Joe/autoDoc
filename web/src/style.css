@@ -1,3 +1,155 @@
+:root {
+  /* Backgrounds */
+  --bg-body: #fff;
+  --bg-sidebar: #fafafa;
+  --bg-surface: #fff;
+  --bg-surface-alt: #f5f5f5;
+  --bg-surface-hover: #e6f7ff;
+  --bg-code: #f6f8fa;
+  --bg-code-inline: #f0f0f0;
+  --bg-overlay: rgba(0, 0, 0, 0.35);
+
+  /* Text */
+  --text-primary: #333;
+  --text-heading: #1a1a1a;
+  --text-secondary: #666;
+  --text-muted: #999;
+  --text-disabled: #ccc;
+
+  /* Borders */
+  --border: #eee;
+  --border-strong: #d9d9d9;
+  --border-light: #f0f0f0;
+  --border-card: #e0e0e0;
+
+  /* Accent */
+  --accent: #1890ff;
+  --accent-hover: #40a9ff;
+  --accent-shadow: rgba(24, 144, 255, 0.35);
+  --color-green: #52c41a;
+  --color-orange: #faad14;
+  --color-red: #ff4d4f;
+  --color-magenta: #eb2f96;
+  --color-purple: #722ed1;
+  --color-cyan: #13c2c2;
+
+  /* Status badge backgrounds */
+  --badge-done-bg: #f6ffed;
+  --badge-done-border: #b7eb8f;
+  --badge-pending-bg: #fff7e6;
+  --badge-active-bg: #e6f7ff;
+  --badge-error-bg: #fff2f0;
+
+  /* Chat */
+  --chat-assistant-bg: #f5f5f5;
+  --chat-assistant-code: #e8e8e8;
+  --chat-assistant-code-inline: #e0e0e0;
+
+  /* Graph label */
+  --graph-label-bg: #fff;
+
+  /* Flows page */
+  --flows-bg: #f5f5f3;
+  --flows-tab-border: #e2e2e0;
+  --flows-tab-active-bg: #1a1a2e;
+  --flows-tab-active-text: #fff;
+  --flows-tab-text: #64748b;
+  --flows-diagram-bg: #fff;
+  --flows-diagram-border: #e2e2e0;
+  --flows-participant-bg: linear-gradient(180deg, #fafaf8 0%, #fff 100%);
+  --flows-participant-card-bg: #fff;
+  --flows-participant-card-border: #e5e7eb;
+  --flows-lifeline: #e5e7eb;
+  --flows-step-hover: #f8f9fb;
+  --flows-step-expanded: #f0f4ff;
+  --flows-step-divider: #f5f5f3;
+  --flows-detail-bg: #fafbff;
+  --flows-detail-border: #eef0f6;
+  --flows-ref-bg: #f1f5f9;
+  --flows-ref-border: #e2e8f0;
+  --flows-label-bg: rgba(255, 255, 255, 0.88);
+  --flows-text: #1a1a2e;
+  --flows-text-secondary: #475569;
+  --flows-breadcrumb-link: #2563eb;
+  --flows-breadcrumb-sep: #cbd5e1;
+}
+
+[data-theme="dark"] {
+  /* Backgrounds - Tokyo Night */
+  --bg-body: #1a1b26;
+  --bg-sidebar: #16161e;
+  --bg-surface: #24283b;
+  --bg-surface-alt: #292e42;
+  --bg-surface-hover: #292e42;
+  --bg-code: #1e2030;
+  --bg-code-inline: #292e42;
+  --bg-overlay: rgba(0, 0, 0, 0.6);
+
+  /* Text */
+  --text-primary: #a9b1d6;
+  --text-heading: #c0caf5;
+  --text-secondary: #787c99;
+  --text-muted: #565f89;
+  --text-disabled: #3b4261;
+
+  /* Borders */
+  --border: #3b4261;
+  --border-strong: #3b4261;
+  --border-light: #292e42;
+  --border-card: #3b4261;
+
+  /* Accent - Tokyo Night */
+  --accent: #7aa2f7;
+  --accent-hover: #89b4fa;
+  --accent-shadow: rgba(122, 162, 247, 0.35);
+  --color-green: #9ece6a;
+  --color-orange: #e0af68;
+  --color-red: #f7768e;
+  --color-magenta: #bb9af7;
+  --color-purple: #bb9af7;
+  --color-cyan: #7dcfff;
+
+  /* Status badge backgrounds */
+  --badge-done-bg: rgba(158, 206, 106, 0.1);
+  --badge-done-border: rgba(158, 206, 106, 0.3);
+  --badge-pending-bg: rgba(224, 175, 104, 0.1);
+  --badge-active-bg: rgba(122, 162, 247, 0.1);
+  --badge-error-bg: rgba(247, 118, 142, 0.1);
+
+  /* Chat */
+  --chat-assistant-bg: #24283b;
+  --chat-assistant-code: #1e2030;
+  --chat-assistant-code-inline: #292e42;
+
+  /* Graph label */
+  --graph-label-bg: #24283b;
+
+  /* Flows page */
+  --flows-bg: #1a1b26;
+  --flows-tab-border: #3b4261;
+  --flows-tab-active-bg: #7aa2f7;
+  --flows-tab-active-text: #1a1b26;
+  --flows-tab-text: #787c99;
+  --flows-diagram-bg: #24283b;
+  --flows-diagram-border: #3b4261;
+  --flows-participant-bg: linear-gradient(180deg, #1f2335 0%, #24283b 100%);
+  --flows-participant-card-bg: #24283b;
+  --flows-participant-card-border: #3b4261;
+  --flows-lifeline: #3b4261;
+  --flows-step-hover: #292e42;
+  --flows-step-expanded: rgba(122, 162, 247, 0.08);
+  --flows-step-divider: #292e42;
+  --flows-detail-bg: #1f2335;
+  --flows-detail-border: #3b4261;
+  --flows-ref-bg: #1e2030;
+  --flows-ref-border: #3b4261;
+  --flows-label-bg: rgba(36, 40, 59, 0.92);
+  --flows-text: #c0caf5;
+  --flows-text-secondary: #a9b1d6;
+  --flows-breadcrumb-link: #7aa2f7;
+  --flows-breadcrumb-sep: #3b4261;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -6,9 +158,10 @@
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  color: #333;
-  background: #fff;
+  color: var(--text-primary);
+  background: var(--bg-body);
   -webkit-font-smoothing: antialiased;
+  transition: background 0.3s, color 0.3s;
 }
 
 #app {

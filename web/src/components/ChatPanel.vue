@@ -114,10 +114,10 @@ function renderMd(md: string): string {
   left: 24px;
   width: 420px;
   height: 540px;
-  background: #fff;
-  border: 1px solid #e0e0e0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-card);
   border-radius: 16px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
   display: flex;
   flex-direction: column;
   z-index: 1000;
@@ -129,28 +129,28 @@ function renderMd(md: string): string {
   align-items: center;
   justify-content: space-between;
   padding: 14px 20px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--border-light);
   flex-shrink: 0;
 }
 
 .chat-title {
   font-size: 15px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--text-heading);
 }
 
 .chat-close {
   background: none;
   border: none;
   font-size: 20px;
-  color: #999;
+  color: var(--text-muted);
   cursor: pointer;
   padding: 0 4px;
   line-height: 1;
 }
 
 .chat-close:hover {
-  color: #333;
+  color: var(--text-primary);
 }
 
 .chat-messages {
@@ -163,7 +163,7 @@ function renderMd(md: string): string {
 }
 
 .chat-empty {
-  color: #bbb;
+  color: var(--text-disabled);
   font-size: 14px;
   text-align: center;
   margin-top: 40px;
@@ -191,15 +191,15 @@ function renderMd(md: string): string {
 }
 
 .user-bubble {
-  background: #1890ff;
+  background: var(--accent);
   color: #fff;
   border-bottom-right-radius: 4px;
   white-space: pre-wrap;
 }
 
 .assistant-bubble {
-  background: #f5f5f5;
-  color: #333;
+  background: var(--chat-assistant-bg);
+  color: var(--text-primary);
   border-bottom-left-radius: 4px;
 }
 
@@ -212,7 +212,7 @@ function renderMd(md: string): string {
 }
 
 .assistant-bubble :deep(pre) {
-  background: #e8e8e8;
+  background: var(--chat-assistant-code);
   padding: 10px;
   border-radius: 6px;
   overflow-x: auto;
@@ -225,7 +225,7 @@ function renderMd(md: string): string {
 }
 
 .assistant-bubble :deep(p code) {
-  background: #e0e0e0;
+  background: var(--chat-assistant-code-inline);
   padding: 1px 4px;
   border-radius: 3px;
 }
@@ -240,7 +240,7 @@ function renderMd(md: string): string {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #bbb;
+  background: var(--text-disabled);
   animation: typing 1.2s infinite;
 }
 
@@ -256,26 +256,28 @@ function renderMd(md: string): string {
   display: flex;
   gap: 8px;
   padding: 12px 16px;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid var(--border-light);
   flex-shrink: 0;
 }
 
 .chat-input {
   flex: 1;
   padding: 9px 14px;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--border-strong);
   border-radius: 20px;
   font-size: 14px;
   outline: none;
   min-width: 0;
+  background: var(--bg-body);
+  color: var(--text-primary);
 }
 
 .chat-input:focus {
-  border-color: #1890ff;
+  border-color: var(--accent);
 }
 
 .chat-input:disabled {
-  background: #fafafa;
+  background: var(--bg-sidebar);
 }
 
 .chat-send {
@@ -283,7 +285,7 @@ function renderMd(md: string): string {
   height: 36px;
   border: none;
   border-radius: 50%;
-  background: #1890ff;
+  background: var(--accent);
   color: #fff;
   cursor: pointer;
   display: flex;
@@ -293,11 +295,11 @@ function renderMd(md: string): string {
 }
 
 .chat-send:hover:not(:disabled) {
-  background: #40a9ff;
+  background: var(--accent-hover);
 }
 
 .chat-send:disabled {
-  background: #d9d9d9;
+  background: var(--border-strong);
   cursor: not-allowed;
 }
 

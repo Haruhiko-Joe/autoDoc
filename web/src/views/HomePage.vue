@@ -5,7 +5,10 @@ import { fetchTopGraph, startRun, fetchStatus, fetchProjects, subscribeStatus, s
 import GraphView from '../components/GraphView.vue'
 import EdgeLegend from '../components/EdgeLegend.vue'
 import DocTree from '../components/DocTree.vue'
+import { useTheme } from '../composables/useTheme'
 import type { TopGraph, GraphNode } from '../types'
+
+const { isDark, toggle: toggleTheme } = useTheme()
 
 const route = useRoute()
 const router = useRouter()
@@ -20,6 +23,7 @@ const agentBackends = reactive<AgentBackends>({
   flowAnalyzer: 'claude',
 })
 const language = ref<'zh' | 'en'>('zh')
+const showConfigDialog = ref(false)
 const projects = ref<string[]>([])
 const selectedProject = ref('')
 const status = ref<RunStatus>({ phase: 'idle' })
@@ -260,6 +264,15 @@ const progressPhaseLabel = computed(() => {
     <aside class="sidebar">
       <div class="sidebar-header">
         <h2>autoDoc</h2>
+        <button class="theme-btn" @click="toggleTheme" :title="isDark ? 'Light mode' : 'Dark mode'">
+          <svg v-if="isDark" width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="5" stroke="currentColor" stroke-width="2"/>
+            <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
       </div>
       <div class="sidebar-input">
         <label class="input-label">Project Path</label>
@@ -272,6 +285,14 @@ const progressPhaseLabel = computed(() => {
             @keydown.enter="handleRun"
           />
           <button
+            class="config-btn"
+            title="Run Config"
+            :disabled="status.phase === 'running'"
+            @click="showConfigDialog = true"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6.5 1.5L7.1 3.3C7.4 3.4 7.7 3.6 8 3.8L9.8 3.2L11.3 5.8L9.9 7.1C9.9 7.4 9.9 7.6 9.9 7.9L11.3 9.2L9.8 11.8L8 11.2C7.7 11.4 7.4 11.6 7.1 11.7L6.5 13.5H3.5L2.9 11.7C2.6 11.6 2.3 11.4 2 11.2L0.2 11.8L-1.3 9.2L0.1 7.9C0.1 7.6 0.1 7.4 0.1 7.1L-1.3 5.8L0.2 3.2L2 3.8C2.3 3.6 2.6 3.4 2.9 3.3L3.5 1.5H6.5Z" transform="translate(3 0.5)" stroke="currentColor" stroke-width="1.2" fill="none"/><circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>
+          </button>
+          <button
             class="run-btn"
             :disabled="status.phase === 'running' || !repoPath.trim()"
             @click="handleRun"
@@ -279,34 +300,6 @@ const progressPhaseLabel = computed(() => {
             {{ status.phase === 'running' ? '...' : 'Run' }}
           </button>
         </div>
-        <label class="input-label select-label">Max Concurrency</label>
-        <select
-          v-model.number="maxConcurrency"
-          class="project-select"
-          :disabled="status.phase === 'running'"
-        >
-          <option v-for="n in [1, 2, 4, 8, 16, 32]" :key="n" :value="n">{{ n }}</option>
-        </select>
-        <template v-for="field in agentBackendFields" :key="field.key">
-          <label class="input-label select-label">{{ field.label }} Backend</label>
-          <select
-            v-model="agentBackends[field.key]"
-            class="project-select"
-            :disabled="status.phase === 'running'"
-          >
-            <option value="codex">Codex (GPT)</option>
-            <option value="claude">Claude</option>
-          </select>
-        </template>
-        <label class="input-label select-label">Language</label>
-        <select
-          v-model="language"
-          class="project-select"
-          :disabled="status.phase === 'running'"
-        >
-          <option value="zh">中文</option>
-          <option value="en">English</option>
-        </select>
         <label class="input-label select-label">Saved Projects</label>
         <select
           v-model="selectedProject"
@@ -323,6 +316,42 @@ const progressPhaseLabel = computed(() => {
         </select>
         <p v-if="errorMsg" class="input-error">{{ errorMsg }}</p>
       </div>
+
+      <!-- Config Dialog -->
+      <Teleport to="body">
+        <div v-if="showConfigDialog" class="dialog-overlay" @click.self="showConfigDialog = false">
+          <div class="dialog">
+            <div class="dialog-header">
+              <h3>Run Configuration</h3>
+              <button class="dialog-close" @click="showConfigDialog = false">&times;</button>
+            </div>
+            <div class="dialog-body">
+              <label class="input-label">Max Concurrency</label>
+              <select v-model.number="maxConcurrency" class="project-select">
+                <option v-for="n in [1, 2, 4, 8, 16, 32]" :key="n" :value="n">{{ n }}</option>
+              </select>
+              <label class="input-label select-label">Language</label>
+              <select v-model="language" class="project-select">
+                <option value="zh">中文</option>
+                <option value="en">English</option>
+              </select>
+              <div class="dialog-section-title">Agent Backends</div>
+              <div class="agent-grid">
+                <template v-for="field in agentBackendFields" :key="field.key">
+                  <label class="agent-label">{{ field.label }}</label>
+                  <select v-model="agentBackends[field.key]" class="project-select">
+                    <option value="codex">Codex (GPT)</option>
+                    <option value="claude">Claude</option>
+                  </select>
+                </template>
+              </div>
+            </div>
+            <div class="dialog-footer">
+              <button class="run-btn" @click="showConfigDialog = false">OK</button>
+            </div>
+          </div>
+        </div>
+      </Teleport>
 
       <!-- 生成过程中的实时进度 -->
       <div v-if="viewingRunningProject && progress" class="sidebar-progress">
@@ -434,8 +463,8 @@ const progressPhaseLabel = computed(() => {
   width: 20%;
   min-width: 220px;
   max-width: 300px;
-  background: #fafafa;
-  border-right: 1px solid #eee;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   padding: 24px 0;
@@ -444,26 +473,49 @@ const progressPhaseLabel = computed(() => {
 
 .sidebar-header {
   padding: 0 20px 16px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .sidebar-header h2 {
   font-size: 20px;
   font-weight: 700;
-  color: #1a1a1a;
+  color: var(--text-heading);
   margin: 0;
+}
+
+.theme-btn {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.theme-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
 }
 
 .sidebar-input {
   padding: 16px 16px 12px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--border);
 }
 
 .input-label {
   display: block;
   font-size: 12px;
   font-weight: 600;
-  color: #666;
+  color: var(--text-secondary);
   margin-bottom: 8px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -481,27 +533,53 @@ const progressPhaseLabel = computed(() => {
 .path-input {
   flex: 1;
   padding: 7px 10px;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
   font-size: 13px;
   outline: none;
   min-width: 0;
+  background: var(--bg-surface);
+  color: var(--text-primary);
 }
 
 .path-input:focus {
-  border-color: #1890ff;
+  border-color: var(--accent);
 }
 
 .path-input:disabled {
-  background: #f5f5f5;
-  color: #999;
+  background: var(--bg-surface-alt);
+  color: var(--text-muted);
+}
+
+.config-btn {
+  padding: 7px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.config-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.config-btn:disabled {
+  background: var(--bg-surface-alt);
+  color: var(--text-disabled);
+  cursor: not-allowed;
 }
 
 .run-btn {
   padding: 7px 14px;
   border: none;
   border-radius: 6px;
-  background: #1890ff;
+  background: var(--accent);
   color: #fff;
   font-size: 13px;
   font-weight: 600;
@@ -510,57 +588,58 @@ const progressPhaseLabel = computed(() => {
 }
 
 .run-btn:hover:not(:disabled) {
-  background: #40a9ff;
+  background: var(--accent-hover);
 }
 
 .run-btn:disabled {
-  background: #d9d9d9;
+  background: var(--border-strong);
+  color: var(--text-disabled);
   cursor: not-allowed;
 }
 
 .input-error {
   margin: 6px 0 0;
   font-size: 12px;
-  color: #ff4d4f;
+  color: var(--color-red);
 }
 
 .project-select {
   width: 100%;
   padding: 7px 10px;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
   font-size: 13px;
   outline: none;
-  background: #fff;
-  color: #333;
+  background: var(--bg-surface);
+  color: var(--text-primary);
 }
 
 .project-select:focus {
-  border-color: #1890ff;
+  border-color: var(--accent);
 }
 
 .project-select:disabled {
-  background: #f5f5f5;
-  color: #999;
+  background: var(--bg-surface-alt);
+  color: var(--text-muted);
 }
 
 /* ─── Progress ─── */
 
 .sidebar-progress {
   padding: 14px 16px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--border);
 }
 
 .progress-label {
   font-size: 12px;
-  color: #1890ff;
+  color: var(--accent);
   font-weight: 600;
   margin-bottom: 8px;
 }
 
 .progress-bar-track {
   height: 6px;
-  background: #f0f0f0;
+  background: var(--border-light);
   border-radius: 3px;
   overflow: hidden;
   margin-bottom: 10px;
@@ -568,7 +647,7 @@ const progressPhaseLabel = computed(() => {
 
 .progress-bar-fill {
   height: 100%;
-  background: linear-gradient(90deg, #1890ff, #52c41a);
+  background: linear-gradient(90deg, var(--accent), var(--color-green));
   border-radius: 3px;
   transition: width 0.5s ease;
 }
@@ -590,14 +669,14 @@ const progressPhaseLabel = computed(() => {
   font-weight: 700;
 }
 
-.stat-num.done { color: #52c41a; }
-.stat-num.active { color: #1890ff; }
-.stat-num.pending { color: #faad14; }
-.stat-num.error { color: #ff4d4f; }
+.stat-num.done { color: var(--color-green); }
+.stat-num.active { color: var(--accent); }
+.stat-num.pending { color: var(--color-orange); }
+.stat-num.error { color: var(--color-red); }
 
 .stat-label {
   font-size: 11px;
-  color: #999;
+  color: var(--text-muted);
 }
 
 /* ─── Search ─── */
@@ -609,15 +688,17 @@ const progressPhaseLabel = computed(() => {
 .search-input {
   width: 100%;
   padding: 6px 10px;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
   font-size: 13px;
   outline: none;
   box-sizing: border-box;
+  background: var(--bg-surface);
+  color: var(--text-primary);
 }
 
 .search-input:focus {
-  border-color: #1890ff;
+  border-color: var(--accent);
 }
 
 .search-results {
@@ -638,18 +719,18 @@ const progressPhaseLabel = computed(() => {
 }
 
 .search-result-item:hover {
-  background: #e6f7ff;
+  background: var(--bg-surface-hover);
 }
 
 .search-result-name {
   font-size: 13px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--text-heading);
 }
 
 .search-result-desc {
   font-size: 11px;
-  color: #999;
+  color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -658,7 +739,7 @@ const progressPhaseLabel = computed(() => {
 .search-empty {
   margin-top: 6px;
   font-size: 12px;
-  color: #999;
+  color: var(--text-muted);
   text-align: center;
 }
 
@@ -672,7 +753,7 @@ const progressPhaseLabel = computed(() => {
 
 .sidebar-footer {
   padding: 16px 12px 0;
-  border-top: 1px solid #eee;
+  border-top: 1px solid var(--border);
 }
 
 .canvas {
@@ -680,6 +761,7 @@ const progressPhaseLabel = computed(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  background: var(--bg-body);
 }
 
 .canvas-header {
@@ -692,7 +774,7 @@ const progressPhaseLabel = computed(() => {
 .canvas-header h1 {
   font-size: 18px;
   font-weight: 500;
-  color: #666;
+  color: var(--text-secondary);
   margin: 0;
   line-height: 1.5;
 }
@@ -700,9 +782,9 @@ const progressPhaseLabel = computed(() => {
 .project-chip {
   font-size: 11px;
   font-weight: 700;
-  color: #666;
-  background: #f5f5f5;
-  border: 1px solid #e8e8e8;
+  color: var(--text-secondary);
+  background: var(--bg-surface-alt);
+  border: 1px solid var(--border);
   border-radius: 999px;
   padding: 3px 10px;
   flex-shrink: 0;
@@ -710,7 +792,7 @@ const progressPhaseLabel = computed(() => {
 
 .flows-link {
   font-size: 13px;
-  color: #1890ff;
+  color: var(--accent);
   cursor: pointer;
   margin-left: auto;
   flex-shrink: 0;
@@ -724,9 +806,9 @@ const progressPhaseLabel = computed(() => {
 .live-badge {
   font-size: 10px;
   font-weight: 700;
-  color: #52c41a;
-  background: #f6ffed;
-  border: 1px solid #b7eb8f;
+  color: var(--color-green);
+  background: var(--badge-done-bg);
+  border: 1px solid var(--badge-done-border);
   border-radius: 4px;
   padding: 2px 8px;
   letter-spacing: 1px;
@@ -742,7 +824,7 @@ const progressPhaseLabel = computed(() => {
 .canvas-graph {
   flex: 1;
   margin: 0 16px 16px;
-  border: 1px solid #eee;
+  border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
 }
@@ -752,12 +834,12 @@ const progressPhaseLabel = computed(() => {
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #999;
+  color: var(--text-muted);
   font-size: 15px;
 }
 
 .canvas-empty.error {
-  color: #ff4d4f;
+  color: var(--color-red);
 }
 
 .canvas-loading {
@@ -771,25 +853,117 @@ const progressPhaseLabel = computed(() => {
 
 .canvas-loading p {
   margin: 0;
-  color: #666;
+  color: var(--text-secondary);
   font-size: 15px;
 }
 
 .canvas-loading .sub {
   font-size: 13px;
-  color: #999;
+  color: var(--text-muted);
 }
 
 .spinner {
   width: 40px;
   height: 40px;
-  border: 3px solid #f0f0f0;
-  border-top-color: #1890ff;
+  border: 3px solid var(--border-light);
+  border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+/* ─── Config Dialog ─── */
+
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--bg-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.dialog {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  width: 420px;
+  max-width: 90vw;
+  max-height: 80vh;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+}
+
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px 0;
+}
+
+.dialog-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-heading);
+}
+
+.dialog-close {
+  border: none;
+  background: none;
+  font-size: 22px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.dialog-close:hover {
+  color: var(--text-primary);
+}
+
+.dialog-body {
+  padding: 20px 24px;
+  overflow-y: auto;
+}
+
+.dialog-body .project-select {
+  width: 100%;
+}
+
+.dialog-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 18px;
+  margin-bottom: 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.agent-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 12px;
+  align-items: center;
+}
+
+.agent-label {
+  font-size: 13px;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.dialog-footer {
+  padding: 0 24px 20px;
+  display: flex;
+  justify-content: flex-end;
 }
 </style>

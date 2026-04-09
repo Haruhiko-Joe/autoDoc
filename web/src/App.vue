@@ -15,7 +15,6 @@
 import { ref } from 'vue'
 import { RouterView } from 'vue-router'
 import ChatPanel from './components/ChatPanel.vue'
-
 const chatOpen = ref(false)
 </script>
 
@@ -28,24 +27,24 @@ const chatOpen = ref(false)
   height: 48px;
   border: none;
   border-radius: 50%;
-  background: #1890ff;
+  background: var(--accent);
   color: #fff;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 16px rgba(24, 144, 255, 0.35);
+  box-shadow: 0 4px 16px var(--accent-shadow);
   z-index: 1001;
   transition: background 0.2s, transform 0.2s;
 }
 
 .chat-toggle:hover {
-  background: #40a9ff;
+  background: var(--accent-hover);
   transform: scale(1.05);
 }
 
 .chat-toggle.active {
-  background: #666;
+  background: var(--text-secondary);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
 }
 </style>

@@ -52,20 +52,20 @@ const emit = defineEmits<{
   padding: 5px 12px;
   cursor: pointer;
   font-size: 13px;
-  color: #444;
-  transition: background 0.1s;
+  color: var(--text-primary);
+  transition: background 0.1s, color 0.1s;
   line-height: 1.4;
 }
 
 .tree-row:hover {
-  background: #e6f7ff;
-  color: #1890ff;
+  background: var(--bg-surface-hover);
+  color: var(--accent);
 }
 
 .tree-chevron {
   width: 14px;
   font-size: 10px;
-  color: #999;
+  color: var(--text-muted);
   flex-shrink: 0;
   text-align: center;
 }
@@ -82,7 +82,7 @@ const emit = defineEmits<{
 }
 
 .tree-spin {
-  color: #bbb;
+  color: var(--text-disabled);
   font-size: 12px;
   animation: spin 1s linear infinite;
 }
@@ -94,12 +94,12 @@ const emit = defineEmits<{
   text-align: center;
 }
 
-.tree-status.done { color: #52c41a; }
-.tree-status.error { color: #ff4d4f; }
-.tree-status.pending { color: #d9d9d9; }
+.tree-status.done { color: var(--color-green); }
+.tree-status.error { color: var(--color-red); }
+.tree-status.pending { color: var(--text-disabled); }
 .tree-status.decomposing,
 .tree-status.writing,
-.tree-status.checking { color: #1890ff; animation: pulse 1.5s infinite; }
+.tree-status.checking { color: var(--accent); animation: pulse 1.5s infinite; }
 
 @keyframes pulse {
   0%, 100% { opacity: 1; }

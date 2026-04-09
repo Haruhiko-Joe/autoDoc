@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { Graph, NodeEvent, EdgeEvent } from '@antv/g6'
 import { EDGE_STYLES } from '../services/edgeStyles'
+import { useTheme } from '../composables/useTheme'
 import type { GraphNode, EdgeType } from '../types'
 
 const props = defineProps<{
@@ -12,6 +13,7 @@ const emit = defineEmits<{
   nodeClick: [node: GraphNode]
 }>()
 
+const { isDark } = useTheme()
 const containerRef = ref<HTMLDivElement>()
 let graph: Graph | null = null
 
@@ -153,6 +155,7 @@ function createGraph() {
       style: (d: { data?: { edgeType?: EdgeType; description?: string } }) => {
         const edgeType = d.data?.edgeType ?? 'calls'
         const visual = EDGE_STYLES[edgeType]
+        const dark = isDark.value
         return {
           stroke: visual.stroke,
           lineWidth: edgeType === 'data-flow' ? 3 : 1.5,
@@ -162,9 +165,9 @@ function createGraph() {
           cursor: 'pointer',
           labelText: d.data?.description ?? '',
           labelFontSize: 11,
-          labelFill: '#666',
+          labelFill: dark ? '#a9b1d6' : '#666',
           labelBackground: true,
-          labelBackgroundFill: '#fff',
+          labelBackgroundFill: dark ? '#24283b' : '#fff',
           labelBackgroundOpacity: 0.85,
           labelBackgroundRadius: 3,
           labelPadding: [2, 6],
@@ -232,6 +235,11 @@ watch(
     createGraph()
   },
 )
+
+watch(isDark, () => {
+  destroyGraph()
+  createGraph()
+})
 </script>
 
 <template>
@@ -271,6 +279,7 @@ watch(
   width: 100%;
   height: 100%;
   position: relative;
+  background: var(--bg-body);
 }
 
 /* G6 html node 内部渲染，需要全局样式 */
@@ -279,8 +288,8 @@ watch(
   height: 100%;
   box-sizing: border-box;
   padding: 26px 30px;
-  background: #fff;
-  border: 1.5px solid #e0e0e0;
+  background: var(--bg-surface);
+  border: 1.5px solid var(--border-card);
   border-radius: 12px;
   cursor: pointer;
   transition: box-shadow 0.2s, border-color 0.2s;
@@ -291,21 +300,21 @@ watch(
 }
 
 :global(.node-card:hover) {
-  border-color: #1890ff;
-  box-shadow: 0 6px 20px rgba(24, 144, 255, 0.18);
+  border-color: var(--accent);
+  box-shadow: 0 6px 20px var(--accent-shadow);
 }
 
 :global(.node-card-name) {
   font-size: 17px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--text-heading);
   line-height: 1.3;
   flex-shrink: 0;
 }
 
 :global(.node-card-desc) {
   font-size: 13px;
-  color: #666;
+  color: var(--text-secondary);
   line-height: 1.6;
 }
 
@@ -313,10 +322,10 @@ watch(
   position: absolute;
   z-index: 100;
   width: 380px;
-  background: #fff;
-  border: 1px solid #e0e0e0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-card);
   border-radius: 10px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
   padding: 16px 20px;
   transform: translate(-50%, 12px);
 }
@@ -358,8 +367,8 @@ watch(
 .edge-popover-node {
   font-size: 13px;
   font-weight: 600;
-  color: #333;
-  background: #f5f5f5;
+  color: var(--text-primary);
+  background: var(--bg-surface-alt);
   padding: 2px 8px;
   border-radius: 4px;
   white-space: nowrap;
@@ -368,7 +377,7 @@ watch(
 }
 
 .edge-popover-arrow {
-  color: #bbb;
+  color: var(--text-disabled);
   font-size: 14px;
   flex-shrink: 0;
 }
@@ -386,7 +395,7 @@ watch(
   background: none;
   border: none;
   font-size: 18px;
-  color: #bbb;
+  color: var(--text-disabled);
   cursor: pointer;
   padding: 0 4px;
   line-height: 1;
@@ -394,21 +403,21 @@ watch(
 }
 
 .edge-popover-close:hover {
-  color: #666;
+  color: var(--text-secondary);
 }
 
 .edge-popover-desc {
   font-size: 13px;
   font-weight: 500;
-  color: #444;
+  color: var(--text-primary);
   margin-bottom: 8px;
   padding-bottom: 8px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--border-light);
 }
 
 .edge-popover-detail {
   font-size: 13px;
-  color: #666;
+  color: var(--text-secondary);
   line-height: 1.7;
 }
 </style>

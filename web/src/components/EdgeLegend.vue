@@ -30,9 +30,9 @@ const entries = Object.entries(EDGE_STYLES)
   flex-wrap: wrap;
   gap: 16px;
   padding: 12px 16px;
-  background: #fafafa;
+  background: var(--bg-sidebar);
   border-radius: 8px;
-  border: 1px solid #eee;
+  border: 1px solid var(--border);
 }
 
 .legend-item {
@@ -43,6 +43,6 @@ const entries = Object.entries(EDGE_STYLES)
 
 .legend-label {
   font-size: 12px;
-  color: #666;
+  color: var(--text-secondary);
 }
 </style>

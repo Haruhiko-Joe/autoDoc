@@ -28,28 +28,31 @@ watch(() => props.content, render)
   padding: 32px 24px;
   font-size: 15px;
   line-height: 1.75;
-  color: #333;
+  color: var(--text-primary);
 }
 
 .markdown-body :deep(h1) {
   font-size: 28px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--border);
   padding-bottom: 8px;
   margin: 24px 0 16px;
+  color: var(--text-heading);
 }
 
 .markdown-body :deep(h2) {
   font-size: 22px;
   margin: 20px 0 12px;
+  color: var(--text-heading);
 }
 
 .markdown-body :deep(h3) {
   font-size: 18px;
   margin: 16px 0 8px;
+  color: var(--text-heading);
 }
 
 .markdown-body :deep(pre) {
-  background: #f6f8fa;
+  background: var(--bg-code);
   padding: 16px;
   border-radius: 6px;
   overflow-x: auto;
@@ -61,7 +64,7 @@ watch(() => props.content, render)
 }
 
 .markdown-body :deep(p code) {
-  background: #f0f0f0;
+  background: var(--bg-code-inline);
   padding: 2px 6px;
   border-radius: 3px;
 }
@@ -74,20 +77,25 @@ watch(() => props.content, render)
 
 .markdown-body :deep(th),
 .markdown-body :deep(td) {
-  border: 1px solid #ddd;
+  border: 1px solid var(--border-strong);
   padding: 8px 12px;
   text-align: left;
 }
 
 .markdown-body :deep(th) {
-  background: #f6f8fa;
+  background: var(--bg-code);
   font-weight: 600;
+  color: var(--text-heading);
 }
 
 .markdown-body :deep(blockquote) {
-  border-left: 4px solid #ddd;
+  border-left: 4px solid var(--border-strong);
   padding-left: 16px;
-  color: #666;
+  color: var(--text-secondary);
   margin: 16px 0;
+}
+
+.markdown-body :deep(a) {
+  color: var(--accent);
 }
 </style>

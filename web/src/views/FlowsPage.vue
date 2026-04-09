@@ -244,16 +244,16 @@ function selectFlow(i: number) {
   height: 100vh;
   overflow: hidden;
   font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
-  background: #f5f5f3;
-  color: #1a1a2e;
+  background: var(--flows-bg);
+  color: var(--flows-text);
 }
 
 .sidebar {
   width: 20%;
   min-width: 200px;
   max-width: 280px;
-  background: #fafafa;
-  border-right: 1px solid #eee;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   padding: 24px 0;
@@ -262,25 +262,25 @@ function selectFlow(i: number) {
 
 .sidebar-header {
   padding: 0 20px 16px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--border);
 }
 
 .back-btn {
   padding: 6px 16px;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
-  background: #fff;
+  background: var(--bg-surface);
   cursor: pointer;
   font-size: 13px;
-  color: #333;
+  color: var(--text-primary);
   width: 100%;
   text-align: left;
   font-family: inherit;
 }
 
 .back-btn:hover {
-  border-color: #1890ff;
-  color: #1890ff;
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .sidebar-nav {
@@ -291,7 +291,7 @@ function selectFlow(i: number) {
 
 .sidebar-footer {
   padding: 16px 12px 0;
-  border-top: 1px solid #eee;
+  border-top: 1px solid var(--border);
 }
 
 /* ─── Main Area ─── */
@@ -309,12 +309,12 @@ function selectFlow(i: number) {
   justify-content: center;
   height: 100%;
   font-size: 15px;
-  color: #94a3b8;
+  color: var(--text-muted);
   letter-spacing: -0.01em;
 }
 
 .status-msg.is-error {
-  color: #ef4444;
+  color: var(--color-red);
 }
 
 /* ─── Header ─── */
@@ -333,7 +333,7 @@ function selectFlow(i: number) {
 }
 
 .breadcrumb a {
-  color: #2563eb;
+  color: var(--flows-breadcrumb-link);
   cursor: pointer;
   text-decoration: none;
 }
@@ -344,11 +344,11 @@ function selectFlow(i: number) {
 
 .bc-sep {
   margin: 0 6px;
-  color: #cbd5e1;
+  color: var(--flows-breadcrumb-sep);
 }
 
 .bc-current {
-  color: #1a1a2e;
+  color: var(--flows-text);
   font-weight: 600;
 }
 
@@ -370,12 +370,12 @@ function selectFlow(i: number) {
 .flow-tab {
   flex-shrink: 0;
   padding: 7px 16px;
-  border: 1px solid #e2e2e0;
+  border: 1px solid var(--flows-tab-border);
   border-radius: 999px;
-  background: #fff;
+  background: var(--bg-surface);
   font-size: 12px;
   font-weight: 500;
-  color: #64748b;
+  color: var(--flows-tab-text);
   cursor: pointer;
   transition: all 0.15s ease;
   font-family: inherit;
@@ -383,14 +383,14 @@ function selectFlow(i: number) {
 }
 
 .flow-tab:hover {
-  border-color: #2563eb;
-  color: #2563eb;
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .flow-tab.active {
-  background: #1a1a2e;
-  border-color: #1a1a2e;
-  color: #fff;
+  background: var(--flows-tab-active-bg);
+  border-color: var(--flows-tab-active-bg);
+  color: var(--flows-tab-active-text);
 }
 
 .tab-idx {
@@ -403,7 +403,7 @@ function selectFlow(i: number) {
 .flow-desc {
   margin: 0 0 14px;
   font-size: 13px;
-  color: #64748b;
+  color: var(--flows-tab-text);
   line-height: 1.55;
   max-width: 720px;
 }
@@ -417,8 +417,8 @@ function selectFlow(i: number) {
 }
 
 .diagram {
-  background: #fff;
-  border: 1px solid #e2e2e0;
+  background: var(--flows-diagram-bg);
+  border: 1px solid var(--flows-diagram-border);
   border-radius: 12px;
   overflow: hidden;
   box-shadow:
@@ -447,9 +447,8 @@ function selectFlow(i: number) {
 .p-row {
   display: flex;
   padding: 16px 0 12px;
-  border-bottom: 1px solid #f0f0ee;
-  background:
-    linear-gradient(180deg, #fafaf8 0%, #fff 100%);
+  border-bottom: 1px solid var(--border-light);
+  background: var(--flows-participant-bg);
   position: sticky;
   top: 0;
   z-index: 5;
@@ -467,8 +466,8 @@ function selectFlow(i: number) {
 .p-card {
   text-align: center;
   padding: 10px 10px 8px;
-  background: #fff;
-  border: 1px solid #e5e7eb;
+  background: var(--flows-participant-card-bg);
+  border: 1px solid var(--flows-participant-card-border);
   border-radius: 10px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.05);
   transition: all 0.2s ease;
@@ -480,39 +479,39 @@ function selectFlow(i: number) {
 }
 
 .p-card.clickable::after {
-  content: '↗';
+  content: '\2197';
   position: absolute;
   top: 6px;
   right: 8px;
   font-size: 10px;
-  color: #cbd5e1;
+  color: var(--text-muted);
   transition: color 0.15s;
 }
 
 .p-card.clickable:hover {
-  border-color: #2563eb;
+  border-color: var(--accent);
   box-shadow:
-    0 2px 8px rgba(37, 99, 235, 0.1),
-    0 0 0 1px rgba(37, 99, 235, 0.1);
+    0 2px 8px rgba(122, 162, 247, 0.1),
+    0 0 0 1px rgba(122, 162, 247, 0.1);
   transform: translateY(-1px);
 }
 
 .p-card.clickable:hover::after {
-  color: #2563eb;
+  color: var(--accent);
 }
 
 .p-name {
   font-family: 'DM Mono', monospace;
   font-size: 12px;
   font-weight: 500;
-  color: #1a1a2e;
+  color: var(--flows-text);
   margin-bottom: 4px;
   letter-spacing: -0.02em;
 }
 
 .p-role {
   font-size: 10px;
-  color: #94a3b8;
+  color: var(--text-muted);
   line-height: 1.4;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -534,11 +533,11 @@ function selectFlow(i: number) {
 }
 
 .step-row:hover {
-  background: #f8f9fb;
+  background: var(--flows-step-hover);
 }
 
 .step-row.expanded {
-  background: #f0f4ff;
+  background: var(--flows-step-expanded);
 }
 
 .step-row:not(:last-child)::after {
@@ -548,7 +547,7 @@ function selectFlow(i: number) {
   left: 44px;
   right: 0;
   height: 1px;
-  background: #f5f5f3;
+  background: var(--flows-step-divider);
 }
 
 .step-num {
@@ -577,7 +576,7 @@ function selectFlow(i: number) {
   top: 0;
   bottom: 0;
   width: 0;
-  border-left: 1px dashed #e5e7eb;
+  border-left: 1px dashed var(--flows-lifeline);
   transform: translateX(-0.5px);
   pointer-events: none;
 }
@@ -651,7 +650,7 @@ function selectFlow(i: number) {
   font-size: 11px;
   font-weight: 600;
   color: var(--c);
-  background: rgba(255, 255, 255, 0.88);
+  background: var(--flows-label-bg);
   padding: 1px 7px;
   border-radius: 4px;
   letter-spacing: -0.01em;
@@ -706,9 +705,9 @@ function selectFlow(i: number) {
 
 .step-detail {
   padding: 14px 20px 14px 52px;
-  background: #fafbff;
-  border-top: 1px solid #eef0f6;
-  border-bottom: 1px solid #eef0f6;
+  background: var(--flows-detail-bg);
+  border-top: 1px solid var(--flows-detail-border);
+  border-bottom: 1px solid var(--flows-detail-border);
   animation: detailIn 0.18s ease;
   cursor: default;
 }
@@ -743,11 +742,11 @@ function selectFlow(i: number) {
   font-family: 'DM Mono', monospace;
   font-size: 13px;
   font-weight: 500;
-  color: #1a1a2e;
+  color: var(--flows-text);
 }
 
 .sd-arrow {
-  color: #94a3b8;
+  color: var(--text-muted);
   font-size: 14px;
 }
 
@@ -763,7 +762,7 @@ function selectFlow(i: number) {
 .sd-text {
   margin: 0 0 8px;
   font-size: 13px;
-  color: #475569;
+  color: var(--flows-text-secondary);
   line-height: 1.65;
   max-width: 640px;
 }
@@ -771,11 +770,11 @@ function selectFlow(i: number) {
 .sd-ref {
   font-family: 'DM Mono', monospace;
   font-size: 11px;
-  background: #f1f5f9;
-  color: #475569;
+  background: var(--flows-ref-bg);
+  color: var(--flows-text-secondary);
   padding: 4px 10px;
   border-radius: 5px;
   display: inline-block;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--flows-ref-border);
 }
 </style>
