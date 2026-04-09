@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { fetchTopGraph, startRun, fetchStatus, fetchProjects, subscribeStatus, type AgentBackends, type RunStatus } from '../services/doc'
+import { fetchTopGraph, startRun, fetchStatus, fetchProjects, subscribeStatus, searchModules, type AgentBackends, type RunStatus, type SearchResult } from '../services/doc'
 import GraphView from '../components/GraphView.vue'
 import EdgeLegend from '../components/EdgeLegend.vue'
 import DocTree from '../components/DocTree.vue'
@@ -13,11 +13,11 @@ const topGraph = ref<TopGraph | null>(null)
 const repoPath = ref('')
 const maxConcurrency = ref(8)
 const agentBackends = reactive<AgentBackends>({
-  scaffold: 'codex',
-  decomposer: 'codex',
-  writer: 'codex',
+  scaffold: 'claude',
+  decomposer: 'claude',
+  writer: 'claude',
   checker: 'codex',
-  flowAnalyzer: 'codex',
+  flowAnalyzer: 'claude',
 })
 const language = ref<'zh' | 'en'>('zh')
 const projects = ref<string[]>([])
@@ -200,20 +200,32 @@ function onNodeClick(node: Pick<GraphNode, 'child'>) {
 }
 
 const searchQuery = ref('')
+const searchResults = ref<SearchResult[]>([])
+let searchTimer: ReturnType<typeof setTimeout> | null = null
 
-const searchMatches = computed(() => {
-  const q = searchQuery.value.trim().toLowerCase()
-  if (!q || !topGraph.value) return []
-  return topGraph.value.nodes.filter(
-    (n) => n.name.toLowerCase().includes(q) || n.description.toLowerCase().includes(q),
-  )
+watch(searchQuery, (q) => {
+  if (searchTimer) clearTimeout(searchTimer)
+  const trimmed = q.trim()
+  if (!trimmed || !selectedProject.value) {
+    searchResults.value = []
+    return
+  }
+  searchTimer = setTimeout(async () => {
+    searchResults.value = await searchModules(selectedProject.value, trimmed)
+  }, 250)
 })
 
 function jumpToFirstMatch() {
-  if (searchMatches.value.length > 0) {
-    onNodeClick({ child: { type: 'graph', ref: searchMatches.value[0].name } })
-    searchQuery.value = ''
+  if (searchResults.value.length > 0) {
+    navigateToSearchResult(searchResults.value[0])
   }
+}
+
+function navigateToSearchResult(r: SearchResult) {
+  if (!selectedProject.value) return
+  router.push(`/${selectedProject.value}/doc/${r.path}`)
+  searchQuery.value = ''
+  searchResults.value = []
 }
 
 const progress = computed(() => status.value.progress)
@@ -345,18 +357,18 @@ const progressPhaseLabel = computed(() => {
           placeholder="Search modules..."
           @keydown.enter="jumpToFirstMatch"
         />
-        <ul v-if="searchQuery.trim() && searchMatches.length > 0" class="search-results">
+        <ul v-if="searchQuery.trim() && searchResults.length > 0" class="search-results">
           <li
-            v-for="m in searchMatches"
-            :key="m.name"
+            v-for="m in searchResults"
+            :key="m.path"
             class="search-result-item"
-            @click="onNodeClick({ child: { type: 'graph', ref: m.name } })"
+            @click="navigateToSearchResult(m)"
           >
             <span class="search-result-name">{{ m.name }}</span>
-            <span class="search-result-desc">{{ m.description }}</span>
+            <span class="search-result-desc">{{ m.path }} — {{ m.description }}</span>
           </li>
         </ul>
-        <div v-if="searchQuery.trim() && searchMatches.length === 0" class="search-empty">
+        <div v-if="searchQuery.trim() && searchResults.length === 0" class="search-empty">
           No matches
         </div>
       </div>

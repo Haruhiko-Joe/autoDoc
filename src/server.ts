@@ -146,6 +146,46 @@ async function handleDocFile(docDir: string, filePath: string): Promise<{ conten
   return { content, type };
 }
 
+interface SearchResult {
+  name: string
+  description: string
+  path: string
+  type: "graph" | "page"
+}
+
+async function searchModules(project: string, query: string): Promise<SearchResult[]> {
+  const docDir = getProjectDocDir(project);
+  const results: SearchResult[] = [];
+
+  async function scanDir(dir: string, prefix: string) {
+    const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+    for (const entry of entries) {
+      if (!entry.isFile() || !entry.name.endsWith(".json") || entry.name === "flows.json") continue;
+      try {
+        const raw = JSON.parse(await readFile(path.join(dir, entry.name), "utf-8"));
+        const nodes = raw.nodes as Array<{ name: string; description: string; child?: { type: string; ref: string } }> | undefined;
+        if (!nodes) continue;
+        for (const node of nodes) {
+          if (node.name.toLowerCase().includes(query) || node.description.toLowerCase().includes(query)) {
+            const childType = node.child?.type ?? "graph";
+            const ref = node.child?.ref ?? node.name;
+            const nodePath = prefix ? `${prefix}/${ref}` : ref;
+            results.push({ name: node.name, description: node.description, path: nodePath, type: childType as "graph" | "page" });
+          }
+        }
+      } catch { /* skip invalid */ }
+    }
+    for (const entry of entries) {
+      if (entry.isDirectory() && entry.name !== "_pending") {
+        await scanDir(path.join(dir, entry.name), prefix ? `${prefix}/${entry.name}` : entry.name);
+      }
+    }
+  }
+
+  await scanDir(docDir, "");
+  return results;
+}
+
 function parseBody(req: import("node:http").IncomingMessage): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
@@ -240,6 +280,15 @@ const server = createServer(async (req, res) => {
 
       send({ type: "done" });
       res.end();
+    } else if (req.method === "GET" && url.pathname === "/api/search") {
+      const project = url.searchParams.get("project");
+      const q = (url.searchParams.get("q") ?? "").toLowerCase().trim();
+      if (!project || !q) {
+        res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "Missing project or q" }));
+        return;
+      }
+      const results = await searchModules(project, q);
+      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ results }));
     } else if (req.method === "GET" && url.pathname.startsWith("/api/doc/")) {
       // running 时也能读已完成的 doc 文件（即时渲染）
       let docDir: string | undefined;

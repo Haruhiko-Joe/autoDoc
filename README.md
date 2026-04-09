@@ -19,7 +19,7 @@ Scaffold ──► Checker
 Decomposer ──► Checker   Decomposer ──► Checker   ...
                 │                       │
                 ▼                       ▼
-  Writer ──► Checker       Writer ──► Checker
+             Writer                  Writer
                 │                       │
                 ▼                       ▼
               完成                     完成

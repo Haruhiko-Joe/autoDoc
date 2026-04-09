@@ -72,30 +72,6 @@ function buildDecomposerFixPrompt(issues: CheckerIssueType[]): string {
   return parts.join("\n");
 }
 
-function buildWriterFixPrompt(issues: CheckerIssueType[], nodeName: string): string {
-  const relevant = issues.filter(
-    (i) => DOC_ISSUE_TYPES.has(i.type) && i.description.toLowerCase().includes(nodeName.toLowerCase()),
-  );
-  const toShow = relevant.length > 0 ? relevant : issues.filter((i) => DOC_ISSUE_TYPES.has(i.type));
-  if (toShow.length === 0) return "";
-
-  const parts = [
-    `你为模块 "${nodeName}" 生成的文档经过 Checker 校验发现以下问题：`,
-    "",
-  ];
-  toShow.forEach((issue, i) => parts.push(formatIssue(issue, i)));
-  parts.push(
-    "",
-    "请针对以上问题修正文档，确保：",
-    "- 包含核心章节（概述与职责、关键流程）",
-    "- 文档中引用的代码路径在目标仓库中实际存在",
-    "- 内容具有实质性，而非占位符",
-    "",
-    "请重新输出修正后的完整文档。",
-  );
-  return parts.join("\n");
-}
-
 function buildScaffoldFixPrompt(issues: CheckerIssueType[]): string {
   const parts = [
     "你的顶层模块图经过 Checker 校验未通过，存在以下问题：",
@@ -160,11 +136,11 @@ export type AgentBackends = Record<AgentRole, AgentBackend>;
 export type CheckerType = AgentBackend;
 
 const DEFAULT_AGENT_BACKENDS: AgentBackends = {
-  scaffold: "codex",
-  decomposer: "codex",
-  writer: "codex",
+  scaffold: "claude",
+  decomposer: "claude",
+  writer: "claude",
   checker: "codex",
-  flowAnalyzer: "codex",
+  flowAnalyzer: "claude",
 };
 
 export class Arranger {
@@ -172,6 +148,7 @@ export class Arranger {
   private readonly agentBackends: AgentBackends;
   private readonly language: Language;
   private readonly sem: Semaphore;
+  private readonly nodeLocks = new Map<string, Promise<void>>();
   private repoPath = "";
   private docDir = "";
   private currentPhase: Progress["phase"] = "idle";
@@ -185,7 +162,7 @@ export class Arranger {
     language?: Language
   }) {
     this.maxConcurrency = options?.maxConcurrency ?? 8;
-    const fallback = options?.agentBackend ?? options?.checkerType ?? "codex";
+    const fallback = options?.agentBackend ?? options?.checkerType;
     this.agentBackends = {
       scaffold: options?.agentBackends?.scaffold ?? fallback ?? DEFAULT_AGENT_BACKENDS.scaffold,
       decomposer: options?.agentBackends?.decomposer ?? fallback ?? DEFAULT_AGENT_BACKENDS.decomposer,
@@ -359,30 +336,30 @@ export class Arranger {
   ]);
 
   private async processLoop(): Promise<void> {
-    for (let iteration = 1; ; iteration++) {
-      const tasks = await this.findActionableTasks();
-      if (tasks.length === 0) break;
+    const running = new Set<Promise<void>>();
 
-      const allStatuses = await this.countStatuses();
-      console.log(
-        `[Arranger] Iteration ${iteration}: `
-        + `${allStatuses.pending ?? 0} pending, ${allStatuses.decomposing ?? 0} decomposing, `
-        + `${allStatuses.writing ?? 0} writing, ${allStatuses.checking ?? 0} checking, `
-        + `${allStatuses.done ?? 0} done, ${allStatuses.error ?? 0} error`,
-      );
+    while (true) {
+      while (running.size < this.maxConcurrency) {
+        const task = await this.claimNextTask();
+        if (!task) break;
 
-      const results = await Promise.allSettled(
-        tasks.map((task) =>
-          task.kind === "graph"
-            ? this.processGraphTask(task.nodeId, task.graph)
-            : this.processPageTask(task.nodeId, task.ref, task.graph),
-        ),
-      );
-      for (const r of results) {
-        if (r.status === "rejected") {
-          console.error("[Arranger] Pipeline failed:", r.reason);
-        }
+        let runner: Promise<void>;
+        runner = (task.kind === "graph"
+          ? this.processGraphTask(task.nodeId, task.graph)
+          : this.processPageTask(task.nodeId, task.ref, task.graph)
+        )
+          .catch((error) => {
+            console.error("[Arranger] Pipeline failed:", error);
+          })
+          .finally(() => {
+            running.delete(runner);
+          });
+
+        running.add(runner);
       }
+
+      if (running.size === 0) break;
+      await Promise.race(running);
     }
   }
 
@@ -430,9 +407,28 @@ export class Arranger {
     }
   }
 
-  private async findActionableTasks(): Promise<ArrangerTask[]> {
+  private async withNodeLock<T>(nodeId: string, fn: () => Promise<T>): Promise<T> {
+    const previous = this.nodeLocks.get(nodeId);
+    const waitForPrevious = previous?.catch(() => {}) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const tail = waitForPrevious.then(() => current);
+    this.nodeLocks.set(nodeId, tail);
+    await waitForPrevious;
+    try {
+      return await fn();
+    } finally {
+      release();
+      if (this.nodeLocks.get(nodeId) === tail) {
+        this.nodeLocks.delete(nodeId);
+      }
+    }
+  }
+
+  private async claimNextTask(): Promise<ArrangerTask | null> {
     const allNodeIds = await this.scanGraphNodes(this.docDir, "");
-    const results: ArrangerTask[] = [];
     for (const nodeId of allNodeIds) {
       try {
         const graph = await this.readGraph(nodeId);
@@ -441,19 +437,21 @@ export class Arranger {
         if (graph.status === "writing" && graph.pageTasks) {
           const nextPage = Object.entries(graph.pageTasks).find(([, task]) => task.status === "pending");
           if (nextPage) {
-            results.push({ kind: "page", nodeId, ref: nextPage[0], graph });
+            await this.updatePageTask(nodeId, nextPage[0], { status: "writing" });
+            return { kind: "page", nodeId, ref: nextPage[0], graph };
           } else if (Object.values(graph.pageTasks).every((task) => task.status === "done")) {
             await this.finishNodeIfReady(nodeId, graph);
           }
           continue;
         }
 
-        results.push({ kind: "graph", nodeId, graph });
+        await this.updateGraph(nodeId, { status: "decomposing", pageTasks: undefined });
+        return { kind: "graph", nodeId, graph };
       } catch {
         console.warn(`[Arranger] Skipping unreadable graph: ${nodeId}`);
       }
     }
-    return results;
+    return null;
   }
 
   // ─── Prompt 构建 ───
@@ -486,36 +484,6 @@ export class Arranger {
       "```",
       ``,
       `Note: Leaf Markdown documents have not been generated yet — validate graph structure only.`,
-    ].join("\n");
-  }
-
-  private buildDocCheckerPrompt(
-    nodeId: string,
-    rawGraph: RawGraphType,
-    pageContents: Map<string, string>,
-  ): string {
-    const pageNodes = rawGraph.nodes.filter((n) => n.child.type === "page" && pageContents.has(n.child.ref));
-    const mdSections: string[] = [];
-    for (const node of pageNodes) {
-      const content = pageContents.get(node.child.ref);
-      if (content) {
-        mdSections.push(`--- FILE: ${node.child.ref}.md (node: ${node.name}) ---\n${content}\n--- END FILE ---`);
-      } else {
-        mdSections.push(`--- FILE: ${node.child.ref}.md (node: ${node.name}) ---\n[WRITER FAILED]\n--- END FILE ---`);
-      }
-    }
-    return [
-      `Validate the writer output for module "${nodeId}".`,
-      `Repository root: ${this.repoPath}`,
-      ``,
-      `## Graph JSON content:`,
-      "```json",
-      JSON.stringify(rawGraph, null, 2),
-      "```",
-      ``,
-      ...(mdSections.length > 0
-        ? [`## Leaf Markdown documents:`, ``, ...mdSections]
-        : [`## Leaf Markdown documents: (none)`]),
     ].join("\n");
   }
 
@@ -564,43 +532,14 @@ export class Arranger {
     }
   }
 
-  private async writeAndCheckPage(
-    nodeId: string,
-    rawGraph: RawGraphType,
+  private async writePage(
     pageNode: GraphNodeType,
     ancestorContext: AncestorContextType | null,
-    retryCount: number,
   ): Promise<string> {
-    const checker = this.makeChecker();
     const writer = this.makeWriter();
-    let content = await this.withSemaphore(() =>
+    return this.withSemaphore(() =>
       this.generatePageContent(writer, pageNode, ancestorContext),
     );
-
-    for (let retry = retryCount; ; retry++) {
-      const checkerPrompt = this.buildDocCheckerPrompt(nodeId, rawGraph, new Map([[pageNode.child.ref, content]]));
-      const checkerResult = await this.withSemaphore(() =>
-        checker.getSessionId()
-          ? checker.continue(checkerPrompt)
-          : checker.run(checkerPrompt, this.repoPath),
-      );
-
-      if (checkerResult.result.passed) {
-        console.log(`[Arranger] Writer check passed: ${nodeId}/${pageNode.child.ref}`);
-        return content;
-      }
-      if (retry >= 5) throw new Error(`Writer check failed after 5 retries for ${nodeId}/${pageNode.child.ref}`);
-
-      console.log(`[Arranger] Writer check failed: ${nodeId}/${pageNode.child.ref} (retry ${retry + 1}/5)`);
-      await this.updatePageTask(nodeId, pageNode.child.ref, { retryCount: retry + 1 });
-
-      const fixPrompt = buildWriterFixPrompt(checkerResult.result.issues, pageNode.name);
-      if (!fixPrompt) {
-        throw new Error(`Writer fix prompt is empty for ${nodeId}/${pageNode.child.ref}`);
-      }
-      const { result } = await this.withSemaphore(() => writer.continue(fixPrompt));
-      content = result.content;
-    }
   }
 
   // ─── 任务调度 ───
@@ -612,7 +551,6 @@ export class Arranger {
     let rawGraph: RawGraphType;
     let decomposerSessionId: string;
 
-    await this.updateGraph(nodeId, { status: "decomposing", pageTasks: undefined });
     try {
       const prompt = this.buildDecompPrompt(nodeId, graph, ancestorContext);
       const result = await this.decomposeAndCheck(nodeId, prompt, {
@@ -655,15 +593,11 @@ export class Arranger {
       return;
     }
 
-    const task = graph.pageTasks?.[ref];
-    const retryCount = task?.retryCount ?? 0;
-    await this.updatePageTask(nodeId, ref, { status: "writing" });
-
     let content: string;
     try {
-      content = await this.writeAndCheckPage(nodeId, { nodes: graph.nodes }, pageNode, ancestorContext, retryCount);
+      content = await this.writePage(pageNode, ancestorContext);
     } catch (e) {
-      console.error(`[Arranger] Write+check error for ${nodeId}/${ref}:`, e);
+      console.error(`[Arranger] Write error for ${nodeId}/${ref}:`, e);
       await this.updatePageTask(nodeId, ref, { status: "error" });
       await this.updateGraph(nodeId, { status: "error" });
       return;
@@ -717,12 +651,14 @@ export class Arranger {
   }
 
   private async updatePageTask(nodeId: string, ref: string, patch: Partial<PageTaskType>): Promise<void> {
-    const graph = await this.readGraph(nodeId);
-    if (!graph.pageTasks?.[ref]) {
-      throw new Error(`Missing page task ${nodeId}/${ref}`);
-    }
-    graph.pageTasks[ref] = { ...graph.pageTasks[ref], ...patch };
-    await this.writeGraph(nodeId, graph);
+    await this.withNodeLock(nodeId, async () => {
+      const graph = await this.readGraph(nodeId);
+      if (!graph.pageTasks?.[ref]) {
+        throw new Error(`Missing page task ${nodeId}/${ref}`);
+      }
+      graph.pageTasks[ref] = { ...graph.pageTasks[ref], ...patch };
+      await this.writeGraph(nodeId, graph);
+    });
     this.notify();
   }
 
@@ -742,21 +678,27 @@ export class Arranger {
   }
 
   private async finishNodeIfReady(nodeId: string, current?: GraphType): Promise<void> {
-    const graph = current ?? await this.readGraph(nodeId);
-    const pageTasks = graph.pageTasks;
-    if (!pageTasks) {
-      if (graph.status !== "done") {
-        await this.updateGraph(nodeId, { status: "done" });
+    let changed = false;
+    await this.withNodeLock(nodeId, async () => {
+      const graph = await this.readGraph(nodeId);
+      const pageTasks = graph.pageTasks;
+      if (!pageTasks) {
+        if (graph.status !== "done") {
+          await this.writeGraph(nodeId, { ...graph, status: "done" });
+          changed = true;
+        }
+        return;
       }
-      return;
-    }
-    if (!Object.values(pageTasks).every((task) => task.status === "done")) return;
+      if (!Object.values(pageTasks).every((task) => task.status === "done")) return;
 
-    await this.writeGraph(nodeId, {
-      ...graph,
-      status: "done",
-      pageTasks: undefined,
+      await this.writeGraph(nodeId, {
+        ...graph,
+        status: "done",
+        pageTasks: undefined,
+      });
+      changed = true;
     });
+    if (changed) this.notify();
   }
 
   // ─── AncestorContext 构造 ───
@@ -853,9 +795,11 @@ export class Arranger {
   }
 
   private async updateGraph(nodeId: string, patch: Partial<GraphType>): Promise<void> {
-    const graph = await this.readGraph(nodeId);
-    Object.assign(graph, patch);
-    await this.writeGraph(nodeId, graph);
+    await this.withNodeLock(nodeId, async () => {
+      const graph = await this.readGraph(nodeId);
+      Object.assign(graph, patch);
+      await this.writeGraph(nodeId, graph);
+    });
     this.notify();
   }
 

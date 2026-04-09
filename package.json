@@ -9,6 +9,8 @@
     "start": "tsx src/server.ts & cd web && pnpm dev",
     "proxy:claude": "tsx src/claude-proxy.ts",
     "proxy:claude:setup": "zsh scripts/setup-claude-proxy.sh",
+    "docs:scan-md-json": "node scripts/unwrap-md-json.mjs",
+    "docs:fix-md-json": "node scripts/unwrap-md-json.mjs --write",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

@@ -98,6 +98,22 @@ export function subscribeStatus(onStatus: (status: RunStatus) => void): () => vo
   return () => es.close()
 }
 
+// ─── Search ───
+
+export interface SearchResult {
+  name: string
+  description: string
+  path: string
+  type: 'graph' | 'page'
+}
+
+export async function searchModules(project: string, query: string): Promise<SearchResult[]> {
+  const res = await fetch(`${API}/search?project=${encodeURIComponent(project)}&q=${encodeURIComponent(query)}`)
+  if (!res.ok) return []
+  const data = await res.json() as { results: SearchResult[] }
+  return data.results ?? []
+}
+
 // ─── Chat ───
 
 export interface ChatMessage {
