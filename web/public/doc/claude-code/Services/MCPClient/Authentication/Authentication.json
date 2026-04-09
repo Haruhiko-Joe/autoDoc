@@ -1,0 +1,97 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "73465195-9ccf-44ca-bad3-b79e08177657",
+  "description": "MCP server authentication subsystem supporting multiple auth strategies. Includes standard OAuth 2.0 authorization code flow with PKCE, RFC 8693 cross-app access (XAA) token exchange for silent auth, enterprise IdP login for acquiring OIDC id_tokens, OAuth callback port management, and elicitation handling for interactive auth prompts during server connections.",
+  "codeScope": [
+    "src/services/mcp/auth.ts",
+    "src/services/mcp/xaa.ts",
+    "src/services/mcp/xaaIdpLogin.ts",
+    "src/services/mcp/oauthPort.ts",
+    "src/services/mcp/elicitationHandler.ts"
+  ],
+  "nodes": [
+    {
+      "name": "OAuthFlow",
+      "description": "Core OAuth 2.0 authorization code flow implementation and MCP auth provider. Contains the ClaudeAuthProvider class (OAuthClientProvider implementation with secure storage, token persistence, DCR, refresh with transient-error retry, and XAA-aware refresh fallback), the performMCPOAuthFlow orchestrator (browser-based PKCE flow with local callback server, cancellation, timeout, step-up auth detection), performMCPXaaAuth (silent XAA auth with fallback to browser OAuth on failure), token revocation (RFC 7009 with client_secret_basic/post and Bearer fallback), OAuth error normalization for non-compliant servers (e.g. Slack), auth server metadata discovery (RFC 9728 → RFC 8414 with path-aware fallback), client secret management helpers, and analytics instrumentation for auth events.",
+      "edges": [
+        {
+          "target": "XAATokenExchange",
+          "type": "calls",
+          "description": "performMCPXaaAuth invokes performCrossAppAccess to execute the silent RFC 8693/7523 token exchange chain, and ClaudeAuthProvider.xaaRefresh uses it for token refresh"
+        },
+        {
+          "target": "IdPLogin",
+          "type": "calls",
+          "description": "performMCPXaaAuth calls acquireIdpIdToken to obtain the OIDC id_token needed for XAA, reads cached tokens via getCachedIdpIdToken, clears them on exchange failure via clearIdpIdToken, and uses discoverOidc for IdP metadata"
+        },
+        {
+          "target": "OAuthPort",
+          "type": "depends",
+          "description": "Uses buildRedirectUri and findAvailablePort to set up the local HTTP callback server for the OAuth authorization code redirect"
+        }
+      ],
+      "codeScope": [
+        "src/services/mcp/auth.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "OAuthFlow"
+      }
+    },
+    {
+      "name": "XAATokenExchange",
+      "description": "RFC 8693 Cross-App Access (XAA) token exchange protocol implementation. Structured as four Layer-2 operations (PRM discovery via RFC 9728, AS metadata discovery via RFC 8414 with issuer-mismatch and HTTPS validation, RFC 8693 token exchange at IdP to obtain an ID-JAG, RFC 7523 JWT bearer grant at the AS to obtain an access_token) plus one Layer-3 orchestrator (performCrossAppAccess) that composes them. Includes XaaTokenExchangeError with shouldClearIdToken semantics for cache invalidation decisions, Zod response schemas with coercion for non-conformant IdPs, sensitive token redaction for debug logging, and abort signal propagation.",
+      "edges": [],
+      "codeScope": [
+        "src/services/mcp/xaa.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "XAATokenExchange"
+      }
+    },
+    {
+      "name": "IdPLogin",
+      "description": "Enterprise IdP OIDC login flow for acquiring and caching id_tokens used by XAA. Implements the full authorization_code + PKCE browser flow against an enterprise IdP (one browser pop → N silent MCP server auths). Manages id_token caching in secure storage keyed by normalized IdP issuer URL, with JWT exp-based TTL and expiry buffer. Includes OIDC discovery with path-append (not replace) for Azure AD/Okta/Keycloak compatibility, IdP client secret storage, local HTTP callback server with state/CSRF validation and XSS-sanitized error pages, configurable callback port, abort signal support, and the isXaaEnabled feature gate.",
+      "edges": [
+        {
+          "target": "OAuthPort",
+          "type": "depends",
+          "description": "Uses buildRedirectUri and findAvailablePort to configure the local callback server for the IdP authorization code redirect"
+        }
+      ],
+      "codeScope": [
+        "src/services/mcp/xaaIdpLogin.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "IdPLogin"
+      }
+    },
+    {
+      "name": "OAuthPort",
+      "description": "OAuth redirect port management utilities shared by the main OAuth flow and IdP login. Provides findAvailablePort (random port selection within platform-specific ranges with configurable override via MCP_OAUTH_CALLBACK_PORT, fallback to port 3118) and buildRedirectUri (constructs http://localhost:{port}/callback per RFC 8252 Section 7.3 for native app loopback redirects). Extracted to break the auth.ts ↔ xaaIdpLogin.ts circular dependency.",
+      "edges": [],
+      "codeScope": [
+        "src/services/mcp/oauthPort.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "OAuthPort"
+      }
+    },
+    {
+      "name": "ElicitationHandler",
+      "description": "MCP elicitation request/response handler for interactive auth prompts during server connections. Registers JSON-RPC request and notification handlers on the MCP Client for form-mode and URL-mode elicitations. Manages an elicitation queue in React app state, supports abort signal cancellation, runs pre-elicitation and post-response hooks (which can programmatically resolve or block elicitations), handles completion notifications for URL-mode flows, and logs elicitation analytics events.",
+      "edges": [],
+      "codeScope": [
+        "src/services/mcp/elicitationHandler.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ElicitationHandler"
+      }
+    }
+  ]
+}

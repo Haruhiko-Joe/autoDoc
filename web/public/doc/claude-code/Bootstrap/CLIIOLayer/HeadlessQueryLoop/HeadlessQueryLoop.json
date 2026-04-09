@@ -1,0 +1,114 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "aeb83201-09c7-4d20-a5b6-c2f58bf3254e",
+  "description": "The runHeadless function (print.ts, 5600 lines) that drives the complete non-interactive query loop for SDK/piped/bridge execution. Orchestrates session lifecycle: initializing StructuredIO or RemoteIO, setting up MCP servers, processing user messages from stdin, driving the ask() query engine loop, handling streaming output (NDJSON stream_events), managing tool execution with permission prompts, session resume/continue, idle timeouts, dynamic MCP server management, plugin installation, conversation recovery, side questions, prompt suggestions, and graceful shutdown. Also exports createCanUseToolWithPermissionPrompt and getCanUseToolFn for interactive-mode permission prompting, plus MCP set-servers types.",
+  "codeScope": [
+    "src/cli/print.ts"
+  ],
+  "nodes": [
+    {
+      "name": "SessionLifecycle",
+      "description": "The runHeadless entry point (lines 455-974) and supporting session setup/teardown functions. Handles argument validation, StructuredIO/RemoteIO instantiation (getStructuredIO), sandbox initialization, Grove checks, GrowthBook init, settings change subscriptions, hook event handlers, session resume/continue/teleport via loadInitialMessages (lines 4893-5197), agent restoration, rewind-files handling, output format dispatch (text/json/stream-json with streamlined transformer), headless profiler lifecycle, memory extraction drain, and graceful shutdown. Also includes removeInterruptedMessage and emitLoadError helpers.",
+      "edges": [
+        {
+          "target": "QueryLoop",
+          "type": "calls",
+          "description": "runHeadless iterates over runHeadlessStreaming's async generator, collecting messages and dispatching them by output format"
+        },
+        {
+          "target": "PermissionPrompting",
+          "type": "calls",
+          "description": "runHeadless calls getCanUseToolFn to create the permission callback passed into the query loop"
+        }
+      ],
+      "codeScope": [
+        "src/cli/print.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SessionLifecycle"
+      }
+    },
+    {
+      "name": "QueryLoop",
+      "description": "The runHeadlessStreaming generator (lines 976-4143) that drives the non-interactive ask() loop. Contains the run() mutex function that drains the command queue (batching consecutive prompt-mode commands), invokes ask() with assembled tools/MCP clients/agents, handles streaming result messages (hold-back for background agents), emits SDK events, forwards messages to bridge, manages prompt suggestion generation/tracking, file persistence, and headless profiler checkpoints. Includes the do-while background agent wait loop, proactive tick scheduling, cron scheduler integration, team lead inbox polling (reading unread teammate messages, processing shutdown approvals), idle timeout management, UDS inbox callback, skill change hot-reloading, and post-run queue re-check. Also contains buildAllTools, forwardMessagesToBridge, refreshPluginState, applyPluginMcpDiff, and plugin installation orchestration.",
+      "edges": [
+        {
+          "target": "ControlProtocol",
+          "type": "depends",
+          "description": "The stdin message processing loop (spawned as a parallel async task) enqueues user messages and calls run() to drive the query loop"
+        },
+        {
+          "target": "DynamicMcpManagement",
+          "type": "calls",
+          "description": "run() calls updateSdkMcp before each turn and applyMcpServerChanges for plugin MCP diffs; reads dynamicMcpState for tool assembly"
+        },
+        {
+          "target": "PermissionPrompting",
+          "type": "depends",
+          "description": "Passes the canUseTool function (from getCanUseToolFn) into each ask() invocation for tool permission decisions"
+        }
+      ],
+      "codeScope": [
+        "src/cli/print.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "QueryLoop"
+      }
+    },
+    {
+      "name": "ControlProtocol",
+      "description": "The stdin message router (lines 2807-4143) that processes structured NDJSON input from SDK consumers. Dispatches 25+ control_request subtypes: initialize (handleInitializeRequest, lines 4336-4518), interrupt, end_session, set_permission_mode (handleSetPermissionMode, lines 4568-4662), set_model, set_max_thinking_tokens, mcp_status, get_context_usage, mcp_message, rewind_files (handleRewindFiles, lines 4520-4566), cancel_async_message, seed_read_state, mcp_set_servers, reload_plugins, mcp_reconnect, mcp_toggle, channel_enable (handleChannelEnable, lines 4662-4841), mcp_authenticate (OAuth flow management with abort/callback/manual URL), mcp_oauth_callback_url, claude_authenticate (Anthropic OAuth), claude_oauth_callback/wait_for_completion, mcp_clear_auth, apply_flag_settings, get_settings, stop_task, generate_session_title, side_question, set_proactive, and remote_control (bridge handle lifecycle). Also handles user message deduplication, replay acknowledgments, history injection from bridge, and keep-alive passthrough.",
+      "edges": [
+        {
+          "target": "QueryLoop",
+          "type": "data-flow",
+          "description": "User messages from stdin are enqueued and trigger run() to process them through the ask() query engine"
+        },
+        {
+          "target": "DynamicMcpManagement",
+          "type": "calls",
+          "description": "mcp_set_servers control requests delegate to applyMcpServerChanges which calls handleMcpSetServers; mcp_reconnect/toggle update dynamic MCP state"
+        },
+        {
+          "target": "PermissionPrompting",
+          "type": "depends",
+          "description": "Sets up orphaned permission response callback via structuredIO.setUnexpectedResponseCallback calling handleOrphanedPermissionResponse"
+        }
+      ],
+      "codeScope": [
+        "src/cli/print.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ControlProtocol"
+      }
+    },
+    {
+      "name": "PermissionPrompting",
+      "description": "Exported functions for creating tool permission callbacks used by both headless and interactive modes. createCanUseToolWithPermissionPrompt (lines 4149-4263) wraps an MCP-based permission prompt tool into a CanUseToolFn that races the tool's user prompt against abort signals, handles already-aborted states, and parses the tool result into a permission decision. getCanUseToolFn (lines 4267-4334) is a factory that selects the permission strategy: 'stdio' delegates to structuredIO.createCanUseTool for SDK control protocol prompting, undefined falls back to hasPermissionsToUseTool for auto-mode, or lazy-resolves an MCP permission prompt tool by name. handleOrphanedPermissionResponse (lines 5241-5305) recovers orphaned permission responses by matching them to unresolved tool uses in the transcript and re-enqueuing for execution with deduplication.",
+      "edges": [],
+      "codeScope": [
+        "src/cli/print.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PermissionPrompting"
+      }
+    },
+    {
+      "name": "DynamicMcpManagement",
+      "description": "MCP server lifecycle management for dynamically added and SDK-injected servers. handleMcpSetServers (lines 5353-5450) processes mcp_set_servers control requests by diffing incoming server configs against current SDK and dynamic MCP state, connecting new servers, disconnecting removed ones, and returning the updated state. reconcileMcpServers (lines 5450-5594) performs the low-level reconciliation: categorizes servers into SDK vs process-transport, connects new process-transport servers via connectToServer, cleans up removed servers, fetches tools for each connected server, and returns the new DynamicMcpState. Includes type definitions for DynamicMcpState, SdkMcpState, McpSetServersResult, and the toScopedConfig helper. Also includes updateSdkMcp (lines 1389-1459) for SDK MCP client lifecycle, registerElicitationHandlers (lines 1263-1387) for MCP elicitation request/completion handling, and reregisterChannelHandlerAfterReconnect (lines 4786-4841) for channel notification handlers.",
+      "edges": [],
+      "codeScope": [
+        "src/cli/print.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "DynamicMcpManagement"
+      }
+    }
+  ]
+}

@@ -1,0 +1,218 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "4dbd2434-e13d-4185-a0c3-09a8e9ef8f19",
+  "description": "The slash command framework providing 90+ user-invocable commands for controlling the CLI session. The command registry maps command names to handler implementations covering session management (resume, session, clear), configuration (config, theme, model, permissions), development workflows (review, issue, diff, compact), diagnostics (doctor, status, cost, stats), authentication (login, logout), and integrations (mcp, ide, desktop, chrome, mobile). Each command is a self-contained module with its own UI and logic.",
+  "codeScope": [
+    "src/commands.ts",
+    "src/commands/"
+  ],
+  "nodes": [
+    {
+      "name": "CommandRegistry",
+      "description": "The central command registration and routing framework. Imports all 90+ command modules, assembles the master command list (memoized COMMANDS array), loads dynamic sources (skills directories, plugin commands, workflow commands, MCP skills), filters commands by availability requirements (claude-ai vs console auth) and feature-flag enablement, and provides lookup utilities (findCommand, getCommand, hasCommand). Also defines command safety sets for remote mode (REMOTE_SAFE_COMMANDS) and bridge mode (BRIDGE_SAFE_COMMANDS), cache invalidation helpers, and description formatting for UI display.",
+      "edges": [
+        {
+          "target": "SessionCommands",
+          "type": "composes",
+          "description": "Imports and registers all session management commands into the master command list"
+        },
+        {
+          "target": "ConfigurationCommands",
+          "type": "composes",
+          "description": "Imports and registers all configuration and preferences commands into the master command list"
+        },
+        {
+          "target": "DevWorkflowCommands",
+          "type": "composes",
+          "description": "Imports and registers all development workflow commands into the master command list"
+        },
+        {
+          "target": "DiagnosticsAndAuth",
+          "type": "composes",
+          "description": "Imports and registers diagnostics, info, and authentication commands into the master command list"
+        },
+        {
+          "target": "IntegrationCommands",
+          "type": "composes",
+          "description": "Imports and registers all external platform integration commands into the master command list"
+        }
+      ],
+      "codeScope": [
+        "src/commands.ts",
+        "src/commands/createMovedToPluginCommand.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "CommandRegistry"
+      }
+    },
+    {
+      "name": "SessionCommands",
+      "description": "Commands for managing the CLI session lifecycle and conversation context. Includes clearing the screen (clear), compacting conversation history (compact), resuming previous sessions (resume), listing and switching sessions (session), renaming sessions (rename), exiting the CLI (exit), rewinding conversation turns (rewind), copying messages (copy), viewing/managing tracked files (files, add-dir, context), switching git branches (branch), managing persistent memory (memory), reviewing thinking traces (thinkback, thinkback-play), sharing sessions (share, teleport), and generating conversation summaries (summary).",
+      "edges": [],
+      "codeScope": [
+        "src/commands/clear/",
+        "src/commands/compact/",
+        "src/commands/resume/",
+        "src/commands/session/",
+        "src/commands/rename/",
+        "src/commands/exit/",
+        "src/commands/rewind/",
+        "src/commands/copy/",
+        "src/commands/files/",
+        "src/commands/add-dir/",
+        "src/commands/context/",
+        "src/commands/branch/",
+        "src/commands/memory/",
+        "src/commands/thinkback/",
+        "src/commands/thinkback-play/",
+        "src/commands/share/",
+        "src/commands/teleport/",
+        "src/commands/summary/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SessionCommands"
+      }
+    },
+    {
+      "name": "ConfigurationCommands",
+      "description": "Commands for configuring CLI behavior, appearance, and preferences. Covers general settings (config), visual theming (theme, color), model selection (model), input modes (vim, keybindings), permission management (permissions), hook configuration (hooks), response speed (fast), reasoning effort (effort), output formatting (output-style), privacy controls (privacy-settings), sandbox toggling (sandbox-toggle), status line display (statusline), environment variables (env, remote-env), planning mode (plan), conversation tagging (tag), rate limit options (rate-limit-options), terminal setup (terminalSetup), and first-run onboarding (onboarding).",
+      "edges": [],
+      "codeScope": [
+        "src/commands/config/",
+        "src/commands/theme/",
+        "src/commands/color/",
+        "src/commands/model/",
+        "src/commands/vim/",
+        "src/commands/keybindings/",
+        "src/commands/permissions/",
+        "src/commands/hooks/",
+        "src/commands/fast/",
+        "src/commands/effort/",
+        "src/commands/output-style/",
+        "src/commands/privacy-settings/",
+        "src/commands/sandbox-toggle/",
+        "src/commands/statusline.tsx",
+        "src/commands/env/",
+        "src/commands/remote-env/",
+        "src/commands/plan/",
+        "src/commands/tag/",
+        "src/commands/rate-limit-options/",
+        "src/commands/terminalSetup/",
+        "src/commands/onboarding/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ConfigurationCommands"
+      }
+    },
+    {
+      "name": "DevWorkflowCommands",
+      "description": "Commands that support development workflows by generating prompts for code review, issue management, and project initialization. Includes code review (review, security-review), diff analysis (diff), git operations (commit, commit-push-pr), PR comment handling (pr_comments), issue filing (issue), project initialization (init, init-verifiers), release notes generation (release-notes), automated PR fixing (autofix-pr), bug hunting (bughunter), code advisory (advisor), advanced planning (ultraplan), quick notes (btw), user feedback (feedback), and positive reinforcement tracking (good-claude).",
+      "edges": [
+        {
+          "target": "SessionCommands",
+          "type": "calls",
+          "description": "Workflow commands like /compact trigger session operations to manage conversation context"
+        }
+      ],
+      "codeScope": [
+        "src/commands/review/",
+        "src/commands/review.ts",
+        "src/commands/security-review.ts",
+        "src/commands/diff/",
+        "src/commands/commit.ts",
+        "src/commands/commit-push-pr.ts",
+        "src/commands/pr_comments/",
+        "src/commands/issue/",
+        "src/commands/init.ts",
+        "src/commands/init-verifiers.ts",
+        "src/commands/release-notes/",
+        "src/commands/autofix-pr/",
+        "src/commands/bughunter/",
+        "src/commands/advisor.ts",
+        "src/commands/ultraplan.tsx",
+        "src/commands/btw/",
+        "src/commands/feedback/",
+        "src/commands/good-claude/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "DevWorkflowCommands"
+      }
+    },
+    {
+      "name": "DiagnosticsAndAuth",
+      "description": "Commands for system diagnostics, usage information, and authentication management. Diagnostics include health checks (doctor), system status (status), session cost tracking (cost), usage statistics (stats, usage), detailed usage reporting (insights — a 3200-line lazy-loaded analytics module), help display (help), version info (version), context visualization (ctx_viz), heap dumps (heapdump), performance issue reporting (perf-issue), trace inspection (ant-trace), debug tool calls (debug-tool-call), limit simulation (mock-limits), session backfilling (backfill-sessions), cache management (break-cache), data export (export), and sticker rewards (stickers). Authentication includes login/logout flows (login, logout), OAuth token refresh (oauth-refresh), Max subscription passes (passes), extra usage management (extra-usage), limit resets (reset-limits), and version upgrades (upgrade).",
+      "edges": [],
+      "codeScope": [
+        "src/commands/doctor/",
+        "src/commands/status/",
+        "src/commands/cost/",
+        "src/commands/stats/",
+        "src/commands/usage/",
+        "src/commands/insights.ts",
+        "src/commands/help/",
+        "src/commands/version.ts",
+        "src/commands/ctx_viz/",
+        "src/commands/heapdump/",
+        "src/commands/perf-issue/",
+        "src/commands/ant-trace/",
+        "src/commands/debug-tool-call/",
+        "src/commands/mock-limits/",
+        "src/commands/backfill-sessions/",
+        "src/commands/break-cache/",
+        "src/commands/export/",
+        "src/commands/stickers/",
+        "src/commands/login/",
+        "src/commands/logout/",
+        "src/commands/oauth-refresh/",
+        "src/commands/passes/",
+        "src/commands/extra-usage/",
+        "src/commands/reset-limits/",
+        "src/commands/upgrade/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "DiagnosticsAndAuth"
+      }
+    },
+    {
+      "name": "IntegrationCommands",
+      "description": "Commands for connecting Claude Code with external platforms, managing plugins, and controlling integrations. Platform integrations include MCP server management (mcp — 642 lines handling server connections, approval, and configuration), IDE integration (ide — 656 lines for VS Code/JetBrains setup), desktop app (desktop), Chrome extension (chrome), mobile companion (mobile), GitHub App installation (install-github-app — 2352 lines with a multi-step OAuth and workflow setup wizard across 14 files), Slack App installation (install-slack-app), the install meta-command (install.tsx), bridge session control (bridge), voice input mode (voice), and bridge-kick for session management (bridge-kick). Plugin management provides a full UI for discovering, installing, validating, and configuring plugins (plugin/ — 7575 lines across 17 files with marketplace browsing, trust warnings, and settings dialogs), plus plugin reloading (reload-plugins). Also includes agent management (agents), skills listing (skills), task management (tasks), and remote setup (remote-setup).",
+      "edges": [
+        {
+          "target": "ConfigurationCommands",
+          "type": "calls",
+          "description": "Integration commands modify configuration state when setting up MCP servers, IDE connections, and plugin settings"
+        }
+      ],
+      "codeScope": [
+        "src/commands/mcp/",
+        "src/commands/ide/",
+        "src/commands/desktop/",
+        "src/commands/chrome/",
+        "src/commands/mobile/",
+        "src/commands/install-github-app/",
+        "src/commands/install-slack-app/",
+        "src/commands/install.tsx",
+        "src/commands/plugin/",
+        "src/commands/reload-plugins/",
+        "src/commands/agents/",
+        "src/commands/skills/",
+        "src/commands/tasks/",
+        "src/commands/bridge-kick.ts",
+        "src/commands/bridge/",
+        "src/commands/voice/",
+        "src/commands/remote-setup/",
+        "src/commands/brief.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "IntegrationCommands"
+      }
+    }
+  ]
+}

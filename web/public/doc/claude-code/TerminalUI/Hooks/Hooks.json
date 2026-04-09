@@ -1,0 +1,286 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "2cb88568-65cd-4bf0-9338-fbb5f240baf8",
+  "description": "80+ React hooks providing reusable state management and side-effect logic for the terminal UI. Covers input handling (text input, paste, vim input, clipboard), session lifecycle (cancel request, exit on Ctrl+C/D, session backgrounding), IDE integration (connection status, selection, logging, at-mentions), external integrations (Chrome extension, voice, SSH, remote session), UI state (blink, elapsed time, terminal size, virtual scroll, history search), tool permissions, diff data, background task navigation, dynamic config, plugin/skill management, suggestion systems, and bridge/mailbox communication.",
+  "codeScope": [
+    "src/hooks/",
+    "src/moreright/"
+  ],
+  "nodes": [
+    {
+      "name": "InputHandling",
+      "description": "Hooks for text input, editing, and keyboard interaction. Includes the core useTextInput state machine, vim-mode input (useVimInput wrapping useTextInput), paste handling with image detection, clipboard copy-on-select, interactive history search with async disk loads, arrow-key history navigation, search-mode input with kill-ring/yank, input buffering with debounce, double-press detection, and global/command keybinding registration.",
+      "edges": [
+        {
+          "target": "UIState",
+          "type": "depends",
+          "description": "useSearchInput imports useTerminalSize for layout-aware search input rendering"
+        },
+        {
+          "target": "SuggestionsAndTypeahead",
+          "type": "calls",
+          "description": "Keybinding hooks trigger typeahead and suggestion flows; input state feeds into autocomplete"
+        }
+      ],
+      "codeScope": [
+        "src/hooks/useTextInput.ts",
+        "src/hooks/usePasteHandler.ts",
+        "src/hooks/useVimInput.ts",
+        "src/hooks/useSearchInput.ts",
+        "src/hooks/useInputBuffer.ts",
+        "src/hooks/useCopyOnSelect.ts",
+        "src/hooks/useClipboardImageHint.ts",
+        "src/hooks/useArrowKeyHistory.tsx",
+        "src/hooks/useDoublePress.ts",
+        "src/hooks/useHistorySearch.ts",
+        "src/hooks/useCommandKeybindings.tsx",
+        "src/hooks/useGlobalKeybindings.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "InputHandling"
+      }
+    },
+    {
+      "name": "SessionLifecycle",
+      "description": "Hooks managing session control flow and lifecycle events. Includes cancel/interrupt request handling, double-press Ctrl+C/D exit (with keybindings variant), session backgrounding via Ctrl+B, swarm initialization and permission polling for multi-agent workflows, command queue subscription and processing, teammate view auto-exit, teleport session resumption, and deferred hook message injection for async session start flows.",
+      "edges": [
+        {
+          "target": "ToolPermissions",
+          "type": "depends",
+          "description": "Swarm permission poller coordinates with tool permission system for worker authorization"
+        },
+        {
+          "target": "ExternalIntegrations",
+          "type": "data-flow",
+          "description": "Command queue receives messages from bridge, remote, and mailbox integration hooks"
+        }
+      ],
+      "codeScope": [
+        "src/hooks/useCancelRequest.ts",
+        "src/hooks/useExitOnCtrlCD.ts",
+        "src/hooks/useExitOnCtrlCDWithKeybindings.ts",
+        "src/hooks/useSessionBackgrounding.ts",
+        "src/hooks/useTeammateViewAutoExit.ts",
+        "src/hooks/useSwarmInitialization.ts",
+        "src/hooks/useSwarmPermissionPoller.ts",
+        "src/hooks/useCommandQueue.ts",
+        "src/hooks/useQueueProcessor.ts",
+        "src/hooks/useTeleportResume.tsx",
+        "src/hooks/useDeferredHookMessages.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SessionLifecycle"
+      }
+    },
+    {
+      "name": "IDEIntegration",
+      "description": "Hooks bridging the terminal UI to IDE extensions via MCP. Includes the main IDE integration initializer (MCP config, extension installation), IDE connection status derivation from MCP clients, selection tracking via MCP notifications, IDE event logging, @-mention file tracking from IDE, sending diffs to IDE via RPC, and LSP plugin recommendation based on file edit detection.",
+      "edges": [
+        {
+          "target": "ConfigAndPlugins",
+          "type": "depends",
+          "description": "IDE hooks read MCP client configuration and plugin settings for connection management"
+        },
+        {
+          "target": "SuggestionsAndTypeahead",
+          "type": "data-flow",
+          "description": "IDE at-mention tracking feeds file references into the suggestion system"
+        }
+      ],
+      "codeScope": [
+        "src/hooks/useIDEIntegration.tsx",
+        "src/hooks/useIdeConnectionStatus.ts",
+        "src/hooks/useIdeSelection.ts",
+        "src/hooks/useIdeLogging.ts",
+        "src/hooks/useIdeAtMentioned.ts",
+        "src/hooks/useDiffInIDE.ts",
+        "src/hooks/useLspPluginRecommendation.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "IDEIntegration"
+      }
+    },
+    {
+      "name": "ExternalIntegrations",
+      "description": "Hooks connecting the terminal UI to external systems and remote sessions. Covers Chrome extension prompt listening and subscription notifications, voice input (hold-to-talk STT with conditional loading and feature-flag gating), SSH session REPL integration with tool-use confirmations, remote session management with WebSocket transport, direct-connect WebSocket mode, REPL bridge for claude.ai sessions with permission callbacks, and mailbox/inbox polling for teammate message exchange.",
+      "edges": [
+        {
+          "target": "SessionLifecycle",
+          "type": "calls",
+          "description": "Bridge, remote, and mailbox hooks enqueue prompts and commands into the session command queue"
+        },
+        {
+          "target": "Notifications",
+          "type": "depends",
+          "description": "usePromptsFromClaudeInChrome uses useStartupNotification as its base notification hook"
+        },
+        {
+          "target": "ToolPermissions",
+          "type": "calls",
+          "description": "SSH and remote session hooks handle tool-use permission confirmations and callbacks"
+        }
+      ],
+      "codeScope": [
+        "src/hooks/useChromeExtensionNotification.tsx",
+        "src/hooks/usePromptsFromClaudeInChrome.tsx",
+        "src/hooks/useVoice.ts",
+        "src/hooks/useVoiceEnabled.ts",
+        "src/hooks/useVoiceIntegration.tsx",
+        "src/hooks/useSSHSession.ts",
+        "src/hooks/useRemoteSession.ts",
+        "src/hooks/useDirectConnect.ts",
+        "src/hooks/useReplBridge.tsx",
+        "src/hooks/useMailboxBridge.ts",
+        "src/hooks/useInboxPoller.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ExternalIntegrations"
+      }
+    },
+    {
+      "name": "UIState",
+      "description": "Low-level hooks for terminal UI state and rendering utilities. Includes synchronized blink animation with visibility detection, elapsed time formatting with external store subscriptions, context-based terminal size retrieval, virtual scrolling with overscan and item height estimation, minimum display time throttling, simple timeout state, startup time measurement (useAfterFirstRender), message transcript recording with swarm participant handling, Node.js heap memory usage monitoring, and the MoreRight overflow indicator.",
+      "edges": [],
+      "codeScope": [
+        "src/hooks/useBlink.ts",
+        "src/hooks/useElapsedTime.ts",
+        "src/hooks/useTerminalSize.ts",
+        "src/hooks/useVirtualScroll.ts",
+        "src/hooks/useMinDisplayTime.ts",
+        "src/hooks/useTimeout.ts",
+        "src/hooks/useAfterFirstRender.ts",
+        "src/hooks/useLogMessages.ts",
+        "src/hooks/useMemoryUsage.ts",
+        "src/moreright/useMoreRight.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "UIState"
+      }
+    },
+    {
+      "name": "Notifications",
+      "description": "16 notification hooks in the notifs/ subdirectory providing startup and runtime notifications. Built on the useStartupNotification base hook pattern. Covers auto-mode unavailability, subscription switching prompts, deprecation warnings, fast mode announcements, IDE status indicators, install messages, LSP initialization status, MCP connectivity status, model migration alerts, npm deprecation notices, plugin auto-update and installation status, rate limit warnings, settings validation errors, and teammate shutdown notices.",
+      "edges": [
+        {
+          "target": "ConfigAndPlugins",
+          "type": "depends",
+          "description": "Notification hooks read settings, plugin state, and MCP client status to determine what to display"
+        }
+      ],
+      "codeScope": [
+        "src/hooks/notifs/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Notifications"
+      }
+    },
+    {
+      "name": "ToolPermissions",
+      "description": "Tool permission state machine and decision-making system. PermissionContext defines the core permission state, queues, and types. Three handler strategies dispatch permission requests based on execution mode: interactiveHandler shows permission dialogs to the user, coordinatorHandler delegates to a coordinator worker, and swarmWorkerHandler handles swarm worker authorization. Includes centralized permission analytics/telemetry logging and the useCanUseTool hook that orchestrates the full permission decision flow with classifier and interactive fallback.",
+      "edges": [
+        {
+          "target": "Notifications",
+          "type": "data-flow",
+          "description": "Permission decisions and approval state changes surface as user-facing notifications"
+        }
+      ],
+      "codeScope": [
+        "src/hooks/toolPermission/",
+        "src/hooks/useCanUseTool.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ToolPermissions"
+      }
+    },
+    {
+      "name": "SuggestionsAndTypeahead",
+      "description": "Autocomplete, suggestion, and recommendation system. fileSuggestions provides git-aware file completion with ignore patterns. unifiedSuggestions merges files, MCP resources, and agent suggestions. useTypeahead implements multi-source typeahead with shell completions and path completion. renderPlaceholder generates placeholder text. usePromptSuggestion manages prompt speculation state. usePluginRecommendationBase provides the base for plugin install recommendations, used by useClaudeCodeHintRecommendation and useOfficialMarketplaceNotification for marketplace prompts.",
+      "edges": [
+        {
+          "target": "ConfigAndPlugins",
+          "type": "depends",
+          "description": "Typeahead and unified suggestions read merged tools, commands, and MCP resource lists from config hooks"
+        }
+      ],
+      "codeScope": [
+        "src/hooks/fileSuggestions.ts",
+        "src/hooks/unifiedSuggestions.ts",
+        "src/hooks/renderPlaceholder.ts",
+        "src/hooks/useTypeahead.tsx",
+        "src/hooks/usePromptSuggestion.ts",
+        "src/hooks/useClaudeCodeHintRecommendation.tsx",
+        "src/hooks/usePluginRecommendationBase.tsx",
+        "src/hooks/useOfficialMarketplaceNotification.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SuggestionsAndTypeahead"
+      }
+    },
+    {
+      "name": "ConfigAndPlugins",
+      "description": "Hooks for dynamic configuration, settings reactivity, and plugin/tool merging. useDynamicConfig fetches GrowthBook feature flag values. useSettings reads reactive settings from AppState. useSettingsChange subscribes to settings file changes. useSkillsChange reacts to skill/command filesystem and GrowthBook changes. useManagePlugins loads plugins with delisting and flagging support. useMainLoopModel resolves model names with alias support. useMergedClients/Commands/Tools merge initial MCP clients, commands, and tools with dynamically discovered ones, applying deny rules.",
+      "edges": [],
+      "codeScope": [
+        "src/hooks/useDynamicConfig.ts",
+        "src/hooks/useSettings.ts",
+        "src/hooks/useSettingsChange.ts",
+        "src/hooks/useSkillsChange.ts",
+        "src/hooks/useManagePlugins.ts",
+        "src/hooks/useMainLoopModel.ts",
+        "src/hooks/useMergedClients.ts",
+        "src/hooks/useMergedCommands.ts",
+        "src/hooks/useMergedTools.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ConfigAndPlugins"
+      }
+    },
+    {
+      "name": "DataAndTasks",
+      "description": "Hooks for data fetching, task management, and miscellaneous operational concerns. Includes git diff data fetching with stats and hunks (useDiffData), turn-level diff computation from file edits (useTurnDiffs), TodoV2 task list management with file watching (useTasksV2), task directory watching and claiming (useTaskListWatcher), cron-scheduled task management (useScheduledTasks), background task keyboard navigation, assistant history paging for remote sessions, file history snapshot restoration from transcripts, away summary generation after inactivity, PR review status polling, API key verification, issue flag banner detection, desktop notification after timeout, update notification tracking, and skill improvement survey state.",
+      "edges": [
+        {
+          "target": "ConfigAndPlugins",
+          "type": "depends",
+          "description": "Task and data hooks read settings and dynamic config for polling intervals and feature flags"
+        },
+        {
+          "target": "SessionLifecycle",
+          "type": "data-flow",
+          "description": "Scheduled tasks and background task navigation feed into session command processing"
+        }
+      ],
+      "codeScope": [
+        "src/hooks/useDiffData.ts",
+        "src/hooks/useTurnDiffs.ts",
+        "src/hooks/useBackgroundTaskNavigation.ts",
+        "src/hooks/useAssistantHistory.ts",
+        "src/hooks/useAwaySummary.ts",
+        "src/hooks/usePrStatus.ts",
+        "src/hooks/useTasksV2.ts",
+        "src/hooks/useTaskListWatcher.ts",
+        "src/hooks/useScheduledTasks.ts",
+        "src/hooks/useFileHistorySnapshotInit.ts",
+        "src/hooks/useApiKeyVerification.ts",
+        "src/hooks/useIssueFlagBanner.ts",
+        "src/hooks/useNotifyAfterTimeout.ts",
+        "src/hooks/useUpdateNotification.ts",
+        "src/hooks/useSkillImprovementSurvey.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "DataAndTasks"
+      }
+    }
+  ]
+}

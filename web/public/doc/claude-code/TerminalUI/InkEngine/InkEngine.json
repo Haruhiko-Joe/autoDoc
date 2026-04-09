@@ -1,0 +1,318 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "9032d05c-6619-49ef-9342-dfa5d2363c7a",
+  "description": "The customized Ink rendering engine: a full terminal UI framework built on React reconciliation. Contains the DOM model, Yoga-based layout engine, text measurement and string-width utilities, ANSI output generation, screen rendering pipeline (frame → render-node → output → screen), event system (keyboard, click, focus, terminal events), terminal I/O abstraction (CSI/OSC/SGR escape sequences, tokenizer, parser), bidirectional text and selection handling, focus management, search highlighting, and primitive components (Box, Text, ScrollBox, Button, Link). Also includes the Ink entry point (src/ink.ts) and native TypeScript bindings for Yoga layout and color-diff.",
+  "codeScope": [
+    "src/ink/",
+    "src/ink.ts",
+    "src/native-ts/"
+  ],
+  "nodes": [
+    {
+      "name": "InkCore",
+      "description": "The central Ink application orchestrator and React reconciler. The Ink class (ink.tsx) is the heart of the engine: it owns the render loop, manages the React fiber root via a custom reconciler, coordinates frame scheduling, handles stdin/stdout streams, dispatches keyboard and mouse events, manages selection state, and drives the full render cycle (reconcile → layout → render-to-output → diff → write). Also includes the root/instance management entry points and the public re-export barrel (src/ink.ts).",
+      "edges": [
+        {
+          "target": "DOMAndStyles",
+          "type": "depends",
+          "description": "The reconciler creates and mutates DOMElement nodes; the Ink class traverses the DOM tree to drive rendering"
+        },
+        {
+          "target": "Layout",
+          "type": "calls",
+          "description": "Triggers Yoga layout calculation on the DOM tree before each render frame"
+        },
+        {
+          "target": "RenderPipeline",
+          "type": "calls",
+          "description": "Invokes createRenderer to produce frames, then applies selection overlays and search highlights to the screen buffer"
+        },
+        {
+          "target": "TerminalIO",
+          "type": "calls",
+          "description": "Writes rendered frames to the terminal via log-update and terminal escape sequences (cursor, alt-screen, mouse tracking)"
+        },
+        {
+          "target": "EventSystem",
+          "type": "calls",
+          "description": "Parses raw stdin into KeyboardEvents and dispatches click/hover events through the event system"
+        },
+        {
+          "target": "SelectionAndFocus",
+          "type": "calls",
+          "description": "Manages selection state, focus movement, and search highlight application during the render cycle"
+        },
+        {
+          "target": "PrimitiveComponents",
+          "type": "composes",
+          "description": "Wraps user-provided React trees in the App component which provides contexts (stdin, terminal size, focus, clock)"
+        }
+      ],
+      "codeScope": [
+        "src/ink/ink.tsx",
+        "src/ink/root.ts",
+        "src/ink/reconciler.ts",
+        "src/ink/instances.ts",
+        "src/ink/constants.ts",
+        "src/ink.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "InkCore"
+      }
+    },
+    {
+      "name": "DOMAndStyles",
+      "description": "The virtual DOM model that the React reconciler operates on. Defines DOMElement and DOMNode types representing the ink-root/ink-box/ink-text node tree, with attributes, child management, dirty tracking, and event handler storage. Includes the style system (Styles/TextStyles types mapping CSS-like properties to Yoga layout attributes), text node squashing for contiguous inline text, and a node cache for tracking layout-invalidated nodes.",
+      "edges": [
+        {
+          "target": "Layout",
+          "type": "depends",
+          "description": "Each DOMElement holds a LayoutNode (Yoga node) and style properties are applied to configure layout behavior"
+        },
+        {
+          "target": "TextMeasurement",
+          "type": "calls",
+          "description": "DOM text measurement callbacks use measureText and wrapText to determine text node dimensions"
+        }
+      ],
+      "codeScope": [
+        "src/ink/dom.ts",
+        "src/ink/styles.ts",
+        "src/ink/squash-text-nodes.ts",
+        "src/ink/node-cache.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "DOMAndStyles"
+      }
+    },
+    {
+      "name": "Layout",
+      "description": "Yoga-based layout engine providing CSS flexbox layout for the terminal. Wraps the Yoga layout library with a TypeScript abstraction layer: LayoutNode interface for creating/configuring nodes, layout calculation, computed geometry (position, size, padding, border), flex direction, alignment, wrapping, and display modes. Includes geometry types (Size, Position) and the Yoga integration layer that bridges native Yoga bindings to the engine interface.",
+      "edges": [
+        {
+          "target": "NativeBindings",
+          "type": "depends",
+          "description": "Uses the native TypeScript Yoga layout bindings for the actual flexbox calculation engine"
+        }
+      ],
+      "codeScope": [
+        "src/ink/layout/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Layout"
+      }
+    },
+    {
+      "name": "RenderPipeline",
+      "description": "The multi-stage rendering pipeline that transforms the DOM tree into terminal screen output. Stages: (1) Frame type definitions and empty frame creation, (2) renderer orchestrates per-frame rendering from DOM to screen, (3) render-node-to-output recursively walks the DOM tree producing positioned text with borders and padding, (4) Output manages a 2D grid of styled text cells, (5) Screen is a cell-based buffer with style/char/hyperlink pooling and diff-based updates, (6) render-to-screen applies positioned highlights, (7) render-border draws box borders, (8) colorize applies ANSI color attributes, (9) optimizer deduplicates redundant style sequences. Contains ~4,600 lines with multiple distinct pipeline stages.",
+      "edges": [
+        {
+          "target": "DOMAndStyles",
+          "type": "depends",
+          "description": "Reads the DOM tree structure and style properties to generate output"
+        },
+        {
+          "target": "Layout",
+          "type": "depends",
+          "description": "Reads computed layout geometry (position, size) from Yoga nodes to position content"
+        },
+        {
+          "target": "TextMeasurement",
+          "type": "calls",
+          "description": "Uses string width calculations and text wrapping for content measurement during rendering"
+        },
+        {
+          "target": "TerminalIO",
+          "type": "calls",
+          "description": "Uses SGR style encoding and ANSI tokenization for screen cell styling and diff output generation"
+        }
+      ],
+      "codeScope": [
+        "src/ink/frame.ts",
+        "src/ink/renderer.ts",
+        "src/ink/render-node-to-output.ts",
+        "src/ink/render-border.ts",
+        "src/ink/render-to-screen.ts",
+        "src/ink/output.ts",
+        "src/ink/screen.ts",
+        "src/ink/colorize.ts",
+        "src/ink/optimizer.ts"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "RenderPipeline"
+      }
+    },
+    {
+      "name": "TerminalIO",
+      "description": "Terminal I/O abstraction layer encompassing escape sequence generation, parsing, and terminal interaction. The termio/ subdirectory provides a complete library of terminal escape sequences: CSI (cursor movement, erase, scroll regions, cursor styles), OSC (hyperlinks, clipboard, tab status, iTerm2 progress), SGR (text styling — colors, bold, italic, underline, etc.), DEC private modes (alt screen, mouse tracking, focus events), and ESC sequences. Includes a tokenizer and parser for reading terminal responses, the Terminal type abstraction for write operations and capability detection, log-update for intelligent screen diffing and writing, terminal querier for DA1/background color queries, and focus state tracking.",
+      "edges": [],
+      "codeScope": [
+        "src/ink/termio/",
+        "src/ink/terminal.ts",
+        "src/ink/terminal-querier.ts",
+        "src/ink/terminal-focus-state.ts",
+        "src/ink/log-update.ts",
+        "src/ink/clearTerminal.ts",
+        "src/ink/termio.ts",
+        "src/ink/supports-hyperlinks.ts"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "TerminalIO"
+      }
+    },
+    {
+      "name": "EventSystem",
+      "description": "The event model and dispatch infrastructure for user interaction. Defines event types (Event base, InputEvent, KeyboardEvent, ClickEvent, FocusEvent, TerminalEvent, TerminalFocusEvent) and the EventEmitter for pub/sub communication. Includes the event dispatcher for capture/bubble phase propagation through the DOM tree, event handler type definitions, keypress parsing that converts raw terminal input bytes into structured key objects (handling special keys, modifiers, escape sequences, mouse reports), and hit testing that maps screen coordinates to DOM elements for click/hover dispatch.",
+      "edges": [
+        {
+          "target": "DOMAndStyles",
+          "type": "depends",
+          "description": "The event dispatcher traverses the DOM tree for capture/bubble phase propagation; hit-test maps coordinates to DOM elements"
+        },
+        {
+          "target": "TerminalIO",
+          "type": "depends",
+          "description": "Keypress parsing consumes raw terminal escape sequences to produce structured key events"
+        }
+      ],
+      "codeScope": [
+        "src/ink/events/",
+        "src/ink/parse-keypress.ts",
+        "src/ink/hit-test.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "EventSystem"
+      }
+    },
+    {
+      "name": "TextMeasurement",
+      "description": "Text measurement and string-width utility collection. Provides Unicode-aware string width calculation (handling full-width CJK characters, combining marks, emoji, ANSI escape stripping), text wrapping with ANSI-awareness (wrapAnsi), plain text wrapping, tab stop expansion, widest-line calculation, max-width helpers for layout, element measurement API, and a line-width cache for performance optimization.",
+      "edges": [],
+      "codeScope": [
+        "src/ink/stringWidth.ts",
+        "src/ink/measure-text.ts",
+        "src/ink/widest-line.ts",
+        "src/ink/wrapAnsi.ts",
+        "src/ink/wrap-text.ts",
+        "src/ink/tabstops.ts",
+        "src/ink/get-max-width.ts",
+        "src/ink/measure-element.ts",
+        "src/ink/line-width-cache.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TextMeasurement"
+      }
+    },
+    {
+      "name": "SelectionAndFocus",
+      "description": "Selection handling, focus management, bidirectional text support, and search highlighting. Selection (917 lines) implements mouse-driven text selection with word/line selection modes, scroll-aware anchor tracking, clipboard copy of selected text, and visual overlay application to the screen buffer. Focus management tracks focusable elements and handles tab/shift-tab navigation. Bidi support handles bidirectional text reordering for RTL content. Search highlighting applies pattern-matched highlight overlays to rendered output.",
+      "edges": [
+        {
+          "target": "RenderPipeline",
+          "type": "depends",
+          "description": "Selection and search overlays are applied to the Screen buffer after rendering; reads screen cell data for text extraction"
+        },
+        {
+          "target": "TextMeasurement",
+          "type": "depends",
+          "description": "Bidi and selection logic uses string-width utilities for correct character boundary handling"
+        }
+      ],
+      "codeScope": [
+        "src/ink/selection.ts",
+        "src/ink/bidi.ts",
+        "src/ink/focus.ts",
+        "src/ink/searchHighlight.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SelectionAndFocus"
+      }
+    },
+    {
+      "name": "PrimitiveComponents",
+      "description": "The built-in React component library for terminal UI rendering. Core layout components: Box (flexbox container with borders, padding, overflow), Text (styled text with color, bold, italic, wrapping), ScrollBox (scrollable container with mouse wheel and keyboard navigation). Interactive components: Button (clickable with hover/active states), Link (OSC 8 hyperlinks). Infrastructure components: App (root wrapper providing contexts), AlternateScreen (alt-screen mode), ErrorOverview (error boundary display). Context providers: AppContext, StdinContext, TerminalSizeContext, TerminalFocusContext, ClockContext, CursorDeclarationContext. Utility components: Spacer, Newline, NoSelect, RawAnsi.",
+      "edges": [
+        {
+          "target": "DOMAndStyles",
+          "type": "depends",
+          "description": "Components render to ink-box/ink-text DOM elements with style properties"
+        },
+        {
+          "target": "InkHooks",
+          "type": "depends",
+          "description": "Components use Ink hooks (useInput, useStdin, useApp) for interactivity and state"
+        },
+        {
+          "target": "EventSystem",
+          "type": "depends",
+          "description": "Button and ScrollBox attach event handlers (onClick, onScroll) that are dispatched through the event system"
+        }
+      ],
+      "codeScope": [
+        "src/ink/components/",
+        "src/ink/Ansi.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PrimitiveComponents"
+      }
+    },
+    {
+      "name": "InkHooks",
+      "description": "Core React hooks providing the Ink framework's programmatic API for components. useInput handles keyboard input with key matching. useStdin provides raw stdin stream access and raw mode toggling. useApp exposes the Ink instance (exit, focus manager). useAnimationFrame and useInterval provide frame-synchronized and timed callbacks. useSelection enables text selection integration. useTerminalFocus and useTerminalViewport track terminal focus and viewport state. useTerminalTitle sets the terminal window title. useTabStatus manages tab/window status indicators. useDeclaredCursor allows components to declare cursor positions. useSearchHighlight integrates search pattern highlighting. Also includes useTerminalNotification for terminal bell/notification triggers.",
+      "edges": [
+        {
+          "target": "PrimitiveComponents",
+          "type": "depends",
+          "description": "Hooks consume React contexts provided by the App component and context providers"
+        },
+        {
+          "target": "EventSystem",
+          "type": "depends",
+          "description": "useInput subscribes to InputEvents from the event emitter for keyboard handling"
+        }
+      ],
+      "codeScope": [
+        "src/ink/hooks/",
+        "src/ink/useTerminalNotification.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "InkHooks"
+      }
+    },
+    {
+      "name": "NativeBindings",
+      "description": "Pure TypeScript ports of native (Rust/NAPI) modules, providing platform-independent implementations. Yoga layout bindings (2,700 lines): complete TypeScript implementation of the Yoga flexbox layout engine API including node creation, style configuration, layout calculation, and all enums (FlexDirection, Align, Justify, Wrap, Overflow, etc.). Color-diff (999 lines): CIEDE2000 color difference calculation for finding closest ANSI color matches from RGB values, used for terminal color approximation. File-index: fuzzy file search with scoring (used by other modules, bundled here as a native-ts binding).",
+      "edges": [],
+      "codeScope": [
+        "src/native-ts/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "NativeBindings"
+      }
+    },
+    {
+      "name": "Warn",
+      "description": "Minimal warning utility (9 lines) and the Ink instance warn function for logging non-fatal issues during rendering.",
+      "edges": [],
+      "codeScope": [
+        "src/ink/warn.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Warn"
+      }
+    }
+  ]
+}

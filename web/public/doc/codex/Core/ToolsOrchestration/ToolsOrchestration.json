@@ -1,0 +1,217 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "2fd8409c-ce89-410e-84e7-1eb29da68399",
+  "description": "Core 内部的工具分发与执行层。将模型请求的工具调用通过工具路由器进行路由，管理工具注册表（内置工具和动态工具），编排并行工具执行，执行工具级别的沙箱和网络审批策略，并托管各个工具处理器（shell、apply-patch、MCP、多智能体、JS REPL、文件操作、计划、工具建议等）及其执行运行时。",
+  "codeScope": [
+    "codex-rs/core/src/tools/",
+    "codex-rs/core/src/unified_exec/",
+    "codex-rs/core/src/exec.rs",
+    "codex-rs/core/src/exec_env.rs",
+    "codex-rs/core/src/shell.rs",
+    "codex-rs/core/src/shell_detect.rs",
+    "codex-rs/core/src/shell_snapshot.rs",
+    "codex-rs/core/src/command_canonicalization.rs",
+    "codex-rs/core/src/apply_patch.rs",
+    "codex-rs/core/src/user_shell_command.rs",
+    "codex-rs/core/src/function_tool.rs",
+    "codex-rs/core/src/web_search.rs"
+  ],
+  "nodes": [
+    {
+      "name": "ToolDispatch",
+      "description": "工具路由、注册和并行执行编排。ToolRouter 接收模型请求的工具调用，并通过 ToolRegistry 将其分发到相应的处理器。spec 模块构建完整的 ConfiguredToolSpec 条目集合（内置、MCP、动态、可发现），parallel 模块调度带有互斥锁保护的并发工具调用执行（用于变更类工具）。",
+      "edges": [
+        {
+          "target": "ApprovalAndSandboxing",
+          "type": "depends",
+          "description": "注册表分发的处理器在执行前调用 ToolOrchestrator 进行审批和沙箱强制执行"
+        },
+        {
+          "target": "Handlers",
+          "type": "calls",
+          "description": "注册表将工具名称映射到处理器实现并调用其 handle() 方法"
+        },
+        {
+          "target": "ToolEvents",
+          "type": "calls",
+          "description": "注册表运行工具使用前/后钩子，并在每次分发时发出生命周期事件"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core/src/tools/mod.rs",
+        "codex-rs/core/src/tools/router.rs",
+        "codex-rs/core/src/tools/router_tests.rs",
+        "codex-rs/core/src/tools/registry.rs",
+        "codex-rs/core/src/tools/registry_tests.rs",
+        "codex-rs/core/src/tools/spec.rs",
+        "codex-rs/core/src/tools/spec_tests.rs",
+        "codex-rs/core/src/tools/parallel.rs",
+        "codex-rs/core/src/tools/context.rs",
+        "codex-rs/core/src/tools/context_tests.rs",
+        "codex-rs/core/src/function_tool.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ToolDispatch"
+      }
+    },
+    {
+      "name": "ApprovalAndSandboxing",
+      "description": "审批流程、沙箱选择和网络策略强制执行层。ToolOrchestrator 为每个工具运行时调用驱动一个“审批 → 沙箱选择 → 尝试 → 升级重试“的序列。sandboxing 模块定义了 ToolRuntime trait 和沙箱原语（SandboxAttempt、ApprovalStore、ExecApprovalRequirement）。network_approval 模块拦截出站网络请求，通过代理延迟或立即解析审批，并与 guardian reviewer 集成以进行自动化决策。",
+      "edges": [
+        {
+          "target": "Runtimes",
+          "type": "calls",
+          "description": "Orchestrator 在审批和沙箱设置完成后，对具体运行时实现调用 ToolRuntime.run()"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core/src/tools/orchestrator.rs",
+        "codex-rs/core/src/tools/sandboxing.rs",
+        "codex-rs/core/src/tools/sandboxing_tests.rs",
+        "codex-rs/core/src/tools/network_approval.rs",
+        "codex-rs/core/src/tools/network_approval_tests.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ApprovalAndSandboxing"
+      }
+    },
+    {
+      "name": "ToolEvents",
+      "description": "工具生命周期事件发射。向会话事件流发出 ExecCommandBegin/End、PatchApplyBegin/End 和 TurnDiff 事件。提供 ToolEventCtx 辅助器，将事件绑定到特定的工具调用（session、turn、call_id），并管理 SharedTurnDiffTracker 以在一个回合内跟踪累积的文件变更。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/core/src/tools/events.rs",
+        "codex-rs/core/src/web_search.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ToolEvents"
+      }
+    },
+    {
+      "name": "Handlers",
+      "description": "各个工具处理器的具体实现。每个处理器实现 ToolHandler trait 以处理特定的工具调用类型：shell 命令执行、apply-patch 文件编辑、多智能体生成与通信（v1 和 v2 协议）、JS REPL 委托、unified-exec 长时间运行进程、MCP 工具/资源调用、目录列表、文件读取、图片查看、计划管理、工具搜索/建议、权限请求、用户输入请求、code-mode 执行/等待、动态工具分发、智能体作业管理和测试同步。",
+      "edges": [
+        {
+          "target": "Runtimes",
+          "type": "calls",
+          "description": "Shell 和 apply-patch 处理器委托给对应的 ToolRuntime 实现进行沙箱感知执行"
+        },
+        {
+          "target": "ToolEvents",
+          "type": "calls",
+          "description": "处理器通过 ToolEventCtx 为 shell 命令和补丁应用发出开始/结束事件"
+        },
+        {
+          "target": "JsRepl",
+          "type": "calls",
+          "description": "JS REPL 处理器委托给 JsReplKernel 进行 JavaScript 求值"
+        },
+        {
+          "target": "UnifiedExec",
+          "type": "calls",
+          "description": "Unified-exec 处理器通过 unified_exec 进程管理器管理长时间运行的进程"
+        },
+        {
+          "target": "CodeModeHandlers",
+          "type": "calls",
+          "description": "Code-mode 执行/等待处理器委托给 code-mode 服务进行基于 Deno 的执行会话"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core/src/tools/handlers/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "Handlers"
+      }
+    },
+    {
+      "name": "Runtimes",
+      "description": "与 orchestrator 的审批/沙箱/重试循环集成的具体 ToolRuntime 实现。Shell 运行时对命令进行分词，用 shell-snapshot sourcing 进行包装，构建 SandboxCommand，并通过 exec.rs 进行输出流式执行。Apply-patch 运行时解析统一差异格式并在沙箱约束下将其应用到文件系统。Unified-exec 运行时桥接到 unified_exec 进程管理器用于长时间运行的命令执行。包含 Unix 权限提升逻辑和 zsh fork 后端优化。",
+      "edges": [
+        {
+          "target": "ShellExecution",
+          "type": "calls",
+          "description": "Shell 和 apply-patch 运行时使用 exec.rs 原语进行进程生成、I/O 流式传输和超时管理"
+        },
+        {
+          "target": "ApprovalAndSandboxing",
+          "type": "depends",
+          "description": "运行时实现 sandboxing 模块中定义的 ToolRuntime trait，并从 orchestrator 接收 SandboxAttempt"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core/src/tools/runtimes/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Runtimes"
+      }
+    },
+    {
+      "name": "JsRepl",
+      "description": "JavaScript REPL 引擎。管理一个持久化的基于 Deno 的 JS 运行时（JsReplKernel），用于求值模型提交的代码片段。包含 kernel.js 引导脚本和用于基于 AST 的表达式检测的 Meriyah 解析器。处理会话生命周期（启动、求值、重置）、输出捕获、错误格式化，以及允许 JS 代码调用其他 Codex 工具的 codex.tool() 桥接。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/core/src/tools/js_repl/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "JsRepl"
+      }
+    },
+    {
+      "name": "CodeModeHandlers",
+      "description": "用于执行/等待交互模式的 Code-mode 工具处理器。execute 处理器在长时间运行的 Deno 会话中启动代码，wait 处理器轮询完成状态，response adapter 将原始执行输出转换为模型可消费的格式。这些处理器将工具层桥接到由 CodeMode 兄弟模块管理的 code-mode 运行时服务。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/core/src/tools/code_mode/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "CodeModeHandlers"
+      }
+    },
+    {
+      "name": "UnifiedExec",
+      "description": "长时间运行进程管理子系统。提供 ProcessManager 用于跨工具调用跟踪命名进程，异步 watcher 用于监控进程输出和退出，HeadTailBuffer 用于捕获大输出的头部和尾部，以及进程状态跟踪。支持 unified-exec 工具的 start/check/kill 生命周期，用于超出单次工具调用的命令运行。",
+      "edges": [
+        {
+          "target": "ShellExecution",
+          "type": "calls",
+          "description": "使用 exec 原语进行子进程生成和管理"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core/src/unified_exec/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "UnifiedExec"
+      }
+    },
+    {
+      "name": "ShellExecution",
+      "description": "底层 shell 检测、配置和命令执行原语。exec.rs 提供核心 exec_command 函数，用于生成带有超时管理、输出流式传输（交错的 stdout/stderr）和进程组清理的沙箱化子进程。辅助模块处理 shell 类型检测（bash/zsh/powershell/sh/cmd）、shell 环境快照捕获与恢复、命令规范化显示、用户 shell 命令构造，以及用于调用 patch 二进制文件的 apply_patch 辅助器。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/core/src/exec.rs",
+        "codex-rs/core/src/exec_env.rs",
+        "codex-rs/core/src/shell.rs",
+        "codex-rs/core/src/shell_detect.rs",
+        "codex-rs/core/src/shell_snapshot.rs",
+        "codex-rs/core/src/command_canonicalization.rs",
+        "codex-rs/core/src/apply_patch.rs",
+        "codex-rs/core/src/user_shell_command.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ShellExecution"
+      }
+    }
+  ]
+}

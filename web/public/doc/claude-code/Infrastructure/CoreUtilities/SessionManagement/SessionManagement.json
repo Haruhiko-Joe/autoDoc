@@ -1,0 +1,122 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "fa72c006-66cb-415a-98b3-a0f289ecd02f",
+  "description": "Session lifecycle and persistence layer. SessionStorage (5000+ lines) handles conversation read/write/append with file-based storage, tail-read optimization, and portable export. Includes session start orchestration, restore from prior sessions, environment snapshot capture, activity tracking, session titling, URL generation, and session state management.",
+  "codeScope": [
+    "src/utils/sessionActivity.ts",
+    "src/utils/sessionEnvironment.ts",
+    "src/utils/sessionRestore.ts",
+    "src/utils/sessionStart.ts",
+    "src/utils/sessionState.ts",
+    "src/utils/sessionStorage.ts",
+    "src/utils/sessionStoragePortable.ts",
+    "src/utils/sessionTitle.ts",
+    "src/utils/sessionUrl.ts"
+  ],
+  "nodes": [
+    {
+      "name": "StorageEngine",
+      "description": "Core session persistence layer (5900 lines across 2 files). SessionStorage handles the full conversation JSONL lifecycle: transcript read/write/append, project directory management, session file resolution with worktree fallback, message chain building with parentUuid linking, compact-boundary-aware transcript loading, session listing/searching/enrichment, agent transcript management, metadata persistence (title, tag, PR links, agent settings, mode, worktree state), remote session hydration, and session file cleanup. SessionStoragePortable provides pure Node.js utilities shared with the VS Code extension: JSON string field extraction without full parsing, head/tail file reading for lightweight session metadata, first-prompt extraction from JSONL, path sanitization, project directory discovery, and a chunked forward-read transcript loader that strips attribution snapshots and handles compact boundaries in a single pass.",
+      "edges": [],
+      "codeScope": [
+        "src/utils/sessionStorage.ts",
+        "src/utils/sessionStoragePortable.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "StorageEngine"
+      }
+    },
+    {
+      "name": "SessionRestore",
+      "description": "Session resume and continuation orchestration (550 lines). Handles the full restore pipeline when resuming a prior conversation: restoring file history, attribution, and context-collapse state from log snapshots, extracting todo state from transcripts, computing standalone agent context, restoring agent definitions and model overrides from the resumed session, refreshing agent definitions on coordinator/normal mode switches, worktree working directory restoration with stale-path fallback, mid-session worktree exit cleanup, and the main processResumedConversation flow that coordinates session ID setup, metadata restoration, mode persistence, and initial AppState computation for both CLI and interactive resume paths.",
+      "edges": [
+        {
+          "target": "StorageEngine",
+          "type": "calls",
+          "description": "Uses adoptResumedSessionFile, resetSessionFilePointer, restoreSessionMetadata, saveMode, saveWorktreeState, and recordContentReplacement for session file and metadata management during resume"
+        }
+      ],
+      "codeScope": [
+        "src/utils/sessionRestore.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SessionRestore"
+      }
+    },
+    {
+      "name": "SessionStartHooks",
+      "description": "Session start and setup hook orchestration (233 lines). Runs SessionStart and Setup lifecycle hooks at session creation, resume, clear, and compact events. Loads plugin hooks (with managed-hooks-only policy gating), executes hooks sequentially collecting result messages, additional context attachments, initial user messages, and file watch paths. Includes detailed error handling with user-facing guidance for network, permission, and configuration failures. Provides the takeInitialUserMessage side-channel for hooks that inject a first prompt.",
+      "edges": [],
+      "codeScope": [
+        "src/utils/sessionStart.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SessionStartHooks"
+      }
+    },
+    {
+      "name": "SessionState",
+      "description": "Session state machine and external metadata notification (151 lines). Tracks the session lifecycle state (idle, running, requires_action) with listener-based change notification. Manages RequiresActionDetails for permission prompts and tool execution blocking, pushes pending_action and task_summary into SessionExternalMetadata for CCR sidebar and push notifications, mirrors permission mode changes, and optionally emits session_state_changed events to the SDK event stream for non-CCR consumers like scmuxd and VS Code.",
+      "edges": [],
+      "codeScope": [
+        "src/utils/sessionState.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SessionState"
+      }
+    },
+    {
+      "name": "SessionActivity",
+      "description": "Refcount-based session activity tracking with heartbeat keepalives (134 lines). Brackets active work (API streaming, tool execution) with start/stop calls that manage a reference count. When activity transitions from idle to active, starts a 30-second periodic heartbeat timer that fires a registered callback to keep remote containers alive (gated behind CLAUDE_CODE_REMOTE_SEND_KEEPALIVES). Logs idle gaps after 30 seconds of inactivity for diagnostics. Includes cleanup registration for shutdown logging.",
+      "edges": [],
+      "codeScope": [
+        "src/utils/sessionActivity.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SessionActivity"
+      }
+    },
+    {
+      "name": "SessionEnvironment",
+      "description": "Session environment script capture and management (167 lines). Builds a composite shell script from hook-generated environment files (Setup, SessionStart, CwdChanged, FileChanged hooks) and the CLAUDE_ENV_FILE parent-process variable. Scripts are loaded from the per-session env directory, sorted by hook type priority and index for deterministic ordering, and cached in memory with explicit invalidation. Supports clearing CWD-scoped env files on directory change. Windows is not yet supported.",
+      "edges": [],
+      "codeScope": [
+        "src/utils/sessionEnvironment.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SessionEnvironment"
+      }
+    },
+    {
+      "name": "SessionTitle",
+      "description": "AI-generated session title generation via Haiku (130 lines). Extracts conversation text from message arrays (skipping meta and non-human messages, tail-slicing to 1000 chars), sends it to the Haiku model with a structured JSON schema prompt requesting a 3-7 word sentence-case title, and parses the response with Zod validation. Standalone module with minimal dependencies to avoid pulling React/chalk/git chains into the SDK print path.",
+      "edges": [],
+      "codeScope": [
+        "src/utils/sessionTitle.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SessionTitle"
+      }
+    },
+    {
+      "name": "SessionUrl",
+      "description": "Session resume identifier parsing (65 lines). Parses session identifiers that can be a plain UUID, a URL containing session ingress information, or a .jsonl file path. Handles Windows absolute path edge cases where C:\\\\ paths are misinterpreted as URLs. Returns a structured ParsedSessionUrl with session ID, ingress URL, and type flags.",
+      "edges": [],
+      "codeScope": [
+        "src/utils/sessionUrl.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SessionUrl"
+      }
+    }
+  ]
+}

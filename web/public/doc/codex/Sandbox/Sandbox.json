@@ -1,0 +1,144 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "ff71fc68-7a7f-4512-bede-fd8b9d4979f4",
+  "description": "命令执行的安全层。提供操作系统级别的沙箱机制（Linux namespaces/landlock/seccomp、macOS seatbelt、Windows 受限令牌）、执行策略执行、网络代理、进程加固，以及中介所有子进程启动的 exec-server。",
+  "codeScope": [
+    "codex-rs/sandboxing/",
+    "codex-rs/exec-server/",
+    "codex-rs/execpolicy/",
+    "codex-rs/execpolicy-legacy/",
+    "codex-rs/linux-sandbox/",
+    "codex-rs/windows-sandbox-rs/",
+    "codex-rs/process-hardening/",
+    "codex-rs/network-proxy/",
+    "codex-rs/shell-escalation/"
+  ],
+  "nodes": [
+    {
+      "name": "Sandboxing",
+      "description": "核心沙箱编排库，抽象了平台特定的沙箱机制。定义 SandboxType（macOS seatbelt、Linux seccomp/landlock/bwrap、Windows 受限令牌），提供用于生命周期管理的 SandboxManager，并通过 policy_transforms 将高级沙箱策略转换为平台特定的执行命令。",
+      "edges": [
+        {
+          "target": "NetworkProxy",
+          "type": "depends",
+          "description": "使用网络代理配置类型在沙箱环境中设置网络访问控制"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/sandboxing/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Sandboxing"
+      }
+    },
+    {
+      "name": "ExecServer",
+      "description": "独立的 JSON-RPC 服务器（基于 WebSocket），中介所有子进程的启动。提供客户端库和二进制文件，用于远程进程生命周期管理（初始化、执行、读取、写入、终止）以及文件系统操作。通过统一的 ExecProcess 和 ExecBackend trait 抽象了本地和远程执行。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/exec-server/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ExecServer"
+      }
+    },
+    {
+      "name": "ExecPolicy",
+      "description": "基于 Starlark 的执行策略引擎，评估特定命令是否允许运行。使用以类 Python 的 Starlark DSL 编写的前缀匹配规则，支持静态策略文件和动态规则追加，用于执行和网络决策。包含用于策略检查的 CLI 工具。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/execpolicy/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ExecPolicy"
+      }
+    },
+    {
+      "name": "ExecPolicyLegacy",
+      "description": "使用基于正则表达式的模式匹配和详细参数解析的旧版执行策略验证器。根据程序规格验证 exec 调用，支持禁止程序列表、sed 命令解析和位置参数匹配。正在被新版 ExecPolicy crate 取代。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/execpolicy-legacy/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ExecPolicyLegacy"
+      }
+    },
+    {
+      "name": "LinuxSandbox",
+      "description": "Linux 专用的沙箱启动器，叠加多重保护机制：bubblewrap（bwrap）用于命名空间隔离、Landlock 用于内核级文件系统访问控制、seccomp 用于系统调用过滤，以及代理路由用于网络流量。作为 Linux 上沙箱化命令执行的入口点。",
+      "edges": [
+        {
+          "target": "Sandboxing",
+          "type": "depends",
+          "description": "使用核心编排库中的沙箱抽象（SandboxType、SandboxCommand）"
+        },
+        {
+          "target": "NetworkProxy",
+          "type": "calls",
+          "description": "通过 proxy_routing 模块将沙箱内的网络流量路由至代理"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/linux-sandbox/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "LinuxSandbox"
+      }
+    },
+    {
+      "name": "WindowsSandbox",
+      "description": "Windows 沙箱实现，使用受限令牌、基于 ACL 的文件系统隔离和提升权限的进程管理。实现只读和工作区写入模式，具有能力 SID 跟踪、防火墙集成、conpty 终端模拟，以及沙箱用户身份和权限的多阶段设置编排。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/windows-sandbox-rs/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "WindowsSandbox"
+      }
+    },
+    {
+      "name": "ProcessHardening",
+      "description": "最小化的 pre-main() 加固库，禁用核心转储、阻止调试器附加（ptrace/prctl），并清除危险的环境变量（LD_PRELOAD、DYLD_*）以防止进程被篡改。跨平台支持，以 Unix 实现为主。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/process-hardening/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ProcessHardening"
+      }
+    },
+    {
+      "name": "NetworkProxy",
+      "description": "网络代理，执行域名白名单/黑名单策略，支持 HTTP 和 SOCKS5。提供完整和受限（只读 GET/HEAD/OPTIONS）模式、用于 HTTPS 检查的 MITM 功能、TLS 证书管理、可配置的策略钩子，以及被阻止请求的审计日志。基于 rama 代理框架构建。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/network-proxy/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "NetworkProxy"
+      }
+    },
+    {
+      "name": "ShellEscalation",
+      "description": "仅限 Unix 的 shell 提权协议，通过 execve 包装器拦截修补版 shell（zsh）发起的 exec() 调用。服务器监听 CODEX_ESCALATE_SOCKET，对每个 exec 请求作出运行/提权/拒绝的决策，从而在 shell 层面实现集中化的策略执行。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/shell-escalation/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ShellEscalation"
+      }
+    }
+  ]
+}

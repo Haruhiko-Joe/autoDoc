@@ -1,0 +1,204 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "d238e19f-3147-4383-bcc0-a53bae82109f",
+  "description": "一个 HTTP/WebSocket 服务器，将 Codex 智能体作为本地服务暴露给 IDE 扩展（VS Code、Cursor、Windsurf）和桌面应用。处理会话管理、身份认证、通过 WebSocket 的实时流式传输以及后端 API 代理。",
+  "codeScope": [
+    "codex-rs/app-server/",
+    "codex-rs/app-server-client/",
+    "codex-rs/app-server-protocol/",
+    "codex-rs/app-server-test-client/",
+    "codex-rs/debug-client/"
+  ],
+  "nodes": [
+    {
+      "name": "Protocol",
+      "description": "共享协议定义 crate（codex-app-server-protocol）。定义所有 JSON-RPC 消息类型、v1 和 v2 API 版本的请求/响应/通知枚举、线程历史构建、通用数据模型（线程、回合、审批、权限、协作模式）、实验性 API 注解系统，以及用于 IDE 客户端生成的 TypeScript/JSON Schema 导出工具。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/app-server-protocol/src/lib.rs",
+        "codex-rs/app-server-protocol/src/protocol/",
+        "codex-rs/app-server-protocol/src/jsonrpc_lite.rs",
+        "codex-rs/app-server-protocol/src/experimental_api.rs",
+        "codex-rs/app-server-protocol/src/export.rs",
+        "codex-rs/app-server-protocol/src/schema_fixtures.rs",
+        "codex-rs/app-server-protocol/src/bin/",
+        "codex-rs/app-server-protocol/tests/",
+        "codex-rs/app-server-protocol/Cargo.toml"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "Protocol"
+      }
+    },
+    {
+      "name": "Transport",
+      "description": "连接传输层，处理客户端如何连接到服务器。实现 stdio（单客户端管道）和 WebSocket（多客户端 TCP）传输、WebSocket 身份认证（能力令牌、签名 JWT bearer 令牌）、用于 TUI/exec 界面的进程内嵌入式传输、出站消息路由和序列化，以及连接生命周期管理（打开/关闭/断开）。",
+      "edges": [
+        {
+          "target": "Protocol",
+          "type": "depends",
+          "description": "使用协议类型反序列化传入的 JSON-RPC 消息和序列化传出的消息"
+        },
+        {
+          "target": "RequestProcessing",
+          "type": "data-flow",
+          "description": "将解析后的 TransportEvent（连接打开/关闭、传入消息）转发给消息处理器"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/app-server/src/transport/",
+        "codex-rs/app-server/src/in_process.rs",
+        "codex-rs/app-server/src/outgoing_message.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Transport"
+      }
+    },
+    {
+      "name": "RequestProcessing",
+      "description": "核心请求分发和事件处理引擎。包含将传入的 JSON-RPC 请求路由到处理器的顶层 MessageProcessor、实现所有 RPC 方法处理器的 CodexMessageProcessor（线程启动/恢复/中断、回合管理、账户/认证、模型列表、审批、插件等）、将内部 Codex 核心事件转换为客户端协议通知的定制事件处理层，以及包括回合跟踪、中断队列和线程状态监控在内的每线程状态管理。",
+      "edges": [
+        {
+          "target": "Protocol",
+          "type": "depends",
+          "description": "使用协议请求/响应/通知类型进行所有 RPC 分发和事件转换"
+        },
+        {
+          "target": "ServerAPIs",
+          "type": "calls",
+          "description": "将特定请求（配置读写、文件系统操作、模糊搜索、命令执行）委托给 API 模块"
+        },
+        {
+          "target": "Transport",
+          "type": "calls",
+          "description": "通过 OutgoingMessageSender 向已连接的客户端发送出站消息和通知"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/app-server/src/message_processor.rs",
+        "codex-rs/app-server/src/message_processor/",
+        "codex-rs/app-server/src/codex_message_processor.rs",
+        "codex-rs/app-server/src/codex_message_processor/",
+        "codex-rs/app-server/src/bespoke_event_handling.rs",
+        "codex-rs/app-server/src/thread_state.rs",
+        "codex-rs/app-server/src/thread_status.rs"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "RequestProcessing"
+      }
+    },
+    {
+      "name": "ServerAPIs",
+      "description": "辅助服务模块，实现通过 JSON-RPC 暴露的专用服务端功能。包括配置读写 API、文件系统操作（读/写/监视/复制/删除）、带会话管理的模糊文件搜索、带 PTY 支持和调整大小/终止功能的 shell 命令执行、动态工具注册、模型列表、外部智能体配置检测/导入，以及消息内容过滤。",
+      "edges": [
+        {
+          "target": "Protocol",
+          "type": "depends",
+          "description": "使用协议参数/响应类型用于每个 API 端点"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/app-server/src/config_api.rs",
+        "codex-rs/app-server/src/external_agent_config_api.rs",
+        "codex-rs/app-server/src/fs_api.rs",
+        "codex-rs/app-server/src/fs_watch.rs",
+        "codex-rs/app-server/src/fuzzy_file_search.rs",
+        "codex-rs/app-server/src/command_exec.rs",
+        "codex-rs/app-server/src/dynamic_tools.rs",
+        "codex-rs/app-server/src/models.rs",
+        "codex-rs/app-server/src/filters.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ServerAPIs"
+      }
+    },
+    {
+      "name": "ServerCore",
+      "description": "服务器入口点和主事件循环编排器。包含 run_main/run_main_with_transport，将传输接收器、处理器循环和出站路由器作为并发 tokio 任务连接在一起。处理出错时的配置加载回退、配置警告收集、OpenTelemetry/tracing 初始化、带信号处理的优雅关闭（排空正在运行的回合然后断开连接），以及二进制入口点。",
+      "edges": [
+        {
+          "target": "Transport",
+          "type": "calls",
+          "description": "启动传输接收器（stdio 或 WebSocket）并管理出站消息路由任务"
+        },
+        {
+          "target": "RequestProcessing",
+          "type": "calls",
+          "description": "创建 MessageProcessor 并运行分发传入消息的处理器事件循环"
+        },
+        {
+          "target": "Protocol",
+          "type": "depends",
+          "description": "使用协议类型进行配置警告和 JSON-RPC 消息判别"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/app-server/src/lib.rs",
+        "codex-rs/app-server/src/main.rs",
+        "codex-rs/app-server/src/error_code.rs",
+        "codex-rs/app-server/src/server_request_error.rs",
+        "codex-rs/app-server/src/app_server_tracing.rs",
+        "codex-rs/app-server/Cargo.toml"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ServerCore"
+      }
+    },
+    {
+      "name": "ClientLib",
+      "description": "共享的进程内和远程客户端库 crate（codex-app-server-client）。为 TUI、exec 和外部使用者提供基于 app-server 的类型化异步门面。进程内路径通过有界通道和背压信号包装嵌入式服务器。远程路径通过 WebSocket 连接进行进程外通信。两种路径都处理初始化握手、类型化请求/通知分发、服务器请求解析和带超时的优雅关闭。",
+      "edges": [
+        {
+          "target": "Protocol",
+          "type": "depends",
+          "description": "使用协议请求/响应/通知类型进行类型化分发"
+        },
+        {
+          "target": "Transport",
+          "type": "calls",
+          "description": "进程内客户端使用 in_process 传输；远程客户端通过 WebSocket 连接"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/app-server-client/src/lib.rs",
+        "codex-rs/app-server-client/src/remote.rs",
+        "codex-rs/app-server-client/Cargo.toml"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ClientLib"
+      }
+    },
+    {
+      "name": "DevTools",
+      "description": "开发者测试和调试工具。包括带有模拟模型服务器、认证 fixture 和全面 v2 API 测试覆盖的集成测试套件（约 60 个测试文件）；提供编程测试工具的 app-server-test-client crate；以及 debug-client crate——一个最小化的交互式 CLI，用于生成 codex 进程、通过 stdio 发送 JSON-RPC 并渲染服务器事件，供手动测试和调试使用。",
+      "edges": [
+        {
+          "target": "Protocol",
+          "type": "depends",
+          "description": "测试客户端和调试客户端构造和解析协议消息"
+        },
+        {
+          "target": "ServerCore",
+          "type": "calls",
+          "description": "集成测试启动服务器并进行端到端测试"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/app-server/tests/",
+        "codex-rs/app-server/src/bin/",
+        "codex-rs/app-server-test-client/",
+        "codex-rs/debug-client/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "DevTools"
+      }
+    }
+  ]
+}

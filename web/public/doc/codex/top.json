@@ -1,0 +1,339 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "a45ce7b1-91f7-41a2-b98a-b1e8ce0b674f",
+  "description": "Codex 是 OpenAI 的开源编程智能体，在本地机器上运行。它结合了强大的 Rust 原生智能体核心与丰富的终端 UI 以及多平台 SDK 支持，使开发者能够通过与 AI 对话来编写、调试和重构代码——所有操作都在沙箱化的安全执行环境中进行。",
+  "nodes": [
+    {
+      "name": "Core",
+      "description": "智能体编排引擎——Codex 的大脑。管理用户、LLM 和工具之间的对话循环：向模型提供商发送提示、解析工具调用响应、分发执行任务、跟踪会话状态，并协调端到端的智能体工作流，包括 code-mode 和 collaboration-mode 策略。",
+      "codeScope": [
+        "codex-rs/core/",
+        "codex-rs/protocol/",
+        "codex-rs/state/",
+        "codex-rs/code-mode/",
+        "codex-rs/collaboration-mode-templates/"
+      ],
+      "edges": [
+        {
+          "type": "calls",
+          "target": "ModelProviders",
+          "description": "向 LLM 提供商 API 发送提示并接收补全结果/工具调用"
+        },
+        {
+          "type": "calls",
+          "target": "ToolSystem",
+          "description": "分发模型请求的工具调用（shell 执行、apply-patch、文件搜索、MCP 工具）"
+        },
+        {
+          "type": "calls",
+          "target": "Sandbox",
+          "description": "通过沙箱化的 exec-server 执行 shell 命令以实现安全隔离"
+        },
+        {
+          "type": "depends",
+          "target": "Config",
+          "description": "读取用户配置、功能开关、指令和钩子来控制智能体行为"
+        },
+        {
+          "type": "depends",
+          "target": "Auth",
+          "description": "获取 API 调用所需的认证凭据"
+        },
+        {
+          "type": "calls",
+          "target": "MCP",
+          "description": "管理 MCP 服务器连接，用于外部工具的发现和调用"
+        },
+        {
+          "type": "calls",
+          "target": "Observability",
+          "description": "发送遥测 span、分析事件和反馈信号"
+        }
+      ]
+    },
+    {
+      "name": "TUI",
+      "description": "基于 ratatui 和 crossterm 构建的终端用户界面。提供交互式聊天体验，包括 Markdown 渲染、语法高亮的 diff 显示、工具调用审批对话框、文件搜索、模型/连接器选择以及流式输出展示——全部在终端内完成。",
+      "codeScope": [
+        "codex-rs/tui/"
+      ],
+      "edges": [
+        {
+          "type": "calls",
+          "target": "Core",
+          "description": "通过提交用户消息并接收流式事件来驱动智能体核心"
+        },
+        {
+          "type": "depends",
+          "target": "Config",
+          "description": "读取 UI 行为、审批预设和显示偏好的配置"
+        },
+        {
+          "type": "depends",
+          "target": "Auth",
+          "description": "发起登录流程并检查认证状态"
+        }
+      ]
+    },
+    {
+      "name": "CLI",
+      "description": "主命令行入口——`codex` 二进制文件。解析参数和子命令，分发到 TUI 进行交互模式、到 codex-exec 进行非交互/无头模式，或启动 app-server、MCP 服务器及其他子命令工作流。",
+      "codeScope": [
+        "codex-rs/cli/",
+        "codex-rs/exec/",
+        "codex-rs/arg0/"
+      ],
+      "edges": [
+        {
+          "type": "calls",
+          "target": "TUI",
+          "description": "启动交互式 TUI 以提供默认的 `codex` 体验"
+        },
+        {
+          "type": "calls",
+          "target": "Core",
+          "description": "在非交互（exec）模式下运行无头智能体会话"
+        },
+        {
+          "type": "calls",
+          "target": "AppServer",
+          "description": "通过 `codex app` 子命令启动 app-server"
+        },
+        {
+          "type": "calls",
+          "target": "MCP",
+          "description": "通过 mcp-server 子命令将 Codex 作为 MCP 服务器启动"
+        },
+        {
+          "type": "depends",
+          "target": "Sandbox",
+          "description": "在交给智能体核心之前配置沙箱策略"
+        }
+      ]
+    },
+    {
+      "name": "AppServer",
+      "description": "HTTP/WebSocket 服务器，将 Codex 智能体作为本地服务暴露给 IDE 扩展（VS Code、Cursor、Windsurf）和桌面应用。处理会话管理、认证、通过 WebSocket 的实时流式传输以及后端 API 代理。",
+      "codeScope": [
+        "codex-rs/app-server/",
+        "codex-rs/app-server-client/",
+        "codex-rs/app-server-protocol/",
+        "codex-rs/app-server-test-client/",
+        "codex-rs/debug-client/"
+      ],
+      "edges": [
+        {
+          "type": "calls",
+          "target": "Core",
+          "description": "创建和管理执行用户请求的智能体会话"
+        },
+        {
+          "type": "depends",
+          "target": "Auth",
+          "description": "验证 JWT 令牌并管理基于 ChatGPT 的认证"
+        },
+        {
+          "type": "depends",
+          "target": "Config",
+          "description": "读取服务器和智能体配置"
+        },
+        {
+          "type": "calls",
+          "target": "Observability",
+          "description": "上报服务器指标和会话分析数据"
+        }
+      ]
+    },
+    {
+      "name": "ToolSystem",
+      "description": "工具框架，负责定义、发现和执行智能体工具。包括内置工具（shell 执行、apply-patch、文件搜索、code-mode、JS REPL）、MCP 桥接工具、技能定义、动态工具注册以及工具审批/建议管线。",
+      "codeScope": [
+        "codex-rs/tools/",
+        "codex-rs/core-skills/",
+        "codex-rs/skills/",
+        "codex-rs/apply-patch/",
+        "codex-rs/file-search/",
+        "codex-rs/shell-command/"
+      ],
+      "edges": [
+        {
+          "type": "calls",
+          "target": "Sandbox",
+          "description": "将 shell 命令执行路由到沙箱以进行策略执行"
+        },
+        {
+          "type": "calls",
+          "target": "MCP",
+          "description": "调用来自外部服务器的 MCP 提供的工具"
+        },
+        {
+          "type": "depends",
+          "target": "Config",
+          "description": "读取工具配置和审批策略"
+        }
+      ]
+    },
+    {
+      "name": "Sandbox",
+      "description": "命令执行的安全层。提供操作系统级沙箱（Linux namespaces/landlock/seccomp、macOS seatbelt、Windows 受限令牌）、执行策略执行、网络代理、进程加固以及调解所有子进程创建的 exec-server。",
+      "codeScope": [
+        "codex-rs/sandboxing/",
+        "codex-rs/exec-server/",
+        "codex-rs/execpolicy/",
+        "codex-rs/execpolicy-legacy/",
+        "codex-rs/linux-sandbox/",
+        "codex-rs/windows-sandbox-rs/",
+        "codex-rs/process-hardening/",
+        "codex-rs/network-proxy/",
+        "codex-rs/shell-escalation/"
+      ],
+      "edges": [
+        {
+          "type": "depends",
+          "target": "Config",
+          "description": "从用户设置中读取执行策略和沙箱配置"
+        }
+      ]
+    },
+    {
+      "name": "ModelProviders",
+      "description": "LLM 集成层。实现 OpenAI Responses API（HTTP 和 WebSocket）、Realtime API 以及本地模型提供商（Ollama、LM Studio）的 API 客户端。处理请求构建、流式响应解析、速率限制、模型发现以及用于协议桥接的 responses-api-proxy。",
+      "codeScope": [
+        "codex-rs/codex-api/",
+        "codex-rs/connectors/",
+        "codex-rs/model-provider-info/",
+        "codex-rs/models-manager/",
+        "codex-rs/ollama/",
+        "codex-rs/lmstudio/",
+        "codex-rs/backend-client/",
+        "codex-rs/codex-backend-openapi-models/",
+        "codex-rs/responses-api-proxy/",
+        "codex-rs/codex-client/",
+        "codex-rs/response-debug-context/"
+      ],
+      "edges": [
+        {
+          "type": "depends",
+          "target": "Auth",
+          "description": "使用认证令牌来授权对模型提供商的 API 请求"
+        },
+        {
+          "type": "depends",
+          "target": "Config",
+          "description": "读取模型提供商配置、基础 URL 和提供商选择偏好"
+        }
+      ]
+    },
+    {
+      "name": "MCP",
+      "description": "Model Context Protocol 集成——包含客户端和服务端两侧。客户端从外部 MCP 服务器发现和调用工具。服务端将 Codex 本身作为兼容 MCP 的工具提供商暴露，使其能够与其他支持 MCP 的应用集成。",
+      "codeScope": [
+        "codex-rs/codex-mcp/",
+        "codex-rs/mcp-server/",
+        "codex-rs/rmcp-client/"
+      ],
+      "edges": [
+        {
+          "type": "calls",
+          "target": "Core",
+          "description": "MCP 服务端将传入的工具请求委托给 Codex 智能体核心"
+        },
+        {
+          "type": "depends",
+          "target": "Config",
+          "description": "读取 MCP 服务器配置和连接设置"
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "description": "认证和凭据管理。支持 ChatGPT 账户登录（OAuth 浏览器流程）、API 密钥认证、通过操作系统密钥环的安全凭据存储以及敏感配置值的加密密钥管理。",
+      "codeScope": [
+        "codex-rs/login/",
+        "codex-rs/chatgpt/",
+        "codex-rs/keyring-store/",
+        "codex-rs/secrets/"
+      ],
+      "edges": []
+    },
+    {
+      "name": "Config",
+      "description": "配置、自定义和扩展层。管理分层配置文件（全局/项目/本地）、AGENTS.md 指令、带渐进式发布的功能开关、生命周期钩子（工具执行前/后）以及用于扩展 Codex 行为的插件系统。",
+      "codeScope": [
+        "codex-rs/config/",
+        "codex-rs/instructions/",
+        "codex-rs/features/",
+        "codex-rs/rollout/",
+        "codex-rs/hooks/",
+        "codex-rs/plugin/"
+      ],
+      "edges": []
+    },
+    {
+      "name": "CloudTasks",
+      "description": "Codex Web 的远程云端智能体任务管理。提供用于创建、监控和审查在 OpenAI 基础设施上运行的云端智能体任务的 TUI，具备 diff 审查和环境检测功能。",
+      "codeScope": [
+        "codex-rs/cloud-tasks/",
+        "codex-rs/cloud-tasks-client/",
+        "codex-rs/cloud-tasks-mock-client/",
+        "codex-rs/cloud-requirements/"
+      ],
+      "edges": [
+        {
+          "type": "calls",
+          "target": "Auth",
+          "description": "通过 ChatGPT 后端认证来管理云端任务"
+        },
+        {
+          "type": "depends",
+          "target": "Config",
+          "description": "读取云端任务配置和环境设置"
+        }
+      ]
+    },
+    {
+      "name": "SDKs",
+      "description": "用于编程访问 Codex 的客户端 SDK 和分发包。包括 TypeScript SDK（@openai/codex-sdk）用于基于 Codex API 进行开发、Python SDK 用于 app-server 集成，以及 npm CLI 封装包（@openai/codex）用于分发 Rust 二进制文件。",
+      "codeScope": [
+        "sdk/",
+        "codex-cli/"
+      ],
+      "edges": [
+        {
+          "type": "calls",
+          "target": "AppServer",
+          "description": "Python SDK 通过 WebSocket/HTTP API 与 app-server 通信"
+        },
+        {
+          "type": "composes",
+          "target": "CLI",
+          "description": "npm 包封装并分发 Rust CLI 二进制文件"
+        }
+      ]
+    },
+    {
+      "name": "Observability",
+      "description": "遥测、分析和反馈基础设施。集成 OpenTelemetry 进行分布式追踪，收集使用分析事件，并管理用户反馈提交——为智能体行为和性能提供可观测性。",
+      "codeScope": [
+        "codex-rs/otel/",
+        "codex-rs/analytics/",
+        "codex-rs/feedback/"
+      ],
+      "edges": []
+    },
+    {
+      "name": "SharedUtils",
+      "description": "工作区内共享的通用工具 crate。提供基础能力，包括路径处理、PTY 管理、图像处理、字符串工具、缓存、流解析、模板渲染、终端检测、ANSI 转义处理和异步辅助工具。",
+      "codeScope": [
+        "codex-rs/utils/",
+        "codex-rs/ansi-escape/",
+        "codex-rs/async-utils/",
+        "codex-rs/git-utils/",
+        "codex-rs/terminal-detection/",
+        "codex-rs/stdio-to-uds/"
+      ],
+      "edges": []
+    }
+  ]
+}

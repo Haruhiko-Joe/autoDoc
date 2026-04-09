@@ -1,0 +1,67 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "6cfca551-1821-41ba-8993-024542cbe4cd",
+  "description": "Shell command execution tools providing Claude with the ability to run commands in Bash and PowerShell. BashTool (~10k lines) includes command parsing, security validation (injection detection, dangerous command warnings), permission checking (command-pattern matching, sed edit detection), sandbox enforcement, path validation, read-only mode, and comment labeling. PowerShellTool (~7.8k lines) mirrors the same architecture for Windows PowerShell with CLM type handling, git safety checks, and PowerShell-specific permission and security models.",
+  "codeScope": [
+    "src/tools/BashTool/",
+    "src/tools/PowerShellTool/",
+    "src/tools/REPLTool/"
+  ],
+  "nodes": [
+    {
+      "name": "BashTool",
+      "description": "Unix/macOS shell command execution tool (~12k lines, 18 files). Defines the Bash tool's entry point, input schema, execution logic (command spawning via Shell.exec, timeout handling, background task management, progress streaming), and output processing (truncation, image detection, large result storage). Orchestrates the full command lifecycle by delegating to specialized subsystems for security validation, permission checking, path validation, sed edit detection, read-only enforcement, sandbox decisions, and destructive command warnings. Also provides shared utilities (shouldUseSandbox, image output helpers, UI components) reused by PowerShellTool.",
+      "edges": [
+        {
+          "target": "PowerShellTool",
+          "type": "data-flow",
+          "description": "Exports shared utilities (shouldUseSandbox, BackgroundHint, buildImageToolResult, resetCwdIfOutsideProject, stripEmptyLines) consumed by PowerShellTool"
+        }
+      ],
+      "codeScope": [
+        "src/tools/BashTool/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "BashTool"
+      }
+    },
+    {
+      "name": "PowerShellTool",
+      "description": "Windows PowerShell command execution tool (~8.9k lines, 14 files). Mirrors BashTool's architecture for PowerShell: tool definition with command execution, timeout and background task handling, plus PowerShell-specific subsystems for CLM (Constrained Language Mode) type handling, git safety checks, cmdlet-based permission matching, PowerShell security validation, path validation with UNC/drive-letter support, and read-only enforcement via cmdlet whitelisting. Reuses BashTool's sandbox detection and output utilities.",
+      "edges": [
+        {
+          "target": "BashTool",
+          "type": "depends",
+          "description": "Imports shouldUseSandbox, BackgroundHint UI component, and image/output utility functions from BashTool"
+        }
+      ],
+      "codeScope": [
+        "src/tools/PowerShellTool/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "PowerShellTool"
+      }
+    },
+    {
+      "name": "REPLMode",
+      "description": "REPL mode configuration and primitive tool registry (~85 lines, 2 files). Defines the REPL_TOOL_NAME constant, isReplModeEnabled() feature toggle (based on USER_TYPE and environment variables), the REPL_ONLY_TOOLS set listing tools hidden from direct model use when REPL mode is active, and getReplPrimitiveTools() which lazily assembles the list of tools accessible within the REPL VM context.",
+      "edges": [
+        {
+          "target": "BashTool",
+          "type": "depends",
+          "description": "Includes BashTool in the primitive tools list and references BASH_TOOL_NAME in REPL_ONLY_TOOLS"
+        }
+      ],
+      "codeScope": [
+        "src/tools/REPLTool/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "REPLMode"
+      }
+    }
+  ]
+}

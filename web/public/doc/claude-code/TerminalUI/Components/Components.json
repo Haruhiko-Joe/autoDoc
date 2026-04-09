@@ -1,0 +1,406 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "d0fe78a5-4675-49fd-a160-cff1260d629c",
+  "description": "100+ React components forming the application's visual layer. Includes message display (assistant text, thinking, tool use, system messages), prompt input with autocomplete and suggestions, structured diff views, dialog system (settings, permissions, auth, onboarding, cost threshold, export), design system primitives (Dialog, Tabs, ProgressBar, ThemedText, StatusIcon), status line and progress indicators, agent management UI, memory visualization, MCP server dialogs, team/swarm views, task lists, settings panels, and specialized features like highlighted code blocks, markdown rendering, and virtual message list with scrolling.",
+  "codeScope": [
+    "src/components/",
+    "src/outputStyles/"
+  ],
+  "nodes": [
+    {
+      "name": "DesignSystem",
+      "description": "Reusable UI primitives and building blocks used across the application. Includes Dialog, Tabs, ProgressBar, ThemedText, ThemedBox, StatusIcon, Divider, Pane, ListItem, Byline, KeyboardShortcutHint, LoadingState, Ratchet, FuzzyPicker, ThemeProvider, color utilities, CustomSelect (single/multi-select dropdowns with keyboard navigation), TreeSelect, OrderedList components, and a multi-step wizard framework (WizardProvider, WizardDialogLayout, WizardNavigationFooter).",
+      "edges": [],
+      "codeScope": [
+        "src/components/design-system/",
+        "src/components/CustomSelect/",
+        "src/components/ui/",
+        "src/components/wizard/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "DesignSystem"
+      }
+    },
+    {
+      "name": "MessageDisplay",
+      "description": "The conversation message rendering pipeline. Contains 30+ message type components (assistant text, thinking, tool use, system messages, user prompts, tool results, errors, rate limits, attachments, plan approvals, advisor messages, bash I/O, channel/team messages), the VirtualMessageList for efficient scrolling, MessageRow layout, Message dispatcher, message actions, compact summaries, tool use result display (rejected, error, canceled states), thinking toggle, and grouped tool use content.",
+      "edges": [
+        {
+          "target": "DesignSystem",
+          "type": "depends",
+          "description": "Uses ThemedText, StatusIcon, Dialog, and other design primitives for message rendering"
+        },
+        {
+          "target": "DiffAndCodeRendering",
+          "type": "depends",
+          "description": "Message components embed HighlightedCode, Markdown, and StructuredDiff views for rich content display"
+        },
+        {
+          "target": "StatusAndProgress",
+          "type": "depends",
+          "description": "Tool use messages display spinners and progress indicators while tools are executing"
+        }
+      ],
+      "codeScope": [
+        "src/components/messages/",
+        "src/components/Message.tsx",
+        "src/components/Messages.tsx",
+        "src/components/MessageRow.tsx",
+        "src/components/MessageResponse.tsx",
+        "src/components/MessageModel.tsx",
+        "src/components/MessageTimestamp.tsx",
+        "src/components/MessageSelector.tsx",
+        "src/components/VirtualMessageList.tsx",
+        "src/components/messageActions.tsx",
+        "src/components/CompactSummary.tsx",
+        "src/components/FallbackToolUseErrorMessage.tsx",
+        "src/components/FallbackToolUseRejectedMessage.tsx",
+        "src/components/FileEditToolUpdatedMessage.tsx",
+        "src/components/FileEditToolUseRejectedMessage.tsx",
+        "src/components/NotebookEditToolUseRejectedMessage.tsx",
+        "src/components/InterruptedByUser.tsx",
+        "src/components/ThinkingToggle.tsx",
+        "src/components/OffscreenFreeze.tsx"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "MessageDisplay"
+      }
+    },
+    {
+      "name": "PromptInput",
+      "description": "User input area with autocomplete, suggestions, and multi-modal text entry. Includes the main PromptInput component with footer (suggestions, mode indicators, stash notices, queued commands, help menu), history search input, voice indicator, notification badges, shimmered input animation, issue flag banners, input modes, paste handling, truncation logic, and the underlying TextInput/BaseTextInput/VimTextInput primitives plus SearchBox.",
+      "edges": [
+        {
+          "target": "DesignSystem",
+          "type": "depends",
+          "description": "Uses ThemedText, KeyboardShortcutHint, and other design primitives in the input area"
+        },
+        {
+          "target": "StatusAndProgress",
+          "type": "depends",
+          "description": "Displays mode indicators and progress states in the prompt footer"
+        }
+      ],
+      "codeScope": [
+        "src/components/PromptInput/",
+        "src/components/TextInput.tsx",
+        "src/components/BaseTextInput.tsx",
+        "src/components/VimTextInput.tsx",
+        "src/components/SearchBox.tsx",
+        "src/components/ContextSuggestions.tsx",
+        "src/components/ContextVisualization.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PromptInput"
+      }
+    },
+    {
+      "name": "PermissionUI",
+      "description": "Tool permission approval dialogs for every tool type. Contains the PermissionPrompt orchestrator, PermissionDialog wrapper, and 14+ tool-specific permission request components (Bash, FileEdit, FileWrite, Filesystem, PowerShell, SedEdit, NotebookEdit, WebFetch, Skill, AskUserQuestion, EnterPlanMode, ExitPlanMode, ComputerUse, Sandbox), plus permission rule explanations, decision debug info, worker badges, and shared shell permission helpers.",
+      "edges": [
+        {
+          "target": "DesignSystem",
+          "type": "depends",
+          "description": "Uses Dialog, ThemedText, and ListItem components for permission prompt layout"
+        },
+        {
+          "target": "DiffAndCodeRendering",
+          "type": "depends",
+          "description": "File edit and notebook edit permission requests show diffs of proposed changes"
+        }
+      ],
+      "codeScope": [
+        "src/components/permissions/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "PermissionUI"
+      }
+    },
+    {
+      "name": "DiffAndCodeRendering",
+      "description": "Rich content rendering components for code, diffs, and markdown. Includes HighlightedCode with syntax highlighting and fallback, StructuredDiff and StructuredDiffList for file change visualization with color coding, the diff dialog with file list and detail views, Markdown and MarkdownTable rendering, FileEditToolDiff for inline edit previews, and FilePathLink/ClickableImageRef for interactive content references.",
+      "edges": [
+        {
+          "target": "DesignSystem",
+          "type": "depends",
+          "description": "Uses ThemedText, Tabs, and Box primitives for diff and code display layout"
+        }
+      ],
+      "codeScope": [
+        "src/components/diff/",
+        "src/components/StructuredDiff/",
+        "src/components/HighlightedCode/",
+        "src/components/Markdown.tsx",
+        "src/components/MarkdownTable.tsx",
+        "src/components/StructuredDiff.tsx",
+        "src/components/StructuredDiffList.tsx",
+        "src/components/FileEditToolDiff.tsx",
+        "src/components/HighlightedCode.tsx",
+        "src/components/FilePathLink.tsx",
+        "src/components/ClickableImageRef.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "DiffAndCodeRendering"
+      }
+    },
+    {
+      "name": "StatusAndProgress",
+      "description": "Status line, spinners, and progress indicators. Contains the StatusLine component (bottom bar with model, cost, token count), StatusNotices for alerts, the Spinner system (SpinnerGlyph, ShimmerChar, FlashingChar, GlimmerMessage, TeammateSpinnerTree/Line, stalled/shimmer animations), ToolUseLoader, BashModeProgress, AgentProgressLine, CoordinatorAgentStatus for multi-agent status, and effort callout/indicator components.",
+      "edges": [
+        {
+          "target": "DesignSystem",
+          "type": "depends",
+          "description": "Uses ThemedText, ProgressBar, and StatusIcon for status display"
+        }
+      ],
+      "codeScope": [
+        "src/components/Spinner/",
+        "src/components/StatusLine.tsx",
+        "src/components/StatusNotices.tsx",
+        "src/components/Spinner.tsx",
+        "src/components/BashModeProgress.tsx",
+        "src/components/AgentProgressLine.tsx",
+        "src/components/CoordinatorAgentStatus.tsx",
+        "src/components/ToolUseLoader.tsx",
+        "src/components/EffortCallout.tsx",
+        "src/components/EffortIndicator.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "StatusAndProgress"
+      }
+    },
+    {
+      "name": "AgentManagement",
+      "description": "Agent definition and management UI. Includes the AgentsList, AgentDetail, AgentEditor views, the multi-step CreateAgentWizard with 11 wizard steps (type, method, description, prompt, tools, model, memory, color, location, generate, confirm), agent validation, model/tool selectors, color picker, agent file utilities, and the SkillsMenu for browsing available skills.",
+      "edges": [
+        {
+          "target": "DesignSystem",
+          "type": "depends",
+          "description": "Uses Dialog, Tabs, FuzzyPicker, and wizard framework for agent management UI"
+        },
+        {
+          "target": "MCPManagement",
+          "type": "depends",
+          "description": "Agent tool selection references MCP tools available from connected servers"
+        }
+      ],
+      "codeScope": [
+        "src/components/agents/",
+        "src/components/skills/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "AgentManagement"
+      }
+    },
+    {
+      "name": "MCPManagement",
+      "description": "MCP (Model Context Protocol) server configuration and management UI. Includes MCPSettings panel, MCPListPanel for browsing servers, stdio/remote/agent server menus for adding servers, MCPToolListView and MCPToolDetailView for inspecting tools, CapabilitiesSection, ElicitationDialog for MCP prompts, MCPReconnect, reconnect helpers, parsing warnings, plus root-level MCP dialogs (approval, multiselect, desktop import, dialog copy) and LspRecommendation menu.",
+      "edges": [
+        {
+          "target": "DesignSystem",
+          "type": "depends",
+          "description": "Uses Dialog, Tabs, ListItem, and FuzzyPicker for MCP server management interfaces"
+        }
+      ],
+      "codeScope": [
+        "src/components/mcp/",
+        "src/components/MCPServerApprovalDialog.tsx",
+        "src/components/MCPServerDesktopImportDialog.tsx",
+        "src/components/MCPServerMultiselectDialog.tsx",
+        "src/components/MCPServerDialogCopy.tsx",
+        "src/components/LspRecommendation/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "MCPManagement"
+      }
+    },
+    {
+      "name": "TasksAndTeams",
+      "description": "Background task monitoring and team/coordinator views. Includes BackgroundTasksDialog, BackgroundTask/BackgroundTaskStatus displays, task-specific detail dialogs (AsyncAgent, RemoteSession, Shell, Dream, InProcessTeammate), ShellProgress, RemoteSessionProgress, task status utilities, render tool activity helpers, plus TeamsDialog, TeamStatus, TeammateViewHeader, and the TaskListV2 task list component.",
+      "edges": [
+        {
+          "target": "DesignSystem",
+          "type": "depends",
+          "description": "Uses Dialog, ListItem, and ProgressBar for task status display"
+        },
+        {
+          "target": "StatusAndProgress",
+          "type": "depends",
+          "description": "Task displays use spinner and progress indicator components for active task states"
+        }
+      ],
+      "codeScope": [
+        "src/components/tasks/",
+        "src/components/teams/",
+        "src/components/TeammateViewHeader.tsx",
+        "src/components/TaskListV2.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TasksAndTeams"
+      }
+    },
+    {
+      "name": "SettingsAndConfig",
+      "description": "Settings panels, configuration dialogs, and preference pickers. Contains the Settings panel (Config, Usage, Status tabs), sandbox configuration (SandboxSettings with config/dependencies/overrides/doctor tabs), hooks configuration UI (HooksConfigMenu with event/hook/matcher selection and prompt dialog), ManagedSettingsSecurityDialog, TrustDialog for workspace trust, model/theme/language/output-style pickers, invalid config/settings error dialogs, and the outputStyles loader.",
+      "edges": [
+        {
+          "target": "DesignSystem",
+          "type": "depends",
+          "description": "Uses Dialog, Tabs, ThemedText, and ListItem for settings panel layout"
+        }
+      ],
+      "codeScope": [
+        "src/components/Settings/",
+        "src/components/sandbox/",
+        "src/components/hooks/",
+        "src/components/ManagedSettingsSecurityDialog/",
+        "src/components/TrustDialog/",
+        "src/components/ModelPicker.tsx",
+        "src/components/ThemePicker.tsx",
+        "src/components/LanguagePicker.tsx",
+        "src/components/OutputStylePicker.tsx",
+        "src/components/InvalidConfigDialog.tsx",
+        "src/components/InvalidSettingsDialog.tsx",
+        "src/outputStyles/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SettingsAndConfig"
+      }
+    },
+    {
+      "name": "WelcomeAndOnboarding",
+      "description": "Welcome screen, onboarding flows, and first-run experiences. Contains the LogoV2 system (animated logo with Clawd mascot, welcome screen, feed columns with tips/notices, overage credit upsell, guest passes upsell, voice mode notice, channels notice, emergency tips, condensed logo), HelpV2 help screen (commands list, general help), Onboarding component, IDE onboarding/auto-connect dialogs, Chrome extension onboarding, DesktopUpsellStartup, and Passes for subscription pass display.",
+      "edges": [
+        {
+          "target": "DesignSystem",
+          "type": "depends",
+          "description": "Uses ThemedText, Dialog, and Tabs for onboarding layouts and welcome screen styling"
+        }
+      ],
+      "codeScope": [
+        "src/components/LogoV2/",
+        "src/components/HelpV2/",
+        "src/components/DesktopUpsell/",
+        "src/components/Passes/",
+        "src/components/Onboarding.tsx",
+        "src/components/ClaudeInChromeOnboarding.tsx",
+        "src/components/IdeOnboardingDialog.tsx",
+        "src/components/IdeAutoConnectDialog.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "WelcomeAndOnboarding"
+      }
+    },
+    {
+      "name": "AppShellAndDialogs",
+      "description": "Application wrapper, standalone dialogs, and miscellaneous UI components. Includes App.tsx entry component, FullscreenLayout, ExitFlow, SentryErrorBoundary, DevBar, ScrollKeybindingHandler, auto-updaters (AutoUpdater, NativeAutoUpdater, PackageManagerAutoUpdater), auth flows (ApproveApiKey, ConsoleOAuthFlow, AwsAuthStatusBox), feedback/survey system (FeedbackSurvey with transcript sharing, memory survey, post-compact survey), memory UI (MemoryFileSelector, MemoryUpdateNotification, MemoryUsageIndicator), teleport components (stash, error, progress, resume, repo mismatch), session components (SessionBackgroundHint, SessionPreview, ResumeTask), standalone dialogs (Export, CostThreshold, BypassPermissions, Bridge, IdleReturn, QuickOpen, GlobalSearch, HistorySearch, WorktreeExit, RemoteEnvironment, AutoModeOptIn, DevChannels, ChannelDowngrade, ClaudeMdExternalIncludes, Workflow), and utility components (TokenWarning, PrBadge, TagTabs, FastIcon, IdeStatusIndicator, ShowInIDEPrompt, Stats, LogSelector, grove, ClaudeCodeHint, KeybindingWarnings, ConfigurableShortcutHint, DiagnosticsDisplay, SkillImprovementSurvey, DesktopHandoff, RemoteCallout, ValidationErrorsList, CtrlOToExpand, PressEnterToContinue).",
+      "edges": [
+        {
+          "target": "DesignSystem",
+          "type": "depends",
+          "description": "Dialogs and UI components use Dialog, ThemedText, Tabs, and other design primitives"
+        },
+        {
+          "target": "MessageDisplay",
+          "type": "composes",
+          "description": "App wrapper and layout compose the message list and message display components"
+        },
+        {
+          "target": "PromptInput",
+          "type": "composes",
+          "description": "App layout includes the PromptInput component for user interaction"
+        },
+        {
+          "target": "StatusAndProgress",
+          "type": "composes",
+          "description": "App shell includes the StatusLine and progress indicators in the layout"
+        },
+        {
+          "target": "SettingsAndConfig",
+          "type": "calls",
+          "description": "Dialogs launch settings panels and config dialogs for user preferences"
+        }
+      ],
+      "codeScope": [
+        "src/components/App.tsx",
+        "src/components/FullscreenLayout.tsx",
+        "src/components/ExitFlow.tsx",
+        "src/components/SentryErrorBoundary.ts",
+        "src/components/DevBar.tsx",
+        "src/components/ScrollKeybindingHandler.tsx",
+        "src/components/AutoUpdater.tsx",
+        "src/components/AutoUpdaterWrapper.tsx",
+        "src/components/NativeAutoUpdater.tsx",
+        "src/components/PackageManagerAutoUpdater.tsx",
+        "src/components/FeedbackSurvey/",
+        "src/components/grove/",
+        "src/components/ClaudeCodeHint/",
+        "src/components/memory/",
+        "src/components/ApproveApiKey.tsx",
+        "src/components/ConsoleOAuthFlow.tsx",
+        "src/components/AwsAuthStatusBox.tsx",
+        "src/components/Feedback.tsx",
+        "src/components/SkillImprovementSurvey.tsx",
+        "src/components/TokenWarning.tsx",
+        "src/components/MemoryUsageIndicator.tsx",
+        "src/components/PrBadge.tsx",
+        "src/components/TagTabs.tsx",
+        "src/components/ConfigurableShortcutHint.tsx",
+        "src/components/FastIcon.tsx",
+        "src/components/SessionBackgroundHint.tsx",
+        "src/components/SessionPreview.tsx",
+        "src/components/PressEnterToContinue.tsx",
+        "src/components/Stats.tsx",
+        "src/components/LogSelector.tsx",
+        "src/components/ResumeTask.tsx",
+        "src/components/SandboxViolationExpandedView.tsx",
+        "src/components/IdeStatusIndicator.tsx",
+        "src/components/ShowInIDEPrompt.tsx",
+        "src/components/RemoteCallout.tsx",
+        "src/components/TeleportStash.tsx",
+        "src/components/TeleportError.tsx",
+        "src/components/TeleportProgress.tsx",
+        "src/components/TeleportResumeWrapper.tsx",
+        "src/components/TeleportRepoMismatchDialog.tsx",
+        "src/components/ExportDialog.tsx",
+        "src/components/CostThresholdDialog.tsx",
+        "src/components/BypassPermissionsModeDialog.tsx",
+        "src/components/BridgeDialog.tsx",
+        "src/components/IdleReturnDialog.tsx",
+        "src/components/QuickOpenDialog.tsx",
+        "src/components/GlobalSearchDialog.tsx",
+        "src/components/HistorySearchDialog.tsx",
+        "src/components/WorktreeExitDialog.tsx",
+        "src/components/RemoteEnvironmentDialog.tsx",
+        "src/components/AutoModeOptInDialog.tsx",
+        "src/components/DevChannelsDialog.tsx",
+        "src/components/ChannelDowngradeDialog.tsx",
+        "src/components/ClaudeMdExternalIncludesDialog.tsx",
+        "src/components/WorkflowMultiselectDialog.tsx",
+        "src/components/CtrlOToExpand.tsx",
+        "src/components/KeybindingWarnings.tsx",
+        "src/components/ValidationErrorsList.tsx",
+        "src/components/DesktopHandoff.tsx",
+        "src/components/DiagnosticsDisplay.tsx",
+        "src/components/SkillImprovementSurvey.tsx",
+        "src/components/shell/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "AppShellAndDialogs"
+      }
+    }
+  ]
+}

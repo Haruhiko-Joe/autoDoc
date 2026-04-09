@@ -1,0 +1,125 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "37685a7a-9ce9-4a0e-9b6a-c2ece8ba7ba8",
+  "description": "主 App 结构体及其事件循环——TUI 的核心状态机。拥有 ChatWidget、对话记录单元格、覆盖层状态、配置、遥测以及所有线程/会话簿记。在 select! 循环中处理 TuiEvent 和 AppEvent，将 AppCommand 分发到服务器会话，处理线程的启动/恢复/切换/分叉，管理多代理导航（AgentNavigationState），通过服务器适配器层适配 app-server 事件，跟踪线程切换的待处理交互重放，并解析 app-server 的审批/引出请求。仅 app.rs 就超过 431KB 加上 5 个子模块，需要进一步分解。",
+  "codeScope": [
+    "codex-rs/tui/src/app.rs",
+    "codex-rs/tui/src/app/agent_navigation.rs",
+    "codex-rs/tui/src/app/app_server_adapter.rs",
+    "codex-rs/tui/src/app/app_server_requests.rs",
+    "codex-rs/tui/src/app/loaded_threads.rs",
+    "codex-rs/tui/src/app/pending_interactive_replay.rs"
+  ],
+  "nodes": [
+    {
+      "name": "MainEventLoop",
+      "description": "巨型 App 结构体及其在 app.rs 中约 11K 行的实现。包含所有 TUI 状态字段的结构体定义，run() 异步入口点及其在 TuiEvent/AppEvent/线程事件上的 select! 循环，handle_event() 分发约 80 个 AppEvent 变体，handle_tui_event() 和 handle_key_event() 用于键盘路由，线程生命周期管理（启动/恢复/切换/分叉/关闭、通道管理、激活、快照重放、排空），向 app-server 提交 op，配置/策略管理（重建、功能标志、审批/沙箱覆盖、推理努力、个性），代理选择器操作，会话摘要，UI 清除/重置，外部编辑器集成，MCP 清单/插件/反馈/速率限制 RPC 辅助函数，以及大量测试。10929 行代码需要进一步分解。",
+      "edges": [
+        {
+          "target": "ServerEventAdapter",
+          "type": "calls",
+          "description": "将传入的 AppServerEvent 处理委托给适配器层中的 handle_app_server_event"
+        },
+        {
+          "target": "PendingRequests",
+          "type": "calls",
+          "description": "使用 PendingAppServerRequests 跟踪、关联和解析来自 app-server 的审批/引出请求"
+        },
+        {
+          "target": "InteractiveReplayTracking",
+          "type": "calls",
+          "description": "使用 PendingInteractiveReplayState 在线程切换快照重放期间过滤交互提示"
+        },
+        {
+          "target": "AgentNavigation",
+          "type": "calls",
+          "description": "管理 AgentNavigationState 用于多代理选择器排序、键盘循环切换和活动代理页脚标签"
+        },
+        {
+          "target": "LoadedThreadDiscovery",
+          "type": "calls",
+          "description": "调用 find_loaded_subagent_threads_for_primary 在线程恢复/切换时发现后代子代理线程"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/tui/src/app.rs"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "MainEventLoop"
+      }
+    },
+    {
+      "name": "ServerEventAdapter",
+      "description": "在迁移期间将 app-server 事件转换为 TUI 状态变更的混合适配器层。在 App 上实现 handle_app_server_event，路由 AppServerEvent 变体（Lagged、ServerNotification、ServerRequest、Disconnected）到相应的处理器。通知路由通过 server_notification_thread_target() 解析线程目标，并分发到主线程或按线程的事件通道。请求路由验证支持的请求类型，拒绝不支持的（DynamicToolCall、旧版 patch），并入队到正确的线程。还处理接收线程 ID 的协作代理元数据注入，以及全局通知（如账户/速率限制更新）。包含大量测试覆盖（约 900 行），涵盖所有通知类型的事件到单元格映射。",
+      "edges": [
+        {
+          "target": "PendingRequests",
+          "type": "calls",
+          "description": "调用 PendingAppServerRequests 上的 note_server_request() 注册传入的服务器请求以供后续解析"
+        },
+        {
+          "target": "InteractiveReplayTracking",
+          "type": "data-flow",
+          "description": "服务器请求也通过线程事件通道记录在 PendingInteractiveReplayState 中用于重放过滤"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/tui/src/app/app_server_adapter.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ServerEventAdapter"
+      }
+    },
+    {
+      "name": "PendingRequests",
+      "description": "跟踪和解析待处理的 app-server 审批、权限、用户输入和 MCP 引出请求。PendingAppServerRequests 维护按审批/项目/回合 ID 为键映射到 AppServerRequestId 的 HashMap。note_server_request() 注册传入请求并检测不支持的类型。take_resolution() 将出站核心协议 Op（ExecApproval、PatchApproval、RequestPermissionsResponse、UserInputAnswer、ResolveElicitation）关联回其 app-server 请求 ID 并序列化适当的响应类型。还桥接 ReviewDecision -> FileChangeApprovalDecision 和 ElicitationAction -> McpServerElicitationAction 转换。包含所有请求类型的全面测试。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/tui/src/app/app_server_requests.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PendingRequests"
+      }
+    },
+    {
+      "name": "InteractiveReplayTracking",
+      "description": "跟踪按线程事件缓冲区中哪些交互提示（exec 审批、文件变更审批、权限请求、用户输入请求、MCP 引出）仍未解析，以便线程切换重放可以过滤掉已解析的提示。PendingInteractiveReplayState 维护双重数据结构：HashSet 用于快照过滤期间的快速 call-ID 查找，以及按回合索引的 HashMap<String, Vec<String>> 队列，使 TurnComplete/TurnAborted 可以清除与回合绑定的过期提示。变更通过 note_event()、note_outbound_op() 和 note_evicted_event() 汇聚。用户输入移除按 turn_id 使用 FIFO，因为覆盖层按顺序回答排队的提示。还按 AppServerRequestId 跟踪待处理请求用于请求级解析。包含过滤和 FIFO 排序的测试。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/tui/src/app/pending_interactive_replay.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "InteractiveReplayTracking"
+      }
+    },
+    {
+      "name": "AgentNavigation",
+      "description": "多代理选择器排序和键盘循环切换的纯状态容器。AgentNavigationState 维护线程元数据的 HashMap（AgentPickerThreadEntry）和按首次出现顺序的稳定 Vec<ThreadId> 用于遍历。upsert() 仅在首次观察时追加到顺序中，确保即使条目更新，键盘导航也保持稳定。支持 adjacent_thread_id() 用于带循环的前后切换，active_agent_label() 用于上下文页脚显示，ordered_threads() 用于选择器行渲染，mark_closed() 不移除以保持导航形状，以及 remove() 用于清除幽灵条目。包含排序不变量、循环导航和标签渲染的单元测试。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/tui/src/app/agent_navigation.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "AgentNavigation"
+      }
+    },
+    {
+      "name": "LoadedThreadDiscovery",
+      "description": "发现属于主线程的所有子代理线程的纯同步生成树遍历器。find_loaded_subagent_threads_for_primary() 获取 app-server 的已加载线程扁平列表，并从主线程开始对 SessionSource::SubAgent(ThreadSpawn { parent_thread_id }) 边执行广度优先遍历。返回包含 thread_id、agent_nickname 和 agent_role 的 LoadedSubagentThread 结构体，按字符串化的线程 ID 排序以确保确定性输出。排除主线程本身以及父链未连接回主线程的线程。无异步、无 I/O——可完全独立测试。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/tui/src/app/loaded_threads.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "LoadedThreadDiscovery"
+      }
+    }
+  ]
+}

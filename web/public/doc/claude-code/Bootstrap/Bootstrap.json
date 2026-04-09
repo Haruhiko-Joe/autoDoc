@@ -1,0 +1,188 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "859d9734-b349-4199-88b4-8ebd06263d22",
+  "description": "Application entry points, initialization, and lifecycle management. Handles CLI argument parsing, environment setup (Node.js validation, git detection, terminal configuration), telemetry initialization (OpenTelemetry, Datadog), authentication bootstrapping (OAuth, API keys, AWS credentials), feature gate loading, migration execution, and global state initialization. Includes the CLI I/O layer (structured/NDJSON output, remote I/O transport, print helpers) that bridge and server flows depend on. Orchestrates the startup sequence from raw CLI invocation to a fully-configured REPL session.",
+  "codeScope": [
+    "src/entrypoints/",
+    "src/bootstrap/",
+    "src/setup.ts",
+    "src/migrations/",
+    "src/main.tsx",
+    "src/cli/"
+  ],
+  "nodes": [
+    {
+      "name": "Entrypoints",
+      "description": "The outermost entry points that dispatch CLI invocations to the correct execution path. cli.tsx is the bootstrap entrypoint that handles fast paths (--version, --dump-system-prompt, --chrome-native-host, --daemon-worker, bridge/remote-control) before dynamically importing the full CLI. mcp.ts starts an MCP server exposing Claude Code's tools over stdio. Includes SDK type definitions (agentSdkTypes, sandboxTypes) and SDK protocol schemas (controlSchemas, coreSchemas, coreTypes) that define the structured contract for external consumers.",
+      "edges": [
+        {
+          "target": "Initialization",
+          "type": "calls",
+          "description": "cli.tsx dynamically imports init() for all non-fast-path flows to bootstrap configs, telemetry, and network"
+        },
+        {
+          "target": "CLIOrchestrator",
+          "type": "calls",
+          "description": "cli.tsx dynamically imports main.tsx for the full CLI argument parsing and session launch flow"
+        }
+      ],
+      "codeScope": [
+        "src/entrypoints/cli.tsx",
+        "src/entrypoints/mcp.ts",
+        "src/entrypoints/agentSdkTypes.ts",
+        "src/entrypoints/sandboxTypes.ts",
+        "src/entrypoints/sdk/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Entrypoints"
+      }
+    },
+    {
+      "name": "Initialization",
+      "description": "The init() function (memoized, runs once) that bootstraps the application environment before any user-facing logic. Enables configs, applies safe environment variables, sets up graceful shutdown, initializes 1P event logging, populates OAuth account info, configures mTLS and proxy agents, preconnects to the Anthropic API, initializes upstream proxy for CCR environments, sets up shell/Windows paths, registers cleanup handlers, and creates the scratchpad directory. Also contains initializeTelemetryAfterTrust() for OpenTelemetry/Datadog setup after the trust dialog.",
+      "edges": [
+        {
+          "target": "GlobalState",
+          "type": "data-flow",
+          "description": "Reads and writes session state (non-interactive flag, meter, telemetry providers) via bootstrap/state.ts"
+        }
+      ],
+      "codeScope": [
+        "src/entrypoints/init.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Initialization"
+      }
+    },
+    {
+      "name": "CLIOrchestrator",
+      "description": "The massive main.tsx (4700+ lines) that defines the Commander.js CLI program with all subcommands and options. Parses CLI arguments, orchestrates the full startup sequence: auth validation, GrowthBook feature gate initialization, trust dialog, migration execution, environment setup (worktree, git detection, cwd resolution), tool/command/skill assembly, MCP server connections, plugin initialization, and finally launches either the interactive REPL (via launchRepl) or headless mode (via print.ts runHeadless). Contains the action handlers for subcommands like login, logout, mcp, plugin, agents, config, and the default interactive/print paths.",
+      "edges": [
+        {
+          "target": "Initialization",
+          "type": "calls",
+          "description": "Imports and calls init() and initializeTelemetryAfterTrust() during startup"
+        },
+        {
+          "target": "EnvironmentSetup",
+          "type": "calls",
+          "description": "Calls setup() to configure cwd, git root, worktree, hooks, and session state"
+        },
+        {
+          "target": "Migrations",
+          "type": "calls",
+          "description": "Executes migration functions to update config/settings between versions"
+        },
+        {
+          "target": "GlobalState",
+          "type": "data-flow",
+          "description": "Sets model overrides, project root, session info, and other global state during startup"
+        },
+        {
+          "target": "CLIIOLayer",
+          "type": "calls",
+          "description": "Imports print.ts runHeadless for non-interactive (SDK/piped) execution mode"
+        },
+        {
+          "target": "SubcommandHandlers",
+          "type": "calls",
+          "description": "Dynamically imports handler modules for auth, mcp, plugin, agents, and auto-mode subcommands"
+        }
+      ],
+      "codeScope": [
+        "src/main.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "CLIOrchestrator"
+      }
+    },
+    {
+      "name": "EnvironmentSetup",
+      "description": "The setup() function that prepares the runtime environment after init() and before the REPL or headless session starts. Validates Node.js version, configures session ID, starts UDS messaging server, captures teammate mode snapshot, restores terminal backups (iTerm2, Terminal.app), sets cwd, captures hooks configuration snapshot, initializes file-changed watcher, creates git worktrees if requested (with tmux session support), detects git root and sets project root, initializes session memory, loads release notes, prefetches API keys, and records initial configuration state.",
+      "edges": [
+        {
+          "target": "GlobalState",
+          "type": "data-flow",
+          "description": "Sets cwd, project root, original cwd, and other session state via bootstrap/state.ts"
+        }
+      ],
+      "codeScope": [
+        "src/setup.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "EnvironmentSetup"
+      }
+    },
+    {
+      "name": "GlobalState",
+      "description": "The centralized mutable state store (bootstrap/state.ts, 1750+ lines) holding all session-wide globals: session ID, cwd, project root, model overrides, cost tracking, token usage, telemetry providers (MeterProvider, TracerProvider, LoggerProvider), permission mode, feature flags, registered hooks, agent metadata, and numerous getters/setters. Acts as the single source of truth for session configuration that all other modules read from.",
+      "edges": [],
+      "codeScope": [
+        "src/bootstrap/state.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "GlobalState"
+      }
+    },
+    {
+      "name": "CLIIOLayer",
+      "description": "The I/O abstraction layer for non-interactive (headless/SDK/bridge) execution modes. print.ts (5600 lines) implements the runHeadless function that drives the full query loop without a terminal UI — handling structured NDJSON output, permission prompts, tool execution, streaming responses, and session lifecycle. StructuredIO provides the base class for NDJSON stdin/stdout message framing. RemoteIO extends StructuredIO with WebSocket transport for bridge/remote sessions. Includes transport implementations (WebSocket, SSE, Hybrid, CCR client) for server-side communication, ndjsonSafeStringify for safe JSON serialization, and exit helpers.",
+      "edges": [
+        {
+          "target": "GlobalState",
+          "type": "depends",
+          "description": "Reads session ID, model settings, and permission state from global state"
+        }
+      ],
+      "codeScope": [
+        "src/cli/print.ts",
+        "src/cli/structuredIO.ts",
+        "src/cli/remoteIO.ts",
+        "src/cli/ndjsonSafeStringify.ts",
+        "src/cli/exit.ts",
+        "src/cli/transports/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "CLIIOLayer"
+      }
+    },
+    {
+      "name": "SubcommandHandlers",
+      "description": "Lazily-loaded handler modules for CLI subcommands that run outside the main REPL session. auth.ts handles OAuth login/logout token flows. mcp.tsx manages MCP server add/remove/list/health-check. plugins.ts handles plugin install/uninstall/enable/disable/marketplace operations. agents.ts lists configured agents. autoMode.ts dumps/critiques auto-mode classifier rules. update.ts performs CLI self-update. util.tsx provides shared subcommand utilities.",
+      "edges": [],
+      "codeScope": [
+        "src/cli/handlers/",
+        "src/cli/update.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SubcommandHandlers"
+      }
+    },
+    {
+      "name": "Migrations",
+      "description": "A collection of small, idempotent migration scripts that update user configuration and settings between CLI versions. Each migration handles a specific upgrade path: renaming model defaults (Fennec to Opus, Opus to Opus1m, Sonnet1m to Sonnet45, Sonnet45 to Sonnet46, LegacyOpus to Current), moving settings between storage locations (bypass permissions, auto-updates, MCP server enablement, bridge to remote-control), and resetting defaults (auto-mode opt-in, Pro to Opus default). All follow the same pattern of reading config, checking conditions, and writing updated values.",
+      "edges": [
+        {
+          "target": "GlobalState",
+          "type": "depends",
+          "description": "Migrations read and update global configuration that feeds into global state"
+        }
+      ],
+      "codeScope": [
+        "src/migrations/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Migrations"
+      }
+    }
+  ]
+}

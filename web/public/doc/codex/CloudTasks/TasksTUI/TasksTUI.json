@@ -1,0 +1,153 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "d313db05-cbc9-4d97-8f7d-cd8d1175cd75",
+  "description": "cloud-tasks TUI 主应用 crate。包含 CLI 入口点、后端初始化和认证、异步 TUI 事件循环（键盘处理、后台任务分派、加载动画）、应用状态管理（任务列表、diff 覆盖层、模态框）、基于 ratatui 的 UI 渲染（任务列表、diff 查看器、环境选择器、应用对话框、新任务编辑器）、通过 GitHub 远程源进行的环境自动检测，以及可滚动的 diff/文本显示组件。",
+  "codeScope": [
+    "codex-rs/cloud-tasks/"
+  ],
+  "nodes": [
+    {
+      "name": "CLIParsing",
+      "description": "使用 clap 定义的 CLI 参数和子命令。定义了顶层 Cli 结构体及可选子命令（Exec、Status、List、Apply、Diff），每个子命令都有各自的参数结构体，用于环境选择、任务 ID、尝试次数、分页和输出格式选项。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/cloud-tasks/src/cli.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "CLIParsing"
+      }
+    },
+    {
+      "name": "AppState",
+      "description": "TUI 的应用状态模型和事件类型。定义了核心 App 结构体（任务列表、选择、加载指示器、环境/模态框状态）、带有多次尝试导航的 DiffOverlay、AttemptView、用于异步后台事件传递的 AppEvent 枚举、NewTaskPage 编辑器状态，以及从 CloudBackend 获取和过滤任务的 load_tasks 辅助函数。",
+      "edges": [
+        {
+          "target": "ScrollableDiff",
+          "type": "composes",
+          "description": "DiffOverlay 内嵌 ScrollableDiff 实例用于可滚动的 diff/文本显示"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/cloud-tasks/src/app.rs",
+        "codex-rs/cloud-tasks/src/new_task.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "AppState"
+      }
+    },
+    {
+      "name": "CoreRuntime",
+      "description": "cloud-tasks crate 的主入口点和异步运行时。包含带有 ChatGPT 认证的后端初始化、run_main TUI 事件循环（crossterm 终端设置、键盘/鼠标事件处理、tokio::select 事件分派、加载动画、合并重绘）、非交互式 CLI 子命令运行器（exec、status、list、apply、diff）、apply/preflight 操作的后台任务生成器、git ref 解析，以及任务状态显示的文本格式化辅助函数。",
+      "edges": [
+        {
+          "target": "CLIParsing",
+          "type": "depends",
+          "description": "读取已解析的 CLI 参数以分派子命令或启动交互式 TUI"
+        },
+        {
+          "target": "AppState",
+          "type": "depends",
+          "description": "创建和修改 App 状态，处理来自后台任务的 AppEvent 消息"
+        },
+        {
+          "target": "UIRendering",
+          "type": "calls",
+          "description": "每帧调用 ui::draw 将当前 App 状态渲染到终端"
+        },
+        {
+          "target": "EnvDetect",
+          "type": "calls",
+          "description": "启动时生成后台任务进行环境自动检测和环境列表获取"
+        },
+        {
+          "target": "Utilities",
+          "type": "calls",
+          "description": "使用认证辅助函数（build_chatgpt_headers、load_auth_manager）、URL 规范化、日志记录和时间格式化"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/cloud-tasks/src/lib.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "CoreRuntime"
+      }
+    },
+    {
+      "name": "UIRendering",
+      "description": "基于 ratatui 的终端 UI 渲染。实现了组合所有视觉层的 draw 函数：带有状态/diff 摘要行的任务列表、带有帮助文本和状态栏的两行页脚、带有标签切换（Diff/Prompt 视图）和尝试导航的 diff 覆盖层、带有模糊搜索的环境选择器模态框、best-of-N 选择器模态框、带有预检结果的应用确认对话框，以及新任务编辑器页面。使用覆盖层几何辅助函数和 diff 着色行渲染。",
+      "edges": [
+        {
+          "target": "AppState",
+          "type": "depends",
+          "description": "读取 App 状态、DiffOverlay、模态框状态和环境数据以确定渲染内容"
+        },
+        {
+          "target": "ScrollableDiff",
+          "type": "calls",
+          "description": "从 ScrollableDiff 读取换行后的行和滚动状态以渲染可滚动的 diff/文本视图"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/cloud-tasks/src/ui.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "UIRendering"
+      }
+    },
+    {
+      "name": "EnvDetect",
+      "description": "通过 GitHub 远程源进行的环境自动检测和列表。解析 git remote URL（SSH 和 HTTPS 变体）以提取 owner/repo，查询后端的 by-repo 环境端点，回退到全局环境列表，并应用选择启发式规则（标签匹配、置顶标志、任务数量）。还为 TUI 模态框提供 list_environments，支持去重和排序输出。",
+      "edges": [
+        {
+          "target": "AppState",
+          "type": "depends",
+          "description": "返回 app 模块中定义的 EnvironmentRow 类型"
+        },
+        {
+          "target": "Utilities",
+          "type": "calls",
+          "description": "使用 append_error_log 进行环境解析期间的诊断日志记录"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/cloud-tasks/src/env_detect.rs",
+        "codex-rs/cloud-tasks/tests/env_filter.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "EnvDetect"
+      }
+    },
+    {
+      "name": "ScrollableDiff",
+      "description": "自包含的可滚动文本/diff 显示组件。管理原始内容行，执行 Unicode 感知的按可配置列宽自动换行，维护带有视口约束的滚动位置，并支持逐行滚动、上/下翻页、跳转到顶部/底部和滚动百分比指示器。被 DiffOverlay 用于显示 diff 和对话文本。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/cloud-tasks/src/scrollable_diff.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ScrollableDiff"
+      }
+    },
+    {
+      "name": "Utilities",
+      "description": "用于认证、配置和格式化的共享工具函数。提供 ChatGPT 认证请求头构建（Bearer 令牌 + 从 JWT 提取的账户 ID）、从 codex-core Config 加载 AuthManager、ChatGPT/API 端点的基础 URL 规范化、浏览器友好的任务 URL 生成、错误日志写入文件，以及相对时间格式化（秒/分钟/小时前或绝对日期）。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/cloud-tasks/src/util.rs",
+        "codex-rs/cloud-tasks/Cargo.toml",
+        "codex-rs/cloud-tasks/BUILD.bazel"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Utilities"
+      }
+    }
+  ]
+}

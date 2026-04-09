@@ -1,0 +1,114 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "f2013b20-c9df-4974-9f56-dd28920c0c7c",
+  "description": "Claude API client layer handling all communication with the Anthropic API. Includes the core message-sending client with streaming support, retry logic with exponential backoff, error categorization and user-facing error messages, usage tracking (token counts, costs), prompt cache break detection, prompt dumping for debugging, API bootstrap/initialization, admin requests, files API, session ingress, Grove integration, referral tracking, metrics opt-out, and ultrareview quota management.",
+  "codeScope": [
+    "src/services/api/"
+  ],
+  "nodes": [
+    {
+      "name": "MessageClient",
+      "description": "Core message-sending client and SDK instantiation. claude.ts contains the main sendMessage function with streaming support, system prompt construction, tool schema serialization, model/beta selection, and response normalization. client.ts creates Anthropic SDK client instances for multiple providers (direct API, AWS Bedrock, GCP Vertex, Azure Foundry) with appropriate authentication and configuration.",
+      "edges": [
+        {
+          "target": "ErrorHandling",
+          "type": "calls",
+          "description": "Uses error classification from errors.ts to generate user-facing error messages, and delegates retry orchestration to withRetry.ts for transient failures"
+        },
+        {
+          "target": "APIObservability",
+          "type": "calls",
+          "description": "Invokes logging.ts to record API request/response metrics, token usage, costs, and telemetry events after each completion"
+        }
+      ],
+      "codeScope": [
+        "src/services/api/claude.ts",
+        "src/services/api/client.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "MessageClient"
+      }
+    },
+    {
+      "name": "ErrorHandling",
+      "description": "Error categorization, user-facing error message generation, and retry logic with exponential backoff. errors.ts classifies API errors (rate limits, prompt too long, auth failures, overloaded, billing, content moderation) into actionable user messages. errorUtils.ts extracts connection/SSL error details from error cause chains. withRetry.ts implements the retry wrapper with configurable backoff, 529 overloaded handling, fast-mode cooldown, credential refresh on 401, and abort signal support.",
+      "edges": [],
+      "codeScope": [
+        "src/services/api/errors.ts",
+        "src/services/api/errorUtils.ts",
+        "src/services/api/withRetry.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ErrorHandling"
+      }
+    },
+    {
+      "name": "APIObservability",
+      "description": "API request/response logging, diagnostics, and debugging tools. logging.ts records detailed per-request analytics (token usage, costs, latency, stop reasons, model info) via both first-party events and OpenTelemetry spans. promptCacheBreakDetection.ts detects and diagnoses prompt cache invalidation by hashing system prompts, tools, and messages to identify what changed between requests. dumpPrompts.ts saves full API request payloads to disk for debugging. emptyUsage.ts provides a zero-initialized usage constant.",
+      "edges": [
+        {
+          "target": "ErrorHandling",
+          "type": "depends",
+          "description": "Uses error classification and connection error extraction when logging API failures"
+        }
+      ],
+      "codeScope": [
+        "src/services/api/logging.ts",
+        "src/services/api/promptCacheBreakDetection.ts",
+        "src/services/api/dumpPrompts.ts",
+        "src/services/api/emptyUsage.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "APIObservability"
+      }
+    },
+    {
+      "name": "FilesAPI",
+      "description": "Client for the Anthropic Files API, providing file upload and download capabilities. Used by the Claude Code agent to download file attachments at session startup. Handles authentication via OAuth Bearer tokens, implements retry logic for uploads, and supports both single-file and batch operations with progress tracking.",
+      "edges": [],
+      "codeScope": [
+        "src/services/api/filesApi.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "FilesAPI"
+      }
+    },
+    {
+      "name": "SessionIngress",
+      "description": "Session transcript logging service that sends conversation entries to the backend API. Manages sequential per-session log appends to prevent concurrent writes, implements retry with exponential backoff, handles UUID-based deduplication, and supports both OAuth and session ingress token authentication.",
+      "edges": [],
+      "codeScope": [
+        "src/services/api/sessionIngress.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SessionIngress"
+      }
+    },
+    {
+      "name": "AccountEndpoints",
+      "description": "Collection of auxiliary API endpoint clients for account and platform features. Includes: bootstrap API (fetches client config and additional model options at startup), Grove integration (community feature toggling with cached settings), referral system (eligibility checks, redemption tracking, reward info), metrics opt-out (organization-level metrics logging preference with disk caching), overage credit grants (eligibility and claiming), admin requests (limit increases, seat upgrades), first token date tracking, ultrareview quota management, and usage/utilization fetching.",
+      "edges": [],
+      "codeScope": [
+        "src/services/api/bootstrap.ts",
+        "src/services/api/grove.ts",
+        "src/services/api/referral.ts",
+        "src/services/api/metricsOptOut.ts",
+        "src/services/api/overageCreditGrant.ts",
+        "src/services/api/adminRequests.ts",
+        "src/services/api/firstTokenDate.ts",
+        "src/services/api/ultrareviewQuota.ts",
+        "src/services/api/usage.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "AccountEndpoints"
+      }
+    }
+  ]
+}

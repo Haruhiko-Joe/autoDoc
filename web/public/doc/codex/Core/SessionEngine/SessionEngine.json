@@ -1,0 +1,249 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "2c3ff2a9-a91b-4e19-a0ae-b74f2b3a686f",
+  "description": "主编排循环——智能体的核心。管理会话生命周期（创建、配置、关闭）、回合执行（提交给模型、流式响应、处理工具调用）、线程管理（分叉、恢复、多线程协调）、任务分发（常规回合、压缩、审查、撤销、用户 shell）、模型客户端通信、实时对话支持、rollout 记录和事件流式传输给消费者。",
+  "codeScope": [
+    "codex-rs/core/src/codex.rs",
+    "codex-rs/core/src/codex/",
+    "codex-rs/core/src/codex_thread.rs",
+    "codex-rs/core/src/thread_manager.rs",
+    "codex-rs/core/src/tasks/",
+    "codex-rs/core/src/codex_delegate.rs",
+    "codex-rs/core/src/stream_events_utils.rs",
+    "codex-rs/core/src/event_mapping.rs",
+    "codex-rs/core/src/client.rs",
+    "codex-rs/core/src/client_common.rs",
+    "codex-rs/core/src/connectors.rs",
+    "codex-rs/core/src/realtime_context.rs",
+    "codex-rs/core/src/realtime_conversation.rs",
+    "codex-rs/core/src/rollout.rs",
+    "codex-rs/core/src/compact.rs",
+    "codex-rs/core/src/compact_remote.rs",
+    "codex-rs/core/src/state/",
+    "codex-rs/core/src/turn_timing.rs",
+    "codex-rs/core/src/turn_metadata.rs",
+    "codex-rs/core/src/turn_diff_tracker.rs",
+    "codex-rs/core/src/session_prefix.rs",
+    "codex-rs/core/src/session_rollout_init_error.rs",
+    "codex-rs/core/src/session_startup_prewarm.rs",
+    "codex-rs/core/src/commit_attribution.rs",
+    "codex-rs/core/src/file_watcher.rs",
+    "codex-rs/core/src/otel_init.rs",
+    "codex-rs/core/src/prompt_debug.rs",
+    "codex-rs/core/src/arc_monitor.rs",
+    "codex-rs/core/src/review_format.rs",
+    "codex-rs/core/src/review_prompts.rs",
+    "codex-rs/core/src/util.rs",
+    "codex-rs/core/src/utils/"
+  ],
+  "nodes": [
+    {
+      "name": "SessionLoop",
+      "description": "核心 Codex 会话结构体及其主编排循环。包含会话创建和配置（spawn、Codex::new）、接收 Ops 并分发的中央事件处理循环、回合执行（构建提示、流式模型响应、循环处理工具调用结果）、会话关闭、rollout 物化和从 JSONL 重建，以及承载每会话和每回合状态的内部 Session/TurnContext 类型。",
+      "edges": [
+        {
+          "target": "ThreadManagement",
+          "type": "calls",
+          "description": "为多线程工作流创建和管理 CodexThread 实例；线程管理器为分叉/恢复的线程创建新的 Codex 会话"
+        },
+        {
+          "target": "TaskDispatching",
+          "type": "calls",
+          "description": "将每个用户提交分发到相应的任务运行器（常规回合、压缩、审查、撤销、用户 shell）并等待完成"
+        },
+        {
+          "target": "ModelClient",
+          "type": "calls",
+          "description": "创建 ModelClient 和 ModelClientSession 实例，通过流式或一元请求发送提示，并消费 ResponseEvent 流"
+        },
+        {
+          "target": "EventProcessing",
+          "type": "calls",
+          "description": "调用 stream_events_utils 辅助函数处理每个 ResponseEvent/ResponseItem，将其映射为 TurnItem，并处理工具调用输出"
+        },
+        {
+          "target": "RealtimeConversation",
+          "type": "calls",
+          "description": "当模型请求语音对话切换时处理实时对话的开始/音频/文本/关闭操作"
+        },
+        {
+          "target": "TurnLifecycle",
+          "type": "calls",
+          "description": "记录回合计时指标（TTFT、TTFM），收集工作区 git 元数据，跟踪文件差异，并在上下文增长过大时触发自动压缩"
+        },
+        {
+          "target": "SessionSupport",
+          "type": "depends",
+          "description": "使用 rollout 记录进行会话持久化、启动预热进行 WebSocket 预连接、文件监视进行配置实时重载、OTel 初始化及其他工具"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core/src/codex.rs",
+        "codex-rs/core/src/codex/",
+        "codex-rs/core/src/state/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SessionLoop"
+      }
+    },
+    {
+      "name": "ThreadManagement",
+      "description": "多线程生命周期管理。ThreadManager 编排对话线程的创建、分叉和恢复——每个线程由自己的 Codex 会话支持。处理线程配置快照、分叉线程的 rollout 截断、技能监视器设置、初始历史注入以及线程创建事件的广播通道。CodexThread 提供单个线程的公共双向 Op/Event 管道。",
+      "edges": [
+        {
+          "target": "SessionLoop",
+          "type": "calls",
+          "description": "为每个线程创建新的 Codex 会话（通过 Codex::spawn），传递配置快照和初始历史"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core/src/thread_manager.rs",
+        "codex-rs/core/src/codex_thread.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ThreadManagement"
+      }
+    },
+    {
+      "name": "TaskDispatching",
+      "description": "在会话循环中执行不同类型回合的专用任务运行器。包括 RegularTask（带工具调用循环的标准模型回合）、CompactTask（上下文压缩回合）、ReviewTask（带结构化发现输出的代码审查）、UndoTask（撤销先前更改）、UserShellCommandTask（执行用户发起的 shell 命令）和 GhostSnapshotTask（中断回合的分叉快照）。提供 SessionTaskContext 封装、回合指标发送和优雅中断处理。",
+      "edges": [
+        {
+          "target": "ModelClient",
+          "type": "calls",
+          "description": "任务运行器使用 ModelClientSession 在回合执行期间流式发送模型请求并接收响应事件"
+        },
+        {
+          "target": "EventProcessing",
+          "type": "calls",
+          "description": "任务通过 handle_output_item_done 和其他事件处理辅助函数处理流式响应项"
+        },
+        {
+          "target": "TurnLifecycle",
+          "type": "calls",
+          "description": "CompactTask 触发上下文压缩；所有任务记录回合计时和 token 使用指标"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core/src/tasks/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TaskDispatching"
+      }
+    },
+    {
+      "name": "ModelClient",
+      "description": "会话和回合作用域的模型提供商 API 通信辅助工具。ModelClient 持有稳定的每会话状态（认证、提供商选择、对话 ID、传输回退）。ModelClientSession 在每回合创建，管理通过 SSE 或 WebSocket 的流式 Responses API 请求、连接缓存、WebSocket 预热（v2 response.create 带 generate=false）、重试/回退逻辑、通过 x-codex-turn-state 令牌的粘性路由以及压缩/记忆 API 调用。Connectors 处理应用连接器发现、目录列表、工具策略解析和外部应用集成的 MCP 工具缓存。",
+      "edges": [
+        {
+          "target": "SessionSupport",
+          "type": "depends",
+          "description": "使用认证恢复工具（emit_feedback_auth_recovery_tags）和 util.rs 中的退避辅助函数进行重试逻辑"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core/src/client.rs",
+        "codex-rs/core/src/client_common.rs",
+        "codex-rs/core/src/connectors.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ModelClient"
+      }
+    },
+    {
+      "name": "EventProcessing",
+      "description": "响应流事件处理和回合项映射。stream_events_utils 提供 HandleOutputCtx 和辅助函数，用于处理每个完成的响应项（handle_output_item_done、handle_non_tool_response_item、record_completed_response_item）并提取助手文本。event_mapping 将原始 ResponseItem 映射为面向用户的 TurnItem（消息、推理、网页搜索），并带有上下文消息过滤。codex_delegate 运行交互式子 Codex 线程用于子智能体委托，处理审批路由、守护审查集成以及父子会话之间的双向事件转发。",
+      "edges": [
+        {
+          "target": "TurnLifecycle",
+          "type": "data-flow",
+          "description": "在处理项时将响应事件馈送到回合计时记录器（TTFT/TTFM）和回合差异跟踪器"
+        },
+        {
+          "target": "SessionLoop",
+          "type": "calls",
+          "description": "codex_delegate 为交互式子智能体线程创建子 Codex 会话，通过父会话路由审批"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core/src/stream_events_utils.rs",
+        "codex-rs/core/src/event_mapping.rs",
+        "codex-rs/core/src/codex_delegate.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "EventProcessing"
+      }
+    },
+    {
+      "name": "RealtimeConversation",
+      "description": "通过 OpenAI Realtime API 支持实时语音/文本对话。RealtimeConversationManager 维护 WebSocket 连接生命周期、音频帧路由和事件解析。处理对话开始（模式选择、会话配置）、音频输入/输出流、文本消息交换以及带切换检测的优雅关闭。realtime_context 构建注入到实时会话的启动上下文，包括近期线程历史、工作区布局和记忆摘要。",
+      "edges": [
+        {
+          "target": "SessionLoop",
+          "type": "data-flow",
+          "description": "将实时对话事件（started、audio、text、closed）发送回会话事件流以交付给消费者"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core/src/realtime_conversation.rs",
+        "codex-rs/core/src/realtime_context.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "RealtimeConversation"
+      }
+    },
+    {
+      "name": "TurnLifecycle",
+      "description": "每回合的跟踪、指标和上下文压缩。turn_timing 记录 TTFT（首个 token 时间）和 TTFM（首条消息时间）持续时间。turn_metadata 异步收集工作区 git 元数据（远程 URL、HEAD 提交、脏状态）并附加到回合遥测中。turn_diff_tracker 维护内存中的基线文件快照并计算单个回合内所有文件变更的聚合统一 diff。compact 和 compact_remote 实现本地和远程上下文压缩——总结较早的对话历史以适应模型的上下文窗口，支持可配置的初始上下文注入策略。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/core/src/turn_timing.rs",
+        "codex-rs/core/src/turn_metadata.rs",
+        "codex-rs/core/src/turn_diff_tracker.rs",
+        "codex-rs/core/src/compact.rs",
+        "codex-rs/core/src/compact_remote.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TurnLifecycle"
+      }
+    },
+    {
+      "name": "SessionSupport",
+      "description": "会话引擎的支撑基础设施和工具。包括：rollout.rs（从 codex_rollout crate 重导出用于会话记录和索引）、session_startup_prewarm.rs（首次回合前的后台 WebSocket 预连接）、session_rollout_init_error.rs（会话初始化失败的用户友好错误映射）、session_prefix.rs（子智能体通知消息格式化）、commit_attribution.rs（Co-authored-by 尾部信息生成）、file_watcher.rs（基于订阅者的合并变更通知的文件系统监视器）、otel_init.rs（从配置构建 OpenTelemetry 提供者）、prompt_debug.rs（构建模型可见提示输入的调试工具）、arc_monitor.rs（检查对话策略合规性的 ARC 安全监视器）、review_format.rs 和 review_prompts.rs（审查发现格式化和提示模板构建）、util.rs 和 utils/（退避辅助函数、反馈标签宏、路径工具）。",
+      "edges": [
+        {
+          "target": "SessionLoop",
+          "type": "depends",
+          "description": "启动预热、rollout 记录、文件监视器和 ARC 监视器在会话初始化和回合执行期间被会话消费"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core/src/rollout.rs",
+        "codex-rs/core/src/session_prefix.rs",
+        "codex-rs/core/src/session_rollout_init_error.rs",
+        "codex-rs/core/src/session_startup_prewarm.rs",
+        "codex-rs/core/src/commit_attribution.rs",
+        "codex-rs/core/src/file_watcher.rs",
+        "codex-rs/core/src/otel_init.rs",
+        "codex-rs/core/src/prompt_debug.rs",
+        "codex-rs/core/src/arc_monitor.rs",
+        "codex-rs/core/src/review_format.rs",
+        "codex-rs/core/src/review_prompts.rs",
+        "codex-rs/core/src/util.rs",
+        "codex-rs/core/src/utils/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SessionSupport"
+      }
+    }
+  ]
+}

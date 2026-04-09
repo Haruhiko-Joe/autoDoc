@@ -1,0 +1,72 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "9230e252-b683-417a-95ab-90727319cbd6",
+  "description": "用于编程访问 Codex 的客户端 SDK 和分发包。包括用于构建 Codex API 应用的 TypeScript SDK（@openai/codex-sdk）、用于应用服务器集成的 Python SDK，以及分发 Rust 二进制文件的 npm CLI 包装器包（@openai/codex）。",
+  "codeScope": [
+    "sdk/",
+    "codex-cli/"
+  ],
+  "nodes": [
+    {
+      "name": "TypeScriptSDK",
+      "description": "@openai/codex-sdk npm 包——用于编程访问 Codex Agent 的 TypeScript SDK。提供 Codex 客户端类、Thread 生命周期管理（创建、运行、流式传输）、事件/项目类型定义、结构化输出支持，以及基于 exec 的 CLI 二进制文件进程启动。使用者可通过此 SDK 从 Node.js/TypeScript 以编程方式构建基于 Codex 的应用。",
+      "edges": [
+        {
+          "target": "NpmCLIWrapper",
+          "type": "depends",
+          "description": "运行时依赖 @openai/codex（在构建时作为依赖项添加），用于启动 Codex CLI 二进制文件以执行操作"
+        }
+      ],
+      "codeScope": [
+        "sdk/typescript/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TypeScriptSDK"
+      }
+    },
+    {
+      "name": "PythonSDK",
+      "description": "codex-app-server-sdk Python 包——用于通过 stdio 驱动 Codex app-server 的类型化 JSON-RPC 客户端。提供同步（AppServerClient）和异步（AsyncAppServerClient）底层 RPC 客户端、高级 API 层（Codex/Thread/TurnHandle 及其异步变体）、基于 Pydantic 从 v2 协议 schema 生成的请求/响应模型、错误层级体系、重试逻辑和运行时二进制文件解析。包含示例、Jupyter 演练和全面的测试套件。",
+      "edges": [
+        {
+          "target": "PythonRuntime",
+          "type": "depends",
+          "description": "导入 codex_cli_bin.bundled_codex_path() 以在未配置显式二进制路径时定位固定版本的 Codex CLI 二进制文件"
+        }
+      ],
+      "codeScope": [
+        "sdk/python/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PythonSDK"
+      }
+    },
+    {
+      "name": "PythonRuntime",
+      "description": "codex-cli-bin Python 包——仅以 wheel 形式分发的包，捆绑了特定平台的 Codex CLI 二进制文件供 Python SDK 使用。提供 bundled_codex_path() 函数以定位嵌入的二进制文件，以及一个自定义 Hatch 构建钩子来强制执行仅 wheel 构建并附带平台特定标签。作为 Python SDK 的固定运行时依赖项使用。",
+      "edges": [],
+      "codeScope": [
+        "sdk/python-runtime/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PythonRuntime"
+      }
+    },
+    {
+      "name": "NpmCLIWrapper",
+      "description": "@openai/codex npm 包——通过 npm/bun 分发 Codex CLI 的主要渠道。包含一个 Node.js 启动脚本（bin/codex.js），用于检测宿主平台/架构、解析包含原生 Rust 二进制文件的正确平台特定可选依赖包，并以适当的信号转发和退出码传播方式启动该二进制文件。还包括构建/打包脚本（build_npm_package.py），用于准备平台包、捆绑原生二进制文件（codex、rg）并生成用于发布的 npm tarball，以及一个用于容器化使用的 Dockerfile。",
+      "edges": [],
+      "codeScope": [
+        "codex-cli/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "NpmCLIWrapper"
+      }
+    }
+  ]
+}

@@ -1,0 +1,312 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "6a8fd903-58dc-467e-9c99-5a602aec7e61",
+  "description": "Backend service integrations that power the application's capabilities. Includes the Claude API client (message sending, retries, error categorization, usage tracking), analytics pipeline (GrowthBook feature gates, Datadog, first-party event logging), MCP protocol client (server connections, tool discovery, auth, official registry, server approval), context compaction engine (auto-compact, micro-compact, reactive compact), OAuth service, LSP integration, policy limits enforcement, remote managed settings, settings sync, and specialized services for prompt suggestions, agent summaries, magic docs, tool use summaries, rate limiting, voice, diagnostics, and token estimation.",
+  "codeScope": [
+    "src/services/AgentSummary/",
+    "src/services/MagicDocs/",
+    "src/services/PromptSuggestion/",
+    "src/services/analytics/",
+    "src/services/api/",
+    "src/services/autoDream/",
+    "src/services/compact/",
+    "src/services/lsp/",
+    "src/services/mcp/",
+    "src/services/oauth/",
+    "src/services/policyLimits/",
+    "src/services/remoteManagedSettings/",
+    "src/services/settingsSync/",
+    "src/services/tips/",
+    "src/services/toolUseSummary/",
+    "src/services/tools/",
+    "src/services/awaySummary.ts",
+    "src/services/claudeAiLimits.ts",
+    "src/services/claudeAiLimitsHook.ts",
+    "src/services/diagnosticTracking.ts",
+    "src/services/internalLogging.ts",
+    "src/services/mcpServerApproval.tsx",
+    "src/services/mockRateLimits.ts",
+    "src/services/notifier.ts",
+    "src/services/preventSleep.ts",
+    "src/services/rateLimitMessages.ts",
+    "src/services/rateLimitMocking.ts",
+    "src/services/tokenEstimation.ts",
+    "src/services/vcr.ts",
+    "src/services/voice.ts",
+    "src/services/voiceKeyterms.ts",
+    "src/services/voiceStreamSTT.ts"
+  ],
+  "nodes": [
+    {
+      "name": "APIClient",
+      "description": "Claude API client layer handling all communication with the Anthropic API. Includes the core message-sending client with streaming support, retry logic with exponential backoff, error categorization and user-facing error messages, usage tracking (token counts, costs), prompt cache break detection, prompt dumping for debugging, API bootstrap/initialization, admin requests, files API, session ingress, Grove integration, referral tracking, metrics opt-out, and ultrareview quota management.",
+      "edges": [
+        {
+          "target": "Analytics",
+          "type": "depends",
+          "description": "Uses GrowthBook feature gates for API behavior and logs API events through the analytics pipeline"
+        }
+      ],
+      "codeScope": [
+        "src/services/api/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "APIClient"
+      }
+    },
+    {
+      "name": "MCPClient",
+      "description": "Model Context Protocol client implementation managing connections to MCP servers. Includes the MCP SDK client wrapper, connection manager (lifecycle, reconnection, health), transport layers (stdio, SSE, streamable HTTP, in-process, SDK control), server configuration and normalization, tool/prompt/resource discovery, official registry integration, channel permissions and allowlists, authentication (OAuth port, XAA IdP login), elicitation handling, VS Code SDK MCP bridge, Claude.ai MCP integration, environment variable expansion, and server approval UI.",
+      "edges": [
+        {
+          "target": "Analytics",
+          "type": "depends",
+          "description": "Logs MCP connection events, tool invocations, and server lifecycle metrics"
+        },
+        {
+          "target": "OAuth",
+          "type": "calls",
+          "description": "Uses OAuth flows for MCP server authentication when servers require authorization"
+        }
+      ],
+      "codeScope": [
+        "src/services/mcp/",
+        "src/services/mcpServerApproval.tsx"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "MCPClient"
+      }
+    },
+    {
+      "name": "Compaction",
+      "description": "Context compaction engine that manages conversation size by summarizing older messages when the context window fills up. Implements multiple compaction strategies: auto-compact (triggered by token thresholds), micro-compact (lightweight inline compaction), API-based micro-compact, time-based micro-compact configuration, and session memory compaction. Includes message grouping logic for determining compaction boundaries, compaction prompts, post-compact cleanup, and compaction warning state/hooks for the UI.",
+      "edges": [
+        {
+          "target": "APIClient",
+          "type": "calls",
+          "description": "Sends compaction summarization requests through the Claude API client"
+        },
+        {
+          "target": "MemoryServices",
+          "type": "calls",
+          "description": "Invokes session memory extraction during compaction to persist important context"
+        }
+      ],
+      "codeScope": [
+        "src/services/compact/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Compaction"
+      }
+    },
+    {
+      "name": "Analytics",
+      "description": "Telemetry and analytics pipeline providing observability across the application. Includes GrowthBook feature flag integration (cached feature gates), Datadog metrics exporter, first-party event logger with batched exporter, analytics sink abstraction with killswitch support, analytics metadata helpers for sanitizing and enriching event data, and analytics configuration.",
+      "edges": [],
+      "codeScope": [
+        "src/services/analytics/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Analytics"
+      }
+    },
+    {
+      "name": "LSP",
+      "description": "Language Server Protocol integration enabling Claude to receive diagnostics and code intelligence from language servers. Includes the LSP client wrapper, server instance management (spawn, initialize, shutdown), server manager for coordinating multiple language server connections, diagnostic registry for aggregating and querying diagnostics, LSP configuration (server definitions per language), and passive feedback system for surfacing LSP information to Claude.",
+      "edges": [],
+      "codeScope": [
+        "src/services/lsp/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "LSP"
+      }
+    },
+    {
+      "name": "OAuth",
+      "description": "OAuth authentication service handling the browser-based OAuth authorization code flow. Includes the OAuth client (token exchange, refresh), authorization code listener (local HTTP server for callback), PKCE crypto utilities for secure code exchange, profile fetching, and integration with the analytics pipeline for auth event tracking.",
+      "edges": [
+        {
+          "target": "Analytics",
+          "type": "depends",
+          "description": "Logs OAuth flow events (login, token refresh, errors) through the analytics pipeline"
+        }
+      ],
+      "codeScope": [
+        "src/services/oauth/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "OAuth"
+      }
+    },
+    {
+      "name": "ToolExecution",
+      "description": "Tool execution runtime managing how tools are invoked during a conversation turn. Includes the streaming tool executor (parallel tool execution with streaming output), tool orchestration logic (ordering, batching, concurrency), tool execution engine (permission checks, timeout handling, result formatting), and tool hooks (pre/post execution analytics and side effects).",
+      "edges": [
+        {
+          "target": "Analytics",
+          "type": "depends",
+          "description": "Tracks tool execution metrics, timing, and outcomes through analytics events"
+        }
+      ],
+      "codeScope": [
+        "src/services/tools/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ToolExecution"
+      }
+    },
+    {
+      "name": "SettingsAndPolicy",
+      "description": "Remote settings management and policy enforcement services. Remote managed settings fetches organization-level configuration from the server with local sync caching and security checks. Settings sync bidirectionally synchronizes user preferences. Policy limits enforces usage quotas, feature restrictions, and organizational policies received from the API.",
+      "edges": [
+        {
+          "target": "APIClient",
+          "type": "calls",
+          "description": "Fetches remote settings and policy configurations from the Anthropic API"
+        }
+      ],
+      "codeScope": [
+        "src/services/remoteManagedSettings/",
+        "src/services/settingsSync/",
+        "src/services/policyLimits/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SettingsAndPolicy"
+      }
+    },
+    {
+      "name": "RateLimiting",
+      "description": "Rate limit handling and display services. Manages user-facing rate limit messages, rate limit mocking for testing, mock rate limit data fixtures, Claude.ai-specific rate limit logic, and the rate limit hook for reactive UI updates when limits are hit.",
+      "edges": [
+        {
+          "target": "APIClient",
+          "type": "depends",
+          "description": "Receives rate limit information from API responses to generate user-facing messages"
+        }
+      ],
+      "codeScope": [
+        "src/services/rateLimitMessages.ts",
+        "src/services/rateLimitMocking.ts",
+        "src/services/mockRateLimits.ts",
+        "src/services/claudeAiLimits.ts",
+        "src/services/claudeAiLimitsHook.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "RateLimiting"
+      }
+    },
+    {
+      "name": "AIFeatures",
+      "description": "AI-powered auxiliary features that enhance the user experience through LLM-generated content. Includes agent summaries (post-agent-run recaps), magic docs (automated documentation generation), prompt suggestions (next-action recommendations with speculative execution), tool use summaries (condensed tool output), auto-dream (background consolidation of session insights), tips (contextual usage tips with scheduling and history), and away summaries (summaries generated when the user returns).",
+      "edges": [
+        {
+          "target": "APIClient",
+          "type": "calls",
+          "description": "Sends LLM requests to generate summaries, suggestions, and documentation content"
+        },
+        {
+          "target": "Analytics",
+          "type": "depends",
+          "description": "Tracks feature usage and outcomes for AI-powered features"
+        }
+      ],
+      "codeScope": [
+        "src/services/AgentSummary/",
+        "src/services/MagicDocs/",
+        "src/services/PromptSuggestion/",
+        "src/services/toolUseSummary/",
+        "src/services/autoDream/",
+        "src/services/tips/",
+        "src/services/awaySummary.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "AIFeatures"
+      }
+    },
+    {
+      "name": "Voice",
+      "description": "Voice input service providing speech-to-text capabilities. Includes the main voice recording and transcription orchestrator, voice key-term dictionary for improving transcription accuracy of technical terms, and the streaming STT (speech-to-text) client for real-time audio transcription.",
+      "edges": [],
+      "codeScope": [
+        "src/services/voice.ts",
+        "src/services/voiceKeyterms.ts",
+        "src/services/voiceStreamSTT.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Voice"
+      }
+    },
+    {
+      "name": "MemoryServices",
+      "description": "Memory-related services that support the persistent memory system. Session memory manages per-session memory state (extraction, storage, and retrieval of key information from conversations). Extract memories uses LLM prompts to identify and extract memorable facts from conversation history. Team memory sync provides multi-user memory synchronization with file watching, secret scanning to prevent sensitive data leakage, and a secret guard for team memory content.",
+      "edges": [
+        {
+          "target": "APIClient",
+          "type": "calls",
+          "description": "Sends LLM requests for memory extraction and session memory summarization"
+        },
+        {
+          "target": "Analytics",
+          "type": "depends",
+          "description": "Logs memory extraction events and team sync operations"
+        }
+      ],
+      "codeScope": [
+        "src/services/SessionMemory/",
+        "src/services/extractMemories/",
+        "src/services/teamMemorySync/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "MemoryServices"
+      }
+    },
+    {
+      "name": "Plugins",
+      "description": "Plugin installation and management service. Includes the plugin installation manager (install, uninstall, update lifecycle), plugin CLI commands (user-facing commands for managing plugins), and plugin operations (discovery, validation, dependency resolution, and execution of plugin packages).",
+      "edges": [
+        {
+          "target": "Analytics",
+          "type": "depends",
+          "description": "Tracks plugin installation, activation, and error events"
+        }
+      ],
+      "codeScope": [
+        "src/services/plugins/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Plugins"
+      }
+    },
+    {
+      "name": "Utilities",
+      "description": "Miscellaneous standalone service utilities. Token estimation provides fast approximate token counting without API calls. Diagnostic tracking records tool and system diagnostics for debugging. Notifier handles desktop notifications. Prevent-sleep keeps the system awake during long operations. VCR provides request recording/replay for testing. Internal logging manages structured internal log output.",
+      "edges": [],
+      "codeScope": [
+        "src/services/tokenEstimation.ts",
+        "src/services/diagnosticTracking.ts",
+        "src/services/notifier.ts",
+        "src/services/preventSleep.ts",
+        "src/services/vcr.ts",
+        "src/services/internalLogging.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Utilities"
+      }
+    }
+  ]
+}

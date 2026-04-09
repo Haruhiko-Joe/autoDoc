@@ -1,0 +1,93 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "c4219e4e-d037-4816-b853-b598ecd35028",
+  "description": "The I/O abstraction layer for non-interactive (headless/SDK/bridge) execution modes. print.ts (5600 lines) implements the runHeadless function that drives the full query loop without a terminal UI — handling structured NDJSON output, permission prompts, tool execution, streaming responses, and session lifecycle. StructuredIO provides the base class for NDJSON stdin/stdout message framing. RemoteIO extends StructuredIO with WebSocket transport for bridge/remote sessions. Includes transport implementations (WebSocket, SSE, Hybrid, CCR client) for server-side communication, ndjsonSafeStringify for safe JSON serialization, and exit helpers.",
+  "codeScope": [
+    "src/cli/print.ts",
+    "src/cli/structuredIO.ts",
+    "src/cli/remoteIO.ts",
+    "src/cli/ndjsonSafeStringify.ts",
+    "src/cli/exit.ts",
+    "src/cli/transports/"
+  ],
+  "nodes": [
+    {
+      "name": "HeadlessQueryLoop",
+      "description": "The runHeadless function (print.ts, 5600 lines) that drives the complete non-interactive query loop for SDK/piped/bridge execution. Orchestrates session lifecycle: initializing StructuredIO or RemoteIO, setting up MCP servers, processing user messages from stdin, driving the ask() query engine loop, handling streaming output (NDJSON stream_events), managing tool execution with permission prompts, session resume/continue, idle timeouts, dynamic MCP server management, plugin installation, conversation recovery, side questions, prompt suggestions, and graceful shutdown. Also exports createCanUseToolWithPermissionPrompt and getCanUseToolFn for interactive-mode permission prompting, plus MCP set-servers types.",
+      "edges": [
+        {
+          "target": "StructuredIOLayer",
+          "type": "depends",
+          "description": "Creates StructuredIO (for local SDK) or RemoteIO (for bridge/remote) to handle stdin/stdout NDJSON message framing and control request protocol"
+        },
+        {
+          "target": "Transports",
+          "type": "depends",
+          "description": "RemoteIO instantiation in runHeadless connects through the transport layer for WebSocket/SSE/CCR communication"
+        },
+        {
+          "target": "Utilities",
+          "type": "calls",
+          "description": "Uses ndjsonSafeStringify for all NDJSON output serialization"
+        }
+      ],
+      "codeScope": [
+        "src/cli/print.ts"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "HeadlessQueryLoop"
+      }
+    },
+    {
+      "name": "StructuredIOLayer",
+      "description": "The IO abstraction classes for SDK message framing. StructuredIO (structuredIO.ts, 860 lines) provides the base class for NDJSON stdin/stdout communication: reading newline-delimited JSON from an async input stream, dispatching control_request/control_response messages, managing pending permission prompts with request/response correlation, creating canUseTool permission callbacks that race SDK prompts against hooks, handling elicitation requests, MCP message forwarding, sandbox network access prompts, and hook callbacks. RemoteIO (remoteIO.ts, 255 lines) extends StructuredIO to add WebSocket/SSE transport for bridge and remote sessions, CCR v2 client integration (heartbeats, internal events, state reporting), keep-alive frames, and bidirectional message bridging with stdout echo for bridge mode.",
+      "edges": [
+        {
+          "target": "Transports",
+          "type": "depends",
+          "description": "RemoteIO uses getTransportForUrl to select and instantiate the appropriate transport (WebSocket, SSE, or Hybrid) and optionally creates a CCRClient"
+        },
+        {
+          "target": "Utilities",
+          "type": "calls",
+          "description": "Uses ndjsonSafeStringify for serializing outbound NDJSON messages to stdout and transport"
+        }
+      ],
+      "codeScope": [
+        "src/cli/structuredIO.ts",
+        "src/cli/remoteIO.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "StructuredIOLayer"
+      }
+    },
+    {
+      "name": "Transports",
+      "description": "Transport implementations for server-side communication in remote/bridge sessions. WebSocketTransport (800 lines) provides bidirectional WebSocket with reconnection, buffering, keep-alive, and proxy/mTLS support. SSETransport (711 lines) implements Server-Sent Events for reads with HTTP POST for writes, including reconnection and liveness timeouts. HybridTransport (282 lines) extends WebSocketTransport to use WebSocket for reads but HTTP POST for writes with batched uploads. CCRClient (998 lines) orchestrates CCR v2 protocol: worker registration, epoch management, heartbeats, stream event accumulation/batching, internal event persistence, delivery acknowledgments, and worker state reporting. SerialBatchEventUploader (275 lines) provides ordered batch uploading with retry and backpressure. WorkerStateUploader (131 lines) coalesces and uploads worker state with exponential backoff. transportUtils (45 lines) selects the appropriate transport based on URL and environment flags.",
+      "edges": [],
+      "codeScope": [
+        "src/cli/transports/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "Transports"
+      }
+    },
+    {
+      "name": "Utilities",
+      "description": "Small utility modules for the CLI IO layer. ndjsonSafeStringify (32 lines) wraps JSON.stringify to escape U+2028/U+2029 line separators that would break NDJSON line-splitting receivers. exit.ts (31 lines) provides cliError() and cliOk() helpers that consolidate the print-and-exit pattern used across CLI subcommand handlers, with never return types for TypeScript control flow narrowing.",
+      "edges": [],
+      "codeScope": [
+        "src/cli/ndjsonSafeStringify.ts",
+        "src/cli/exit.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Utilities"
+      }
+    }
+  ]
+}

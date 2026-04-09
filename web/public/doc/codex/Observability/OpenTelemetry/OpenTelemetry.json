@@ -1,0 +1,86 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "c0b3b66d-67cc-4528-bf68-bf72d47c9c75",
+  "description": "OpenTelemetry 集成 crate（codex-otel）。提供 OtelProvider 来配置分布式追踪（OTLP span 导出）、结构化日志导出，以及基于 OpenTelemetry SDK 的指标客户端（计数器、直方图、计时器）。还包含 SessionTelemetry——高层门面，将每个会话的遥测事件（API 调用、工具调用、SSE/WebSocket 事件）同时作为 OTel span/日志和指标发送。支持 gRPC 和 HTTP OTLP 导出器（带 TLS）、W3C trace-context 传播、运行时指标快照，以及基于目标的导出过滤。",
+  "codeScope": [
+    "codex-rs/otel/"
+  ],
+  "nodes": [
+    {
+      "name": "OtelProvider",
+      "description": "核心 OTel SDK 引导和配置层。包含 OtelProvider 结构体，用于配置 OTLP span 导出（追踪）、结构化日志导出和指标管道。包括 OtelSettings/OtelExporter 配置类型、支持 TLS/mTLS 的 gRPC 和 HTTP 导出器的 OTLP 传输辅助工具、Statsig 默认导出器解析，以及基于目标的导出过滤（仅日志 vs 追踪安全的事件路由）。",
+      "edges": [
+        {
+          "target": "MetricsClient",
+          "type": "calls",
+          "description": "在提供者引导期间根据 OtelSettings 创建并安装全局 MetricsClient"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/otel/src/provider.rs",
+        "codex-rs/otel/src/config.rs",
+        "codex-rs/otel/src/otlp.rs",
+        "codex-rs/otel/src/targets.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "OtelProvider"
+      }
+    },
+    {
+      "name": "MetricsClient",
+      "description": "OpenTelemetry 指标子系统。提供 MetricsClient，包含计数器（u64）、直方图（f64）和基于 OTel SDK MeterProvider 的持续时间直方图。包括指标名称/标签验证、可配置的 OTLP 指标导出器（gRPC/HTTP）、在 drop 时自动记录持续时间的 Timer、用于按需运行时指标快照的 ManualReader、用于聚合工具调用/API/SSE/WebSocket 计数和延迟的 RuntimeMetricsSummary、常用指标名称常量，以及会话指标标签辅助工具。",
+      "edges": [
+        {
+          "target": "OtelProvider",
+          "type": "depends",
+          "description": "使用配置中的 OtelExporter 和 OtelTlsConfig 类型，以及 otlp 传输辅助工具来构建指标导出器"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/otel/src/metrics/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "MetricsClient"
+      }
+    },
+    {
+      "name": "SessionTelemetry",
+      "description": "高层每会话遥测门面。SessionTelemetry 将 API 调用、工具调用、SSE/WebSocket 事件、对话生命周期和模型响应的结构化遥测事件，同时作为 OTel 日志/追踪事件（通过带目标路由的 tracing 宏）和指标（通过 MetricsClient）发送。管理会话元数据（对话 ID、认证模式、模型、发起者），提供运行时指标摘要收集，并定义共享类型（ToolDecisionSource、TelemetryAuthMode）和事件宏（log_event、trace_event、log_and_trace_event）。",
+      "edges": [
+        {
+          "target": "MetricsClient",
+          "type": "calls",
+          "description": "发送计数器、直方图、持续时间记录和计时器；收集运行时指标快照"
+        },
+        {
+          "target": "OtelProvider",
+          "type": "depends",
+          "description": "使用 OtelProvider 获取指标引用和日志/追踪事件路由的目标常量"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/otel/src/events/",
+        "codex-rs/otel/src/lib.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SessionTelemetry"
+      }
+    },
+    {
+      "name": "TraceContext",
+      "description": "W3C trace-context 传播工具。提供提取和注入 W3C traceparent/tracestate 头部的函数，在 OpenTelemetry Context 和 W3cTraceContext 协议类型之间转换，从追踪头部设置父 span 上下文，从环境变量读取 TRACEPARENT，以及获取当前 span 的 trace ID 十六进制字符串。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/otel/src/trace_context.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TraceContext"
+      }
+    }
+  ]
+}

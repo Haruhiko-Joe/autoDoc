@@ -1,0 +1,230 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "0ed0df20-d697-429d-995b-0371aa86dcd3",
+  "description": "The tool abstraction layer providing Claude with capabilities to interact with the local environment. Defines the Tool interface, input/output schemas, permission models, and execution framework. Includes 40+ built-in tools spanning file operations (read, edit, write, glob, grep), shell execution (Bash, PowerShell), web access (fetch, search), planning (plan mode, todos), workspace management (worktrees, agents), MCP tool proxying, and task orchestration. Each tool defines its own prompts, parameter validation, and execution logic.",
+  "codeScope": [
+    "src/Tool.ts",
+    "src/tools.ts",
+    "src/tools/",
+    "tools/"
+  ],
+  "nodes": [
+    {
+      "name": "ToolInterfaceAndRegistry",
+      "description": "The core Tool type definition and tool pool assembly. Defines the Tool interface with 30+ methods (call, checkPermissions, prompt, render*, etc.), the ToolUseContext carrying runtime state, the ToolResult/ToolProgress types, and the buildTool factory that provides safe defaults. The registry (tools.ts) assembles the complete tool pool via getAllBaseTools, getTools (with permission filtering, REPL mode handling, deny rules), assembleToolPool (merging built-in + MCP tools), and feature-flag gated conditional tool loading.",
+      "edges": [
+        {
+          "target": "ShellExecutionTools",
+          "type": "composes",
+          "description": "Registers BashTool and PowerShellTool into the tool pool"
+        },
+        {
+          "target": "FileOperationTools",
+          "type": "composes",
+          "description": "Registers FileRead, FileEdit, FileWrite, Glob, Grep, and NotebookEdit tools"
+        },
+        {
+          "target": "AgentAndOrchestration",
+          "type": "composes",
+          "description": "Registers AgentTool, Task tools, Team tools, and SendMessage into the tool pool"
+        },
+        {
+          "target": "MCPAndIntegrations",
+          "type": "composes",
+          "description": "Registers MCP proxy tools, LSP, SkillTool, and ToolSearch into the tool pool"
+        },
+        {
+          "target": "WebAccessTools",
+          "type": "composes",
+          "description": "Registers WebFetch and WebSearch tools"
+        },
+        {
+          "target": "PlanningAndWorkflow",
+          "type": "composes",
+          "description": "Registers plan mode, todo, worktree, cron, and workflow tools"
+        },
+        {
+          "target": "UtilityTools",
+          "type": "composes",
+          "description": "Registers AskUserQuestion, Config, Brief, Sleep, and other miscellaneous tools"
+        }
+      ],
+      "codeScope": [
+        "src/Tool.ts",
+        "src/tools.ts",
+        "src/tools/shared/",
+        "src/tools/testing/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ToolInterfaceAndRegistry"
+      }
+    },
+    {
+      "name": "ShellExecutionTools",
+      "description": "Shell command execution tools providing Claude with the ability to run commands in Bash and PowerShell. BashTool (~10k lines) includes command parsing, security validation (injection detection, dangerous command warnings), permission checking (command-pattern matching, sed edit detection), sandbox enforcement, path validation, read-only mode, and comment labeling. PowerShellTool (~7.8k lines) mirrors the same architecture for Windows PowerShell with CLM type handling, git safety checks, and PowerShell-specific permission and security models.",
+      "edges": [
+        {
+          "target": "ToolInterfaceAndRegistry",
+          "type": "depends",
+          "description": "Implements the Tool interface and uses buildTool for construction"
+        }
+      ],
+      "codeScope": [
+        "src/tools/BashTool/",
+        "src/tools/PowerShellTool/",
+        "src/tools/REPLTool/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "ShellExecutionTools"
+      }
+    },
+    {
+      "name": "AgentAndOrchestration",
+      "description": "Multi-agent spawning and task orchestration tools. AgentTool (~4.5k lines) manages subagent lifecycle: forking subagent processes, built-in agent types (explore, plan, general-purpose, verification, statusline-setup, claude-code-guide), custom agent loading from directories, agent memory/context management, agent display/color coordination, and the resume flow for continuing agents. Task tools (Create/Get/Update/List/Stop/Output, ~1.3k lines combined) provide structured task management. Team tools and SendMessage enable coordinator-mode multi-agent collaboration.",
+      "edges": [
+        {
+          "target": "ToolInterfaceAndRegistry",
+          "type": "depends",
+          "description": "Implements the Tool interface"
+        },
+        {
+          "target": "ShellExecutionTools",
+          "type": "calls",
+          "description": "Subagents can use Bash/PowerShell tools within their execution context"
+        }
+      ],
+      "codeScope": [
+        "src/tools/AgentTool/",
+        "src/tools/TaskCreateTool/",
+        "src/tools/TaskGetTool/",
+        "src/tools/TaskUpdateTool/",
+        "src/tools/TaskListTool/",
+        "src/tools/TaskStopTool/",
+        "src/tools/TaskOutputTool/",
+        "src/tools/TeamCreateTool/",
+        "src/tools/TeamDeleteTool/",
+        "src/tools/SendMessageTool/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "AgentAndOrchestration"
+      }
+    },
+    {
+      "name": "FileOperationTools",
+      "description": "File system interaction tools enabling Claude to read, search, edit, and write files. FileReadTool handles text files, PDFs, images (with image processing), and notebooks with configurable line limits. FileEditTool performs exact string replacements with uniqueness validation and replace-all support. FileWriteTool creates or overwrites files. GlobTool provides fast file pattern matching. GrepTool wraps ripgrep for content search with multiple output modes. NotebookEditTool edits Jupyter notebook cells.",
+      "edges": [
+        {
+          "target": "ToolInterfaceAndRegistry",
+          "type": "depends",
+          "description": "Implements the Tool interface"
+        }
+      ],
+      "codeScope": [
+        "src/tools/FileReadTool/",
+        "src/tools/FileEditTool/",
+        "src/tools/FileWriteTool/",
+        "src/tools/GlobTool/",
+        "src/tools/GrepTool/",
+        "src/tools/NotebookEditTool/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "FileOperationTools"
+      }
+    },
+    {
+      "name": "MCPAndIntegrations",
+      "description": "Tools for interacting with external protocols and services. MCPTool proxies tool calls to MCP server connections with result collapsing classification. McpAuthTool handles MCP authentication flows. ListMcpResourcesTool and ReadMcpResourceTool provide MCP resource browsing. LSPTool (~1.8k lines) communicates with language servers for code intelligence (symbol lookup, formatting, schemas). SkillTool (~1.4k lines) invokes user-defined and bundled skills. ToolSearchTool enables deferred tool discovery via keyword matching.",
+      "edges": [
+        {
+          "target": "ToolInterfaceAndRegistry",
+          "type": "depends",
+          "description": "Implements the Tool interface"
+        }
+      ],
+      "codeScope": [
+        "src/tools/MCPTool/",
+        "src/tools/McpAuthTool/",
+        "src/tools/ListMcpResourcesTool/",
+        "src/tools/ReadMcpResourceTool/",
+        "src/tools/LSPTool/",
+        "src/tools/SkillTool/",
+        "src/tools/ToolSearchTool/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "MCPAndIntegrations"
+      }
+    },
+    {
+      "name": "WebAccessTools",
+      "description": "Tools for fetching web content and performing web searches. WebFetchTool (~1k lines) retrieves URLs with content extraction, HTML-to-markdown conversion, and size limiting. WebSearchTool (~470 lines) performs web searches and returns structured results with progress tracking.",
+      "edges": [
+        {
+          "target": "ToolInterfaceAndRegistry",
+          "type": "depends",
+          "description": "Implements the Tool interface"
+        }
+      ],
+      "codeScope": [
+        "src/tools/WebFetchTool/",
+        "src/tools/WebSearchTool/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "WebAccessTools"
+      }
+    },
+    {
+      "name": "PlanningAndWorkflow",
+      "description": "Tools for structured planning, task tracking, workspace isolation, and scheduled execution. EnterPlanModeTool and ExitPlanModeTool manage plan mode transitions restricting Claude to read-only operations during planning. TodoWriteTool provides a todo list for tracking work progress. EnterWorktreeTool and ExitWorktreeTool manage git worktree-based isolated workspaces. ScheduleCronTool (CronCreate/Delete/List) manages recurring scheduled agent triggers. RemoteTriggerTool triggers remote agent executions. Feature-flagged tools include SleepTool, MonitorTool, and WorkflowTool.",
+      "edges": [
+        {
+          "target": "ToolInterfaceAndRegistry",
+          "type": "depends",
+          "description": "Implements the Tool interface"
+        }
+      ],
+      "codeScope": [
+        "src/tools/EnterPlanModeTool/",
+        "src/tools/ExitPlanModeTool/",
+        "src/tools/TodoWriteTool/",
+        "src/tools/EnterWorktreeTool/",
+        "src/tools/ExitWorktreeTool/",
+        "src/tools/ScheduleCronTool/",
+        "src/tools/RemoteTriggerTool/",
+        "src/tools/SleepTool/",
+        "src/tools/SyntheticOutputTool/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PlanningAndWorkflow"
+      }
+    },
+    {
+      "name": "UtilityTools",
+      "description": "Miscellaneous utility tools and feature-flagged experimental tools. AskUserQuestionTool prompts the user for interactive input. ConfigTool modifies runtime settings. BriefTool manages brief/attachment uploads. Also includes external tool definitions (tools/ directory) for TungstenTool, OverflowTestTool, TerminalCaptureTool, VerifyPlanExecutionTool, and WorkflowTool constants — these are JS-based tool stubs loaded conditionally via feature flags.",
+      "edges": [
+        {
+          "target": "ToolInterfaceAndRegistry",
+          "type": "depends",
+          "description": "Implements the Tool interface"
+        }
+      ],
+      "codeScope": [
+        "src/tools/AskUserQuestionTool/",
+        "src/tools/ConfigTool/",
+        "src/tools/BriefTool/",
+        "tools/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "UtilityTools"
+      }
+    }
+  ]
+}

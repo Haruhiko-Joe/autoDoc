@@ -1,0 +1,373 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "361fc100-ada5-4fd4-938e-59c9c533e6b7",
+  "description": "Shared foundations that every other module depends on. Encompasses configuration management (settings hierarchy, config files, environment variables), authentication (OAuth flows, API keys, AWS/keychain credential storage), permission system (tool approval, auto-mode, bypass mode), git operations, shell/workspace management, file utilities, model selection and cost calculation, CLAUDE.md parsing, telemetry attributes, proxy/TLS configuration, CLI argument parsing, error handling, auto-updater, task abstractions, and 300+ utility modules. Also includes build tooling (esbuild scripts, source preparation, TypeScript stubs) and vendored native modules.",
+  "codeScope": [
+    "src/utils/",
+    "src/constants/",
+    "src/types/",
+    "src/schemas/",
+    "src/Task.ts",
+    "src/tasks.ts",
+    "src/tasks/",
+    "scripts/",
+    "stubs/",
+    "types/",
+    "utils/",
+    "vendor/"
+  ],
+  "nodes": [
+    {
+      "name": "ConfigAndSettings",
+      "description": "Configuration management system implementing a multi-source settings hierarchy. Loads, validates, merges, and caches settings from 5 sources (user, project, local, flag, policy) with precedence rules. Includes global/project config persistence (~/.claude.json), CLI argument early-parsing, environment variable management, MDM settings, settings change detection, and tool/permission validation config.",
+      "edges": [
+        {
+          "target": "ConstantsAndTypes",
+          "type": "depends",
+          "description": "Uses Zod schemas and type definitions for settings validation and permission rule types"
+        }
+      ],
+      "codeScope": [
+        "src/utils/settings/",
+        "src/utils/config.ts",
+        "src/utils/configConstants.ts",
+        "src/utils/cliArgs.ts",
+        "src/utils/managedEnv.ts",
+        "src/utils/managedEnvConstants.ts",
+        "src/utils/sessionEnvVars.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ConfigAndSettings"
+      }
+    },
+    {
+      "name": "AuthAndCredentials",
+      "description": "Authentication and credential management spanning multiple auth sources: Anthropic API keys, OAuth token lifecycle (acquire, refresh, persist), AWS STS credential validation and caching, GCP auth, macOS Keychain integration, CCR file-descriptor tokens, and api-key-helper command support. Includes platform-specific secure storage backends (Keychain, plaintext fallback) with caching, prefetching, and fallback chains.",
+      "edges": [
+        {
+          "target": "ConfigAndSettings",
+          "type": "depends",
+          "description": "Reads API key sources, OAuth tokens, and cloud auth configuration from global/project config and settings"
+        },
+        {
+          "target": "NetworkAndProxy",
+          "type": "depends",
+          "description": "Uses HTTP utilities and auth headers for OAuth token refresh and API key validation requests"
+        }
+      ],
+      "codeScope": [
+        "src/utils/auth.ts",
+        "src/utils/authFileDescriptor.ts",
+        "src/utils/authPortable.ts",
+        "src/utils/aws.ts",
+        "src/utils/awsAuthStatusManager.ts",
+        "src/utils/secureStorage/",
+        "src/utils/billing.ts",
+        "src/utils/sessionIngressAuth.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "AuthAndCredentials"
+      }
+    },
+    {
+      "name": "Permissions",
+      "description": "Tool permission and access control system with 23 modules. Defines permission modes (default, plan, acceptEdits, bypass, auto), permission rules (allow/deny/ask) with multi-source loading, bash command safety classification, dangerous pattern detection, YOLO classifier, shell rule matching, filesystem path validation, shadowed rule detection, denial tracking, and permission prompt UI schemas. Gates every tool execution in the system.",
+      "edges": [
+        {
+          "target": "ConfigAndSettings",
+          "type": "depends",
+          "description": "Loads permission rules from settings sources and persists user permission decisions to config"
+        },
+        {
+          "target": "ConstantsAndTypes",
+          "type": "depends",
+          "description": "Uses permission type definitions and tool constant identifiers"
+        }
+      ],
+      "codeScope": [
+        "src/utils/permissions/",
+        "src/utils/classifierApprovals.ts",
+        "src/utils/classifierApprovalsHook.ts",
+        "src/utils/autoModeDenials.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Permissions"
+      }
+    },
+    {
+      "name": "GitOperations",
+      "description": "Git repository operations including root detection (with worktree/submodule awareness), branch/HEAD resolution, remote URL normalization, clean state detection, file change tracking, diff analysis with stat/hunk parsing, git stashing, transient state detection (merge/rebase), and worktree lifecycle management. Includes a high-performance filesystem-based git reader that avoids spawning git subprocesses, a lightweight .git/config parser, and gitignore pattern handling.",
+      "edges": [
+        {
+          "target": "ConfigAndSettings",
+          "type": "depends",
+          "description": "Reads git-related settings to control git instruction inclusion and worktree behavior"
+        }
+      ],
+      "codeScope": [
+        "src/utils/git/",
+        "src/utils/git.ts",
+        "src/utils/gitDiff.ts",
+        "src/utils/gitSettings.ts",
+        "src/utils/worktree.ts",
+        "src/utils/worktreeModeEnabled.ts",
+        "src/utils/commitAttribution.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "GitOperations"
+      }
+    },
+    {
+      "name": "ShellAndExecution",
+      "description": "Shell process execution infrastructure. The Shell module spawns commands with proper I/O handling (file or pipe mode), CWD tracking, timeout management, and sandbox support. ShellCommand manages process lifecycle including background tasks, abort signals, output size watchdog, and stream redirection. Includes shell provider abstractions (Bash, PowerShell), read-only command validation whitelists for safe execution, command prefix handling, default shell resolution, and the sandbox adapter bridging sandbox-runtime with the settings system for filesystem and network restrictions.",
+      "edges": [
+        {
+          "target": "Permissions",
+          "type": "depends",
+          "description": "Shell command execution is gated by permission rules and bash command classification"
+        },
+        {
+          "target": "ConfigAndSettings",
+          "type": "depends",
+          "description": "Reads shell configuration, sandbox settings, and environment overrides"
+        }
+      ],
+      "codeScope": [
+        "src/utils/Shell.ts",
+        "src/utils/ShellCommand.ts",
+        "src/utils/shell/",
+        "src/utils/bash/",
+        "src/utils/sandbox/",
+        "src/utils/shellConfig.ts",
+        "src/utils/powershell/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ShellAndExecution"
+      }
+    },
+    {
+      "name": "ModelAndCost",
+      "description": "Model selection, configuration, and cost tracking. Resolves the active model through a priority chain (session override > CLI flag > env vars > settings), defines model configurations for multiple API providers (firstParty, Bedrock, Vertex, Foundry), validates models against allowlists, manages model aliases (sonnet/opus/haiku/best), fetches and caches model capabilities, tracks deprecation status, and calculates USD costs from token usage with per-family pricing tiers and cache read/write multipliers.",
+      "edges": [
+        {
+          "target": "ConfigAndSettings",
+          "type": "depends",
+          "description": "Reads model overrides, provider selection, and allowlists from settings and environment variables"
+        }
+      ],
+      "codeScope": [
+        "src/utils/model/",
+        "src/utils/modelCost.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ModelAndCost"
+      }
+    },
+    {
+      "name": "TaskFramework",
+      "description": "Task abstraction layer for managing concurrent work units. Defines TaskType variants (local_bash, local_agent, remote_agent, in_process_teammate, dream, etc.) with status lifecycle (pending, running, completed, failed, killed). The task registry loads implementations with feature-gating. TaskOutput captures command output in dual modes (file descriptor redirect or pipe with memory/disk spillover). Includes per-task-type implementations for shell, agent, remote, and dream tasks, plus progress reporting and output formatting.",
+      "edges": [
+        {
+          "target": "ShellAndExecution",
+          "type": "calls",
+          "description": "Shell tasks delegate command execution to the Shell module"
+        },
+        {
+          "target": "ConstantsAndTypes",
+          "type": "depends",
+          "description": "Uses task state union types and status definitions"
+        }
+      ],
+      "codeScope": [
+        "src/Task.ts",
+        "src/tasks.ts",
+        "src/tasks/",
+        "src/utils/task/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TaskFramework"
+      }
+    },
+    {
+      "name": "ConstantsAndTypes",
+      "description": "Shared type definitions, Zod schemas, and application constants used across all modules. Constants cover API limits, beta flags, error IDs, OAuth endpoints, tool identifiers, system prompt section templates, output styles, and hardcoded prompt text. Types define the command interface hierarchy, hook types, permission types, plugin interfaces, and log formats. Schemas provide Zod-based validation for hook configurations including bash, prompt, HTTP, and agent hook types.",
+      "edges": [],
+      "codeScope": [
+        "src/constants/",
+        "src/types/",
+        "src/schemas/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ConstantsAndTypes"
+      }
+    },
+    {
+      "name": "NetworkAndProxy",
+      "description": "HTTP networking infrastructure including proxy configuration (HTTPS_PROXY, NO_PROXY with domain/IP/wildcard matching), proxy agent creation for HTTP, WebSocket, and Axios clients, mutual TLS configuration (client certs, key passphrase), CA certificate management (bundled Mozilla CAs + system store + extra certs from settings), keep-alive management, DNS address family resolution, user-agent string construction, and OAuth/API-key auth header generation with 401 retry logic.",
+      "edges": [
+        {
+          "target": "ConfigAndSettings",
+          "type": "depends",
+          "description": "Reads proxy URLs, CA cert paths, and mTLS configuration from settings and environment variables"
+        }
+      ],
+      "codeScope": [
+        "src/utils/proxy.ts",
+        "src/utils/mtls.ts",
+        "src/utils/caCerts.ts",
+        "src/utils/caCertsConfig.ts",
+        "src/utils/http.ts",
+        "src/utils/userAgent.ts",
+        "src/utils/peerAddress.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "NetworkAndProxy"
+      }
+    },
+    {
+      "name": "BuildTooling",
+      "description": "Build infrastructure and vendored native modules. Build scripts handle source preparation (Bun intrinsic replacement, MACRO resolution), feature-gate dead-code elimination (replacing feature('X') with false), automatic stub generation for missing modules, and esbuild bundling to dist/cli.js. Stubs provide runtime implementations for bun:bundle features and type declarations. Top-level utils/ contains JS helper modules (attribution hooks, system theme watcher, UDS client). Vendor/ includes source for native NAPI modules: audio capture, image processing, keyboard modifiers, and URL handling.",
+      "edges": [],
+      "codeScope": [
+        "scripts/",
+        "stubs/",
+        "types/",
+        "utils/",
+        "vendor/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "BuildTooling"
+      }
+    },
+    {
+      "name": "CoreUtilities",
+      "description": "A broad collection of 200+ utility modules providing foundational capabilities used throughout the codebase. Includes telemetry and observability (OpenTelemetry setup, BigQuery export, Perfetto tracing, event logging), platform and runtime detection, error classes and logging, CLAUDE.md file parsing with @include support, data format handling (JSON/YAML/XML/Markdown/PDF), async patterns (memoization, sequential execution, queue processing, abort controllers), file and path utilities (glob, ripgrep, temp files), session state management, image handling, theme management, and 20+ domain-specific helper subdirectories (hooks, MCP, memory, messages, GitHub, plugins, skills, suggestions, swarm, todo, and more).",
+      "edges": [
+        {
+          "target": "ConfigAndSettings",
+          "type": "depends",
+          "description": "Many utilities read configuration and settings for their behavior"
+        },
+        {
+          "target": "GitOperations",
+          "type": "depends",
+          "description": "CLAUDE.md parsing, session management, and file utilities use git root detection and repo state"
+        },
+        {
+          "target": "ConstantsAndTypes",
+          "type": "depends",
+          "description": "Uses shared type definitions, error IDs, and constant values"
+        }
+      ],
+      "codeScope": [
+        "src/utils/telemetry/",
+        "src/utils/telemetryAttributes.ts",
+        "src/utils/claudemd.ts",
+        "src/utils/platform.ts",
+        "src/utils/process.ts",
+        "src/utils/terminal.ts",
+        "src/utils/log.ts",
+        "src/utils/errors.ts",
+        "src/utils/cleanup.ts",
+        "src/utils/cleanupRegistry.ts",
+        "src/utils/gracefulShutdown.ts",
+        "src/utils/signal.ts",
+        "src/utils/json.ts",
+        "src/utils/jsonRead.ts",
+        "src/utils/yaml.ts",
+        "src/utils/xml.ts",
+        "src/utils/markdown.ts",
+        "src/utils/pdf.ts",
+        "src/utils/pdfUtils.ts",
+        "src/utils/notebook.ts",
+        "src/utils/hash.ts",
+        "src/utils/crypto.ts",
+        "src/utils/uuid.ts",
+        "src/utils/stringUtils.ts",
+        "src/utils/array.ts",
+        "src/utils/set.ts",
+        "src/utils/intl.ts",
+        "src/utils/words.ts",
+        "src/utils/sleep.ts",
+        "src/utils/memoize.ts",
+        "src/utils/sequential.ts",
+        "src/utils/lockfile.ts",
+        "src/utils/queueProcessor.ts",
+        "src/utils/combinedAbortSignal.ts",
+        "src/utils/abortController.ts",
+        "src/utils/withResolvers.ts",
+        "src/utils/mailbox.ts",
+        "src/utils/semver.ts",
+        "src/utils/autoUpdater.ts",
+        "src/utils/path.ts",
+        "src/utils/tempfile.ts",
+        "src/utils/glob.ts",
+        "src/utils/ripgrep.ts",
+        "src/utils/bufferedWriter.ts",
+        "src/utils/readFileInRange.ts",
+        "src/utils/systemDirectories.ts",
+        "src/utils/xdg.ts",
+        "src/utils/theme.ts",
+        "src/utils/systemTheme.ts",
+        "src/utils/sliceAnsi.ts",
+        "src/utils/truncate.ts",
+        "src/utils/treeify.ts",
+        "src/utils/cliHighlight.ts",
+        "src/utils/hyperlink.ts",
+        "src/utils/context.ts",
+        "src/utils/cwd.ts",
+        "src/utils/warningHandler.ts",
+        "src/utils/imagePaste.ts",
+        "src/utils/imageResizer.ts",
+        "src/utils/imageStore.ts",
+        "src/utils/imageValidation.ts",
+        "src/utils/ansiToPng.ts",
+        "src/utils/ansiToSvg.ts",
+        "src/utils/background/",
+        "src/utils/claudeInChrome/",
+        "src/utils/computerUse/",
+        "src/utils/deepLink/",
+        "src/utils/dxt/",
+        "src/utils/filePersistence/",
+        "src/utils/github/",
+        "src/utils/hooks/",
+        "src/utils/mcp/",
+        "src/utils/memory/",
+        "src/utils/messages/",
+        "src/utils/nativeInstaller/",
+        "src/utils/plugins/",
+        "src/utils/processUserInput/",
+        "src/utils/skills/",
+        "src/utils/suggestions/",
+        "src/utils/swarm/",
+        "src/utils/teleport/",
+        "src/utils/todo/",
+        "src/utils/ultraplan/",
+        "src/utils/sessionActivity.ts",
+        "src/utils/sessionEnvironment.ts",
+        "src/utils/sessionRestore.ts",
+        "src/utils/sessionStart.ts",
+        "src/utils/sessionState.ts",
+        "src/utils/sessionStorage.ts",
+        "src/utils/sessionStoragePortable.ts",
+        "src/utils/sessionTitle.ts",
+        "src/utils/sessionUrl.ts"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "CoreUtilities"
+      }
+    }
+  ]
+}

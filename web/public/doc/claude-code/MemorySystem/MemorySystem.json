@@ -1,0 +1,143 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "69b90c2d-f5fd-4191-92b3-a437c71623b3",
+  "description": "Persistent memory and context management enabling Claude to remember information across conversations. Manages the CLAUDE.md file ecosystem (project-level and user-level instruction files), the memdir-based structured memory store with typed memories (user, feedback, project, reference), memory relevance ranking, memory aging and cleanup, team memory synchronization, session memory compaction, and automated memory extraction from conversations. Provides the long-term knowledge layer that makes each session context-aware.",
+  "codeScope": [
+    "src/memdir/",
+    "src/services/SessionMemory/",
+    "src/services/extractMemories/",
+    "src/services/teamMemorySync/"
+  ],
+  "nodes": [
+    {
+      "name": "MemdirCore",
+      "description": "Core memory directory infrastructure: prompt building, MEMORY.md entrypoint management, memory type taxonomy (user/feedback/project/reference), path resolution, directory lifecycle, and the combined/individual prompt variants for system prompt injection. Defines how memory instructions are communicated to the model.",
+      "edges": [
+        {
+          "target": "MemoryRetrieval",
+          "type": "calls",
+          "description": "Builds the searching-past-context prompt section that guides the model to use retrieval tools"
+        },
+        {
+          "target": "TeamMemoryPaths",
+          "type": "depends",
+          "description": "Imports team memory path functions and prompt builders for combined memory mode"
+        }
+      ],
+      "codeScope": [
+        "src/memdir/memdir.ts",
+        "src/memdir/memoryTypes.ts",
+        "src/memdir/paths.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "MemdirCore"
+      }
+    },
+    {
+      "name": "MemoryRetrieval",
+      "description": "Memory relevance ranking and scanning. Scans memory directory files for frontmatter headers, uses a Sonnet side-query to select the most relevant memories (up to 5) for the current user query, and provides memory age/freshness calculations with staleness caveats.",
+      "edges": [],
+      "codeScope": [
+        "src/memdir/findRelevantMemories.ts",
+        "src/memdir/memoryScan.ts",
+        "src/memdir/memoryAge.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "MemoryRetrieval"
+      }
+    },
+    {
+      "name": "SessionMemory",
+      "description": "Automatic session note-taking that maintains a structured markdown file summarizing the current conversation. Runs periodically as a forked subagent triggered by token/tool-call thresholds, extracts key information (task state, files, errors, learnings) without interrupting the main flow, and supports custom templates and prompts. Used by the compaction system for context preservation.",
+      "edges": [
+        {
+          "target": "MemdirCore",
+          "type": "depends",
+          "description": "References memory path utilities for file storage location"
+        }
+      ],
+      "codeScope": [
+        "src/services/SessionMemory/sessionMemory.ts",
+        "src/services/SessionMemory/sessionMemoryUtils.ts",
+        "src/services/SessionMemory/prompts.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SessionMemory"
+      }
+    },
+    {
+      "name": "ExtractMemories",
+      "description": "Background memory extraction agent that runs at the end of each query loop to automatically save durable memories from the conversation transcript. Uses the forked agent pattern for prompt cache sharing, supports mutual exclusion with main-agent memory writes, manages turn throttling, and handles both auto-only and combined (auto+team) extraction prompts.",
+      "edges": [
+        {
+          "target": "MemdirCore",
+          "type": "depends",
+          "description": "Uses memory paths, entrypoint name, and memory type definitions for extraction"
+        },
+        {
+          "target": "MemoryRetrieval",
+          "type": "calls",
+          "description": "Scans existing memory files to pre-inject manifest so the extraction agent avoids duplicates"
+        },
+        {
+          "target": "TeamMemoryPaths",
+          "type": "depends",
+          "description": "Checks team memory paths to classify written files as team vs private"
+        }
+      ],
+      "codeScope": [
+        "src/services/extractMemories/extractMemories.ts",
+        "src/services/extractMemories/prompts.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ExtractMemories"
+      }
+    },
+    {
+      "name": "TeamMemorySync",
+      "description": "Team memory synchronization service that syncs shared memory files between the local filesystem and the server API. Includes the sync protocol (pull/push with delta uploads, ETag-based conflict detection, checksum verification), file system watcher with debounced push, client-side secret scanning (gitleaks-based rules) to prevent credential leakage, and API types/schemas.",
+      "edges": [
+        {
+          "target": "TeamMemoryPaths",
+          "type": "depends",
+          "description": "Uses team memory path resolution, validation, and containment checks for all file operations"
+        }
+      ],
+      "codeScope": [
+        "src/services/teamMemorySync/index.ts",
+        "src/services/teamMemorySync/watcher.ts",
+        "src/services/teamMemorySync/secretScanner.ts",
+        "src/services/teamMemorySync/teamMemSecretGuard.ts",
+        "src/services/teamMemorySync/types.ts"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "TeamMemorySync"
+      }
+    },
+    {
+      "name": "TeamMemoryPaths",
+      "description": "Team memory path management and security. Resolves team memory directory paths, validates write paths against symlink-based traversal attacks (realpath resolution), provides containment checks, sanitizes path keys from server responses, and manages the team memory feature gate.",
+      "edges": [
+        {
+          "target": "MemdirCore",
+          "type": "depends",
+          "description": "Builds on auto-memory path resolution (getAutoMemPath) since team dir is a subdirectory of auto-memory"
+        }
+      ],
+      "codeScope": [
+        "src/memdir/teamMemPaths.ts",
+        "src/memdir/teamMemPrompts.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TeamMemoryPaths"
+      }
+    }
+  ]
+}

@@ -1,0 +1,301 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "53307795-22af-4aff-88c5-92beb10bb2f3",
+  "description": "Claude Code — Anthropic's AI-powered interactive CLI for software engineering. A full-featured terminal application that connects developers to Claude for code generation, editing, debugging, and project navigation through a rich REPL interface with tool execution, multi-session management, and extensibility via plugins, skills, and MCP servers.",
+  "nodes": [
+    {
+      "name": "Bootstrap",
+      "description": "Application entry points, initialization, and lifecycle management. Handles CLI argument parsing, environment setup (Node.js validation, git detection, terminal configuration), telemetry initialization (OpenTelemetry, Datadog), authentication bootstrapping (OAuth, API keys, AWS credentials), feature gate loading, migration execution, and global state initialization. Includes the CLI I/O layer (structured/NDJSON output, remote I/O transport, print helpers) that bridge and server flows depend on. Orchestrates the startup sequence from raw CLI invocation to a fully-configured REPL session.",
+      "codeScope": [
+        "src/entrypoints/",
+        "src/bootstrap/",
+        "src/setup.ts",
+        "src/migrations/",
+        "src/main.tsx",
+        "src/cli/"
+      ],
+      "edges": [
+        {
+          "type": "calls",
+          "target": "TerminalUI",
+          "description": "Launches the Ink-based REPL interface after initialization completes"
+        },
+        {
+          "type": "depends",
+          "target": "Services",
+          "description": "Initializes API clients, analytics, OAuth, telemetry, and MCP connections during startup"
+        },
+        {
+          "type": "depends",
+          "target": "Infrastructure",
+          "description": "Reads configuration, validates environment, resolves auth credentials, and applies settings"
+        }
+      ]
+    },
+    {
+      "name": "QueryEngine",
+      "description": "The core AI conversation loop that drives all interactions with Claude. Manages the complete lifecycle of a query: building system prompts, sending messages to the Anthropic API, processing streaming responses, executing tool calls, handling retries and fallbacks, tracking token usage and costs, and performing automatic context compaction when the conversation exceeds window limits. Includes the cost tracker, token budget management, and query configuration.",
+      "codeScope": [
+        "src/QueryEngine.ts",
+        "src/query.ts",
+        "src/query/",
+        "src/context.ts",
+        "src/cost-tracker.ts",
+        "src/costHook.ts",
+        "src/history.ts"
+      ],
+      "edges": [
+        {
+          "type": "calls",
+          "target": "ToolSystem",
+          "description": "Dispatches tool calls from Claude's responses to the tool execution engine"
+        },
+        {
+          "type": "calls",
+          "target": "Services",
+          "description": "Invokes the Claude API client, context compaction service, and analytics for each query turn"
+        },
+        {
+          "type": "data-flow",
+          "target": "TerminalUI",
+          "description": "Streams assistant responses and tool results to the UI for rendering"
+        }
+      ]
+    },
+    {
+      "name": "ToolSystem",
+      "description": "The tool abstraction layer providing Claude with capabilities to interact with the local environment. Defines the Tool interface, input/output schemas, permission models, and execution framework. Includes 40+ built-in tools spanning file operations (read, edit, write, glob, grep), shell execution (Bash, PowerShell), web access (fetch, search), planning (plan mode, todos), workspace management (worktrees, agents), MCP tool proxying, and task orchestration. Each tool defines its own prompts, parameter validation, and execution logic.",
+      "codeScope": [
+        "src/Tool.ts",
+        "src/tools.ts",
+        "src/tools/",
+        "tools/"
+      ],
+      "edges": [
+        {
+          "type": "depends",
+          "target": "Infrastructure",
+          "description": "Uses permission system to gate tool execution, and relies on config/settings for tool behavior"
+        },
+        {
+          "type": "calls",
+          "target": "Services",
+          "description": "MCP tools delegate to MCP client connections; LSP tool communicates with language servers"
+        },
+        {
+          "type": "calls",
+          "target": "SkillsAndPlugins",
+          "description": "SkillTool invokes the skills system to execute user-defined and bundled skills"
+        }
+      ]
+    },
+    {
+      "name": "TerminalUI",
+      "description": "The interactive terminal user interface built on a customized Ink (React for CLI) rendering engine. Includes the full rendering pipeline (DOM model, layout via Yoga, text measurement, ANSI output, screen rendering), 100+ React components (message display, dialogs, diffs, progress indicators, status lines), 80+ React hooks for state and side effects, screen-level layouts (REPL, Doctor, ResumeConversation), vim mode for input editing, keybinding system with customizable shortcuts, project onboarding state, and bidirectional text/selection handling.",
+      "codeScope": [
+        "src/ink/",
+        "src/ink.ts",
+        "src/components/",
+        "src/hooks/",
+        "src/screens/",
+        "src/state/",
+        "src/context/",
+        "src/keybindings/",
+        "src/vim/",
+        "src/interactiveHelpers.tsx",
+        "src/dialogLaunchers.tsx",
+        "src/replLauncher.tsx",
+        "src/outputStyles/",
+        "src/moreright/",
+        "src/buddy/",
+        "src/native-ts/",
+        "src/projectOnboardingState.ts"
+      ],
+      "edges": [
+        {
+          "type": "calls",
+          "target": "QueryEngine",
+          "description": "Submits user prompts to the query engine and renders streamed responses"
+        },
+        {
+          "type": "calls",
+          "target": "CommandSystem",
+          "description": "Dispatches slash commands entered by the user to the command handler"
+        },
+        {
+          "type": "depends",
+          "target": "Infrastructure",
+          "description": "Reads settings, theme, config, and permission state to control UI behavior and appearance"
+        }
+      ]
+    },
+    {
+      "name": "CommandSystem",
+      "description": "The slash command framework providing 90+ user-invocable commands for controlling the CLI session. The command registry maps command names to handler implementations covering session management (resume, session, clear), configuration (config, theme, model, permissions), development workflows (review, issue, diff, compact), diagnostics (doctor, status, cost, stats), authentication (login, logout), and integrations (mcp, ide, desktop, chrome, mobile). Each command is a self-contained module with its own UI and logic.",
+      "codeScope": [
+        "src/commands.ts",
+        "src/commands/"
+      ],
+      "edges": [
+        {
+          "type": "calls",
+          "target": "QueryEngine",
+          "description": "Commands like /compact and /review trigger query engine operations"
+        },
+        {
+          "type": "calls",
+          "target": "Services",
+          "description": "Commands invoke API services for auth flows, MCP management, analytics, and session operations"
+        },
+        {
+          "type": "depends",
+          "target": "Infrastructure",
+          "description": "Commands read and modify configuration, settings, and permission state"
+        }
+      ]
+    },
+    {
+      "name": "Services",
+      "description": "Backend service integrations that power the application's capabilities. Includes the Claude API client (message sending, retries, error categorization, usage tracking), analytics pipeline (GrowthBook feature gates, Datadog, first-party event logging), MCP protocol client (server connections, tool discovery, auth, official registry, server approval), context compaction engine (auto-compact, micro-compact, reactive compact), OAuth service, LSP integration, policy limits enforcement, remote managed settings, settings sync, and specialized services for prompt suggestions, agent summaries, magic docs, tool use summaries, rate limiting, voice, diagnostics, and token estimation.",
+      "codeScope": [
+        "src/services/AgentSummary/",
+        "src/services/MagicDocs/",
+        "src/services/PromptSuggestion/",
+        "src/services/analytics/",
+        "src/services/api/",
+        "src/services/autoDream/",
+        "src/services/compact/",
+        "src/services/lsp/",
+        "src/services/mcp/",
+        "src/services/oauth/",
+        "src/services/policyLimits/",
+        "src/services/remoteManagedSettings/",
+        "src/services/settingsSync/",
+        "src/services/tips/",
+        "src/services/toolUseSummary/",
+        "src/services/tools/",
+        "src/services/awaySummary.ts",
+        "src/services/claudeAiLimits.ts",
+        "src/services/claudeAiLimitsHook.ts",
+        "src/services/diagnosticTracking.ts",
+        "src/services/internalLogging.ts",
+        "src/services/mcpServerApproval.tsx",
+        "src/services/mockRateLimits.ts",
+        "src/services/notifier.ts",
+        "src/services/preventSleep.ts",
+        "src/services/rateLimitMessages.ts",
+        "src/services/rateLimitMocking.ts",
+        "src/services/tokenEstimation.ts",
+        "src/services/vcr.ts",
+        "src/services/voice.ts",
+        "src/services/voiceKeyterms.ts",
+        "src/services/voiceStreamSTT.ts"
+      ],
+      "edges": [
+        {
+          "type": "depends",
+          "target": "Infrastructure",
+          "description": "Uses auth credentials, proxy configuration, CA certificates, and environment settings for API communication"
+        },
+        {
+          "type": "calls",
+          "target": "MemorySystem",
+          "description": "Session memory and memory extraction services interact with the persistent memory store"
+        }
+      ]
+    },
+    {
+      "name": "RemoteAndBridge",
+      "description": "Multi-session and remote execution architecture enabling Claude Code to operate beyond the local terminal. The Bridge subsystem connects to claude.ai for remote-controlled sessions via WebSocket, handling session creation, JWT authentication, message polling, and permission callbacks. The Remote module manages remote agent sessions with WebSocket transport. The Server module provides direct-connect session management. The Coordinator mode orchestrates multi-agent workflows with team creation and task delegation. Includes upstream proxy support for corporate environments.",
+      "codeScope": [
+        "src/bridge/",
+        "src/remote/",
+        "src/server/",
+        "src/coordinator/",
+        "src/upstreamproxy/",
+        "src/assistant/",
+        "src/voice/"
+      ],
+      "edges": [
+        {
+          "type": "calls",
+          "target": "QueryEngine",
+          "description": "Remote sessions and bridge spawn query engine instances to process incoming prompts"
+        },
+        {
+          "type": "depends",
+          "target": "Services",
+          "description": "Uses API client, OAuth tokens, and analytics for remote communication and authentication"
+        },
+        {
+          "type": "depends",
+          "target": "Infrastructure",
+          "description": "Relies on auth, proxy configuration, and session management utilities"
+        }
+      ]
+    },
+    {
+      "name": "MemorySystem",
+      "description": "Persistent memory and context management enabling Claude to remember information across conversations. Manages the CLAUDE.md file ecosystem (project-level and user-level instruction files), the memdir-based structured memory store with typed memories (user, feedback, project, reference), memory relevance ranking, memory aging and cleanup, team memory synchronization, session memory compaction, and automated memory extraction from conversations. Provides the long-term knowledge layer that makes each session context-aware.",
+      "codeScope": [
+        "src/memdir/",
+        "src/services/SessionMemory/",
+        "src/services/extractMemories/",
+        "src/services/teamMemorySync/"
+      ],
+      "edges": [
+        {
+          "type": "data-flow",
+          "target": "QueryEngine",
+          "description": "Provides memory context and CLAUDE.md instructions that are injected into the system prompt"
+        },
+        {
+          "type": "depends",
+          "target": "Infrastructure",
+          "description": "Uses file system operations, config paths, and git utilities for memory storage and retrieval"
+        }
+      ]
+    },
+    {
+      "name": "SkillsAndPlugins",
+      "description": "The extensibility layer allowing Claude Code's capabilities to be augmented with custom behaviors. Skills are high-level, prompt-driven capabilities (like /commit, /review-pr, /simplify) that can be bundled or loaded from user directories, with MCP-based skill builders for dynamic skill creation. Plugins provide deeper integration points with lifecycle hooks, bundled implementations, and a plugin loader/recommendation system. Together they enable third-party and user-defined extensions to the CLI.",
+      "codeScope": [
+        "src/skills/",
+        "src/plugins/",
+        "src/services/plugins/"
+      ],
+      "edges": [
+        {
+          "type": "depends",
+          "target": "Services",
+          "description": "MCP skill builders use MCP client connections; plugins integrate with the analytics and API services"
+        },
+        {
+          "type": "depends",
+          "target": "Infrastructure",
+          "description": "Loads skill/plugin definitions from config directories and user settings"
+        }
+      ]
+    },
+    {
+      "name": "Infrastructure",
+      "description": "Shared foundations that every other module depends on. Encompasses configuration management (settings hierarchy, config files, environment variables), authentication (OAuth flows, API keys, AWS/keychain credential storage), permission system (tool approval, auto-mode, bypass mode), git operations, shell/workspace management, file utilities, model selection and cost calculation, CLAUDE.md parsing, telemetry attributes, proxy/TLS configuration, CLI argument parsing, error handling, auto-updater, task abstractions, and 300+ utility modules. Also includes build tooling (esbuild scripts, source preparation, TypeScript stubs) and vendored native modules.",
+      "codeScope": [
+        "src/utils/",
+        "src/constants/",
+        "src/types/",
+        "src/schemas/",
+        "src/Task.ts",
+        "src/tasks.ts",
+        "src/tasks/",
+        "scripts/",
+        "stubs/",
+        "types/",
+        "utils/",
+        "vendor/"
+      ],
+      "edges": []
+    }
+  ]
+}

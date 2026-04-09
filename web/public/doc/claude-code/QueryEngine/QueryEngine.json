@@ -1,0 +1,120 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "9a52cd7e-497a-468b-a81b-fcfcb25a151c",
+  "description": "The core AI conversation loop that drives all interactions with Claude. Manages the complete lifecycle of a query: building system prompts, sending messages to the Anthropic API, processing streaming responses, executing tool calls, handling retries and fallbacks, tracking token usage and costs, and performing automatic context compaction when the conversation exceeds window limits. Includes the cost tracker, token budget management, and query configuration.",
+  "codeScope": [
+    "src/QueryEngine.ts",
+    "src/query.ts",
+    "src/query/",
+    "src/context.ts",
+    "src/cost-tracker.ts",
+    "src/costHook.ts",
+    "src/history.ts"
+  ],
+  "nodes": [
+    {
+      "name": "QueryEngineClass",
+      "description": "The QueryEngine class that owns the query lifecycle and session state for SDK/headless conversations. Wraps the core query loop with session management: builds system prompts from context and CLAUDE.md files, processes user input (including slash commands), manages permission tracking, handles orphaned permissions, accumulates token usage across turns, persists transcripts, and yields structured SDK messages. One instance per conversation, with submitMessage() starting each turn.",
+      "edges": [
+        {
+          "target": "QueryLoop",
+          "type": "calls",
+          "description": "Calls the query() generator to execute each conversation turn, forwarding system prompt, tools, messages, and configuration"
+        },
+        {
+          "target": "CostTracker",
+          "type": "depends",
+          "description": "Reads accumulated cost and usage data (getTotalCost, getModelUsage, getTotalAPIDuration) to report in SDK result messages"
+        },
+        {
+          "target": "SystemContext",
+          "type": "depends",
+          "description": "The system prompt assembly in submitMessage consumes the git status and CLAUDE.md context that SystemContext provides"
+        }
+      ],
+      "codeScope": [
+        "src/QueryEngine.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "QueryEngineClass"
+      }
+    },
+    {
+      "name": "QueryLoop",
+      "description": "The core streaming query loop that drives the AI conversation. The query() async generator sends messages to the Claude API, streams responses, executes tool calls via runTools, handles max_output_tokens recovery, performs auto-compaction and micro-compaction when context grows too large, manages reactive compaction and snip compaction, tracks token budgets for auto-continuation, processes message queues for slash commands, and iterates until the model stops or max turns are reached. Includes QueryConfig (immutable per-query settings), QueryDeps (injectable I/O dependencies for testing), and token budget tracking.",
+      "edges": [
+        {
+          "target": "StopHooks",
+          "type": "calls",
+          "description": "Invokes handleStopHooks when the model finishes generating to run stop hooks, task completion hooks, memory extraction, and prompt suggestions"
+        },
+        {
+          "target": "CostTracker",
+          "type": "data-flow",
+          "description": "Token usage from each API response flows through addToTotalSessionCost to accumulate costs and model usage metrics"
+        }
+      ],
+      "codeScope": [
+        "src/query.ts",
+        "src/query/config.ts",
+        "src/query/deps.ts",
+        "src/query/tokenBudget.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "QueryLoop"
+      }
+    },
+    {
+      "name": "StopHooks",
+      "description": "Handles end-of-turn lifecycle logic when the model stops generating. Executes stop hooks (user-defined shell commands that run after each assistant turn), task completion hooks (for teammate/coordinator workflows), teammate idle hooks, memory extraction (auto-saving conversation insights to memdir), prompt suggestions, auto-dream execution, and job classification. Also manages forked agent cache-safe parameters and determines whether the query loop should continue or terminate based on hook outcomes.",
+      "edges": [],
+      "codeScope": [
+        "src/query/stopHooks.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "StopHooks"
+      }
+    },
+    {
+      "name": "SystemContext",
+      "description": "Builds the system-level and user-level context that gets prepended to each conversation. System context includes git status (current branch, recent commits, working tree status) and optional cache-breaking injection. User context includes CLAUDE.md file contents (project and user instruction files) and the current date. Both are memoized for the duration of a conversation to avoid redundant I/O.",
+      "edges": [],
+      "codeScope": [
+        "src/context.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SystemContext"
+      }
+    },
+    {
+      "name": "CostTracker",
+      "description": "Tracks and reports token usage and monetary costs across the session. Accumulates per-model usage (input, output, cache read, cache write tokens and web search requests), calculates USD costs, formats cost summaries for display, persists session costs to project config for resumption, and restores cost state when resuming sessions. Includes the useCostSummary React hook that prints the cost summary on process exit.",
+      "edges": [],
+      "codeScope": [
+        "src/cost-tracker.ts",
+        "src/costHook.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "CostTracker"
+      }
+    },
+    {
+      "name": "InputHistory",
+      "description": "Manages the persistent input history for the CLI's up-arrow and ctrl+r search. Stores history entries as JSONL (one entry per prompt), handles pasted content by inlining small pastes and storing large ones externally via content-addressable hash references. Supports per-project filtering, current-session prioritization, deduplication, and lazy resolution of paste content. Also provides utilities for formatting and parsing pasted text/image references.",
+      "edges": [],
+      "codeScope": [
+        "src/history.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "InputHistory"
+      }
+    }
+  ]
+}

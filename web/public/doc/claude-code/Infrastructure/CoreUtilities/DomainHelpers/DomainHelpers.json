@@ -1,0 +1,250 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "491330c7-6099-47aa-983e-6cedef7a8425",
+  "description": "20+ domain-specific helper subdirectories providing specialized utilities for distinct features: hooks execution engine (async registry, bash/HTTP/prompt hook runners, file watcher), computer use orchestration, Chrome extension native host, deep link protocol handling, native module installer, user input processing pipeline, prompt suggestions (command, directory, shell history, Slack), teleport environment management, background remote sessions, MCP date parsing and elicitation validation, file persistence scanning, message mappers, DXT zip helpers, skill change detection, and small type modules for memory/todo/ultraplan.",
+  "codeScope": [
+    "src/utils/hooks/",
+    "src/utils/computerUse/",
+    "src/utils/claudeInChrome/",
+    "src/utils/deepLink/",
+    "src/utils/nativeInstaller/",
+    "src/utils/processUserInput/",
+    "src/utils/suggestions/",
+    "src/utils/teleport/",
+    "src/utils/background/",
+    "src/utils/mcp/",
+    "src/utils/filePersistence/",
+    "src/utils/messages/",
+    "src/utils/dxt/",
+    "src/utils/skills/",
+    "src/utils/github/",
+    "src/utils/memory/",
+    "src/utils/todo/",
+    "src/utils/ultraplan/"
+  ],
+  "nodes": [
+    {
+      "name": "HooksEngine",
+      "description": "Extensible hook execution system (3700+ lines, 17 files). Provides an async hook registry for tracking pending shell-based hooks, four execution backends (bash, HTTP with SSRF guard, single-turn prompt, multi-turn agent), a decoupled event broadcasting system for hook lifecycle, session-scoped hook storage, post-sampling hook callbacks, skill improvement analysis via LLM, skill/frontmatter hook registration, config management and snapshots, file change watching, and shared helpers for argument substitution and structured output enforcement.",
+      "edges": [
+        {
+          "target": "SkillDetection",
+          "type": "depends",
+          "description": "skillImprovement.ts and registerSkillHooks.ts interact with the skill loading system for dynamic skill updates"
+        }
+      ],
+      "codeScope": [
+        "src/utils/hooks/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "HooksEngine"
+      }
+    },
+    {
+      "name": "ComputerUse",
+      "description": "Computer control orchestration for macOS (2100+ lines, 15 files). Wraps native Rust and Swift modules for mouse/keyboard input and screenshots via a ComputerExecutor interface. Includes MCP server integration for tool discovery, session context binding and tool dispatch via wrapper, permission management with gates, file-based locking, app hiding/unhiding lifecycle, cleanup on turn end, ESC hotkey handling, Swift module loading, and JSX-based tool result rendering.",
+      "edges": [],
+      "codeScope": [
+        "src/utils/computerUse/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ComputerUse"
+      }
+    },
+    {
+      "name": "ChromeExtension",
+      "description": "Chrome extension native messaging host integration (1200+ lines, 7 files). Implements the Chrome native messaging protocol for bidirectional communication between the CLI and a Chrome browser extension. Includes MCP server setup for exposing browser tools, native host binary management, portable setup for different installation methods, prompt augmentation for Chrome tool availability, and JSX tool rendering.",
+      "edges": [],
+      "codeScope": [
+        "src/utils/claudeInChrome/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ChromeExtension"
+      }
+    },
+    {
+      "name": "DeepLink",
+      "description": "Deep link protocol handling (650+ lines, 6 files). Manages the claude-cli:// URL protocol for launching Claude Code from browsers or other applications. Includes protocol registration with the OS, URL parsing and parameter extraction, terminal preference detection and launcher logic, and a banner UI for deep link activation status.",
+      "edges": [],
+      "codeScope": [
+        "src/utils/deepLink/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "DeepLink"
+      }
+    },
+    {
+      "name": "NativeInstaller",
+      "description": "Native module version management and installation (1700+ lines, 5 files). Handles downloading, installing, and managing native binary modules with file-based version tracking, symlink management, multi-process safety via PID-based locking, package manager detection for different installation sources, and fallback mechanisms for JS/native builds.",
+      "edges": [],
+      "codeScope": [
+        "src/utils/nativeInstaller/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "NativeInstaller"
+      }
+    },
+    {
+      "name": "UserInputPipeline",
+      "description": "User input processing pipeline (1700+ lines, 4 files). The central dispatch for all user-submitted input: routes text prompts through attachment handling, image processing, and message construction; dispatches slash commands to the command registry with skill hook registration; handles bash command execution with shell error handling; and coordinates with the ultraplan keyword detector for plan-mode activation.",
+      "edges": [
+        {
+          "target": "HooksEngine",
+          "type": "calls",
+          "description": "processSlashCommand invokes registerSkillHooks to attach skill-defined hooks to the session"
+        },
+        {
+          "target": "Suggestions",
+          "type": "calls",
+          "description": "processSlashCommand records skill usage via skillUsageTracking for suggestion ranking"
+        },
+        {
+          "target": "Ultraplan",
+          "type": "calls",
+          "description": "processUserInput checks for ultraplan keywords to trigger plan-mode activation"
+        }
+      ],
+      "codeScope": [
+        "src/utils/processUserInput/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "UserInputPipeline"
+      }
+    },
+    {
+      "name": "Suggestions",
+      "description": "Prompt autocomplete and suggestion system (830+ lines, 5 files). Provides multiple suggestion sources: Fuse.js-based fuzzy command matching, directory path completion with LRU caching, shell history completion, Slack channel suggestions, and skill usage tracking for ranking frequently-used skills higher in suggestions.",
+      "edges": [],
+      "codeScope": [
+        "src/utils/suggestions/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Suggestions"
+      }
+    },
+    {
+      "name": "Teleport",
+      "description": "Teleport remote environment management (580+ lines, 4 files). API client for Teleport's environment provisioning service with retry logic. Manages BYOC (Bring Your Own Compute) environments, environment selection UI helpers, and git bundle creation for syncing local repository state to remote environments.",
+      "edges": [],
+      "codeScope": [
+        "src/utils/teleport/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Teleport"
+      }
+    },
+    {
+      "name": "BackgroundSessions",
+      "description": "Background remote session management (330+ lines, 2 files). Defines remote session types and implements precondition checking for launching background sessions: verifies GitHub App installation, git repository availability, Claude AI authentication status, and remote environment readiness.",
+      "edges": [
+        {
+          "target": "Teleport",
+          "type": "depends",
+          "description": "Precondition checks verify teleport environment availability before launching remote sessions"
+        }
+      ],
+      "codeScope": [
+        "src/utils/background/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "BackgroundSessions"
+      }
+    },
+    {
+      "name": "MCPHelpers",
+      "description": "MCP protocol utility functions (450+ lines, 2 files). Natural language date/time parsing using Claude Haiku for resolving relative date expressions in MCP tool parameters. Zod-based validation schemas for MCP elicitation responses with support for string, number, boolean, and enum input types.",
+      "edges": [],
+      "codeScope": [
+        "src/utils/mcp/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "MCPHelpers"
+      }
+    },
+    {
+      "name": "FilePersistence",
+      "description": "File persistence and upload orchestration (410+ lines, 2 files). Manages file uploads to the Files API in BYOC mode and rclone-based cloud sync. Includes an outputs scanner that detects the environment kind (local, BYOC, cloud) and scans for files that need persistence after tool execution.",
+      "edges": [],
+      "codeScope": [
+        "src/utils/filePersistence/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "FilePersistence"
+      }
+    },
+    {
+      "name": "MessageMappers",
+      "description": "Message format conversion utilities (380+ lines, 2 files). Maps between Anthropic SDK beta message types and internal message representations. Includes system initialization logic that assembles tool metadata and command information into the system message payload.",
+      "edges": [],
+      "codeScope": [
+        "src/utils/messages/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "MessageMappers"
+      }
+    },
+    {
+      "name": "DXTHelpers",
+      "description": "DXT package utilities (310+ lines, 2 files). Provides DXT manifest validation with lazy-loaded MCPB schema and zip file extraction with configurable size and entry count limits for safe package handling.",
+      "edges": [],
+      "codeScope": [
+        "src/utils/dxt/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "DXTHelpers"
+      }
+    },
+    {
+      "name": "SkillDetection",
+      "description": "Skill file change detection (310+ lines, 1 file). Uses chokidar file watcher to monitor skill directories for additions, modifications, and deletions. Triggers dynamic skill reloading and cache invalidation when skill files change on disk.",
+      "edges": [],
+      "codeScope": [
+        "src/utils/skills/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SkillDetection"
+      }
+    },
+    {
+      "name": "Ultraplan",
+      "description": "Ultraplan mode utilities (470+ lines, 2 files). Keyword detection for the /ultraplan directive that triggers plan-mode activation. CCR (Claude Code Remote) session polling that monitors remote plan execution and extracts ExitPlanMode tool results to determine completion.",
+      "edges": [],
+      "codeScope": [
+        "src/utils/ultraplan/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Ultraplan"
+      }
+    },
+    {
+      "name": "MicroModules",
+      "description": "Small type definition and utility modules (65 lines total, 4 files across 3 directories). Memory type definitions (User, Project, Local, Managed, AutoMem, TeamMem), todo list item Zod schemas, and GitHub CLI authentication status detection helper.",
+      "edges": [],
+      "codeScope": [
+        "src/utils/github/",
+        "src/utils/memory/",
+        "src/utils/todo/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "MicroModules"
+      }
+    }
+  ]
+}

@@ -1,0 +1,410 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "9f5e9c36-dfe8-480e-8b84-e1c36e4d3e27",
+  "description": "A broad collection of 200+ utility modules providing foundational capabilities used throughout the codebase. Includes telemetry and observability (OpenTelemetry setup, BigQuery export, Perfetto tracing, event logging), platform and runtime detection, error classes and logging, CLAUDE.md file parsing with @include support, data format handling (JSON/YAML/XML/Markdown/PDF), async patterns (memoization, sequential execution, queue processing, abort controllers), file and path utilities (glob, ripgrep, temp files), session state management, image handling, theme management, and 20+ domain-specific helper subdirectories (hooks, MCP, memory, messages, GitHub, plugins, skills, suggestions, swarm, todo, and more).",
+  "codeScope": [
+    "src/utils/telemetry/",
+    "src/utils/telemetryAttributes.ts",
+    "src/utils/claudemd.ts",
+    "src/utils/platform.ts",
+    "src/utils/process.ts",
+    "src/utils/terminal.ts",
+    "src/utils/log.ts",
+    "src/utils/errors.ts",
+    "src/utils/cleanup.ts",
+    "src/utils/cleanupRegistry.ts",
+    "src/utils/gracefulShutdown.ts",
+    "src/utils/signal.ts",
+    "src/utils/json.ts",
+    "src/utils/jsonRead.ts",
+    "src/utils/yaml.ts",
+    "src/utils/xml.ts",
+    "src/utils/markdown.ts",
+    "src/utils/pdf.ts",
+    "src/utils/pdfUtils.ts",
+    "src/utils/notebook.ts",
+    "src/utils/hash.ts",
+    "src/utils/crypto.ts",
+    "src/utils/uuid.ts",
+    "src/utils/stringUtils.ts",
+    "src/utils/array.ts",
+    "src/utils/set.ts",
+    "src/utils/intl.ts",
+    "src/utils/words.ts",
+    "src/utils/sleep.ts",
+    "src/utils/memoize.ts",
+    "src/utils/sequential.ts",
+    "src/utils/lockfile.ts",
+    "src/utils/queueProcessor.ts",
+    "src/utils/combinedAbortSignal.ts",
+    "src/utils/abortController.ts",
+    "src/utils/withResolvers.ts",
+    "src/utils/mailbox.ts",
+    "src/utils/semver.ts",
+    "src/utils/autoUpdater.ts",
+    "src/utils/path.ts",
+    "src/utils/tempfile.ts",
+    "src/utils/glob.ts",
+    "src/utils/ripgrep.ts",
+    "src/utils/bufferedWriter.ts",
+    "src/utils/readFileInRange.ts",
+    "src/utils/systemDirectories.ts",
+    "src/utils/xdg.ts",
+    "src/utils/theme.ts",
+    "src/utils/systemTheme.ts",
+    "src/utils/sliceAnsi.ts",
+    "src/utils/truncate.ts",
+    "src/utils/treeify.ts",
+    "src/utils/cliHighlight.ts",
+    "src/utils/hyperlink.ts",
+    "src/utils/context.ts",
+    "src/utils/cwd.ts",
+    "src/utils/warningHandler.ts",
+    "src/utils/imagePaste.ts",
+    "src/utils/imageResizer.ts",
+    "src/utils/imageStore.ts",
+    "src/utils/imageValidation.ts",
+    "src/utils/ansiToPng.ts",
+    "src/utils/ansiToSvg.ts",
+    "src/utils/background/",
+    "src/utils/claudeInChrome/",
+    "src/utils/computerUse/",
+    "src/utils/deepLink/",
+    "src/utils/dxt/",
+    "src/utils/filePersistence/",
+    "src/utils/github/",
+    "src/utils/hooks/",
+    "src/utils/mcp/",
+    "src/utils/memory/",
+    "src/utils/messages/",
+    "src/utils/nativeInstaller/",
+    "src/utils/plugins/",
+    "src/utils/processUserInput/",
+    "src/utils/skills/",
+    "src/utils/suggestions/",
+    "src/utils/swarm/",
+    "src/utils/teleport/",
+    "src/utils/todo/",
+    "src/utils/ultraplan/",
+    "src/utils/sessionActivity.ts",
+    "src/utils/sessionEnvironment.ts",
+    "src/utils/sessionRestore.ts",
+    "src/utils/sessionStart.ts",
+    "src/utils/sessionState.ts",
+    "src/utils/sessionStorage.ts",
+    "src/utils/sessionStoragePortable.ts",
+    "src/utils/sessionTitle.ts",
+    "src/utils/sessionUrl.ts"
+  ],
+  "nodes": [
+    {
+      "name": "Telemetry",
+      "description": "OpenTelemetry instrumentation setup (traces, metrics, logs), BigQuery exporter for custom analytics, Perfetto-format tracing for local profiling, session-level trace management, plugin telemetry hooks, and telemetry attribute constants. Provides the full observability pipeline from span creation to export.",
+      "edges": [
+        {
+          "target": "PlatformAndLifecycle",
+          "type": "depends",
+          "description": "Uses error classes, logging utilities, and platform detection for telemetry configuration"
+        },
+        {
+          "target": "SessionManagement",
+          "type": "data-flow",
+          "description": "Session tracing modules read session IDs and state to correlate traces with sessions"
+        }
+      ],
+      "codeScope": [
+        "src/utils/telemetry/",
+        "src/utils/telemetryAttributes.ts"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "Telemetry"
+      }
+    },
+    {
+      "name": "SessionManagement",
+      "description": "Session lifecycle and persistence layer. SessionStorage (5000+ lines) handles conversation read/write/append with file-based storage, tail-read optimization, and portable export. Includes session start orchestration, restore from prior sessions, environment snapshot capture, activity tracking, session titling, URL generation, and session state management.",
+      "edges": [
+        {
+          "target": "FileAndPath",
+          "type": "depends",
+          "description": "Uses file system utilities, temp files, and path resolution for session data persistence"
+        },
+        {
+          "target": "DataFormats",
+          "type": "depends",
+          "description": "Uses JSON serialization for reading and writing session conversation data"
+        }
+      ],
+      "codeScope": [
+        "src/utils/sessionActivity.ts",
+        "src/utils/sessionEnvironment.ts",
+        "src/utils/sessionRestore.ts",
+        "src/utils/sessionStart.ts",
+        "src/utils/sessionState.ts",
+        "src/utils/sessionStorage.ts",
+        "src/utils/sessionStoragePortable.ts",
+        "src/utils/sessionTitle.ts",
+        "src/utils/sessionUrl.ts"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "SessionManagement"
+      }
+    },
+    {
+      "name": "PluginHelpers",
+      "description": "Plugin system utility layer (20,000+ lines) supporting plugin discovery, installation, dependency resolution, cache management, telemetry, headless installation, hint-based recommendations, install count tracking, git availability checks, agent loading from plugins, and installed plugin state management. The largest utility subdirectory by far.",
+      "edges": [
+        {
+          "target": "FileAndPath",
+          "type": "depends",
+          "description": "Uses file utilities for plugin cache, installation artifacts, and directory scanning"
+        },
+        {
+          "target": "DataFormats",
+          "type": "depends",
+          "description": "Parses plugin manifests and configuration in JSON format"
+        }
+      ],
+      "codeScope": [
+        "src/utils/plugins/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "PluginHelpers"
+      }
+    },
+    {
+      "name": "SwarmHelpers",
+      "description": "Multi-agent swarm coordination utilities (7,500+ lines). Includes terminal multiplexer backends (iTerm2, tmux, in-process) for spawning agent panes, backend detection and registry, spawn utilities, team helpers, permission synchronization between leader and teammate agents, reconnection logic, and teammate mode snapshot management.",
+      "edges": [
+        {
+          "target": "PlatformAndLifecycle",
+          "type": "depends",
+          "description": "Uses process management and platform detection for terminal backend selection"
+        },
+        {
+          "target": "AsyncPatterns",
+          "type": "depends",
+          "description": "Uses abort controllers and async coordination primitives for agent lifecycle management"
+        }
+      ],
+      "codeScope": [
+        "src/utils/swarm/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "SwarmHelpers"
+      }
+    },
+    {
+      "name": "PlatformAndLifecycle",
+      "description": "Platform detection (OS, runtime, CI environment), process management, terminal capability detection, error classes and structured error handling, logging infrastructure, warning handler, working directory tracking, context utilities, graceful shutdown orchestration with cleanup registry, signal handling, and the auto-updater with semver comparison.",
+      "edges": [
+        {
+          "target": "AsyncPatterns",
+          "type": "depends",
+          "description": "Graceful shutdown and cleanup use abort controllers and sequential execution patterns"
+        }
+      ],
+      "codeScope": [
+        "src/utils/platform.ts",
+        "src/utils/process.ts",
+        "src/utils/terminal.ts",
+        "src/utils/errors.ts",
+        "src/utils/log.ts",
+        "src/utils/warningHandler.ts",
+        "src/utils/context.ts",
+        "src/utils/cwd.ts",
+        "src/utils/cleanup.ts",
+        "src/utils/cleanupRegistry.ts",
+        "src/utils/gracefulShutdown.ts",
+        "src/utils/signal.ts",
+        "src/utils/autoUpdater.ts",
+        "src/utils/semver.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PlatformAndLifecycle"
+      }
+    },
+    {
+      "name": "DataFormats",
+      "description": "Data format parsing and serialization utilities. Handles JSON (with streaming and repair), YAML, XML, Markdown (section extraction, heading parsing), PDF text extraction with page-range support, Jupyter notebook reading, and CLAUDE.md file parsing with @include directive resolution and frontmatter support.",
+      "edges": [
+        {
+          "target": "FileAndPath",
+          "type": "depends",
+          "description": "Reads files from disk for parsing; CLAUDE.md parser resolves @include paths relative to file locations"
+        }
+      ],
+      "codeScope": [
+        "src/utils/json.ts",
+        "src/utils/jsonRead.ts",
+        "src/utils/yaml.ts",
+        "src/utils/xml.ts",
+        "src/utils/markdown.ts",
+        "src/utils/pdf.ts",
+        "src/utils/pdfUtils.ts",
+        "src/utils/notebook.ts",
+        "src/utils/claudemd.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "DataFormats"
+      }
+    },
+    {
+      "name": "AsyncPatterns",
+      "description": "Async and concurrency primitives: sleep with abort support, memoization (sync and async variants with TTL), sequential execution guard, file locking, queue processor with concurrency control, combined abort signal composition, enhanced abort controller, Promise.withResolvers polyfill, and mailbox pattern for async message passing.",
+      "edges": [],
+      "codeScope": [
+        "src/utils/sleep.ts",
+        "src/utils/memoize.ts",
+        "src/utils/sequential.ts",
+        "src/utils/lockfile.ts",
+        "src/utils/queueProcessor.ts",
+        "src/utils/combinedAbortSignal.ts",
+        "src/utils/abortController.ts",
+        "src/utils/withResolvers.ts",
+        "src/utils/mailbox.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "AsyncPatterns"
+      }
+    },
+    {
+      "name": "FileAndPath",
+      "description": "File system and path utilities: path normalization and resolution, temp file creation with auto-cleanup, glob pattern matching via fast-glob, ripgrep integration for content search with result parsing, buffered file writer for atomic writes, ranged file reading with line-number support, XDG base directory resolution, and system directory detection (~/.claude paths).",
+      "edges": [],
+      "codeScope": [
+        "src/utils/path.ts",
+        "src/utils/tempfile.ts",
+        "src/utils/glob.ts",
+        "src/utils/ripgrep.ts",
+        "src/utils/bufferedWriter.ts",
+        "src/utils/readFileInRange.ts",
+        "src/utils/systemDirectories.ts",
+        "src/utils/xdg.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "FileAndPath"
+      }
+    },
+    {
+      "name": "ImageHandling",
+      "description": "Image processing pipeline: clipboard image paste detection and extraction, image resizing with dimension constraints and format conversion, in-memory image store for conversation attachments, image format validation, ANSI terminal output to PNG conversion (for screenshots), and ANSI to SVG rendering.",
+      "edges": [
+        {
+          "target": "FileAndPath",
+          "type": "depends",
+          "description": "Uses temp file creation and path utilities for intermediate image storage"
+        }
+      ],
+      "codeScope": [
+        "src/utils/imagePaste.ts",
+        "src/utils/imageResizer.ts",
+        "src/utils/imageStore.ts",
+        "src/utils/imageValidation.ts",
+        "src/utils/ansiToPng.ts",
+        "src/utils/ansiToSvg.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ImageHandling"
+      }
+    },
+    {
+      "name": "DisplayAndFormatting",
+      "description": "Terminal display and text formatting utilities: theme system with color palette management and system theme detection, ANSI string slicing preserving escape codes, text truncation with ellipsis, tree structure visualization (treeify), CLI syntax highlighting, and terminal hyperlink generation using OSC 8 sequences.",
+      "edges": [
+        {
+          "target": "PlatformAndLifecycle",
+          "type": "depends",
+          "description": "Theme system uses platform and terminal detection to select appropriate color schemes"
+        }
+      ],
+      "codeScope": [
+        "src/utils/theme.ts",
+        "src/utils/systemTheme.ts",
+        "src/utils/sliceAnsi.ts",
+        "src/utils/truncate.ts",
+        "src/utils/treeify.ts",
+        "src/utils/cliHighlight.ts",
+        "src/utils/hyperlink.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "DisplayAndFormatting"
+      }
+    },
+    {
+      "name": "DataPrimitives",
+      "description": "Low-level data manipulation utilities: cryptographic hashing (SHA-256), random bytes generation, UUID creation, string operations (case conversion, truncation, similarity), array deduplication helpers, set operations (union, intersection, difference), internationalization and locale formatting, and word tokenization with boundary detection.",
+      "edges": [],
+      "codeScope": [
+        "src/utils/hash.ts",
+        "src/utils/crypto.ts",
+        "src/utils/uuid.ts",
+        "src/utils/stringUtils.ts",
+        "src/utils/array.ts",
+        "src/utils/set.ts",
+        "src/utils/intl.ts",
+        "src/utils/words.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "DataPrimitives"
+      }
+    },
+    {
+      "name": "DomainHelpers",
+      "description": "20+ domain-specific helper subdirectories providing specialized utilities for distinct features: hooks execution engine (async registry, bash/HTTP/prompt hook runners, file watcher), computer use orchestration, Chrome extension native host, deep link protocol handling, native module installer, user input processing pipeline, prompt suggestions (command, directory, shell history, Slack), teleport environment management, background remote sessions, MCP date parsing and elicitation validation, file persistence scanning, message mappers, DXT zip helpers, skill change detection, and small type modules for memory/todo/ultraplan.",
+      "edges": [
+        {
+          "target": "FileAndPath",
+          "type": "depends",
+          "description": "Many domain helpers use file utilities for reading configs, scanning directories, and writing artifacts"
+        },
+        {
+          "target": "PlatformAndLifecycle",
+          "type": "depends",
+          "description": "Domain helpers use platform detection, error handling, and process management"
+        },
+        {
+          "target": "AsyncPatterns",
+          "type": "depends",
+          "description": "Hook execution, background sessions, and computer use orchestration use async coordination primitives"
+        }
+      ],
+      "codeScope": [
+        "src/utils/hooks/",
+        "src/utils/computerUse/",
+        "src/utils/claudeInChrome/",
+        "src/utils/deepLink/",
+        "src/utils/nativeInstaller/",
+        "src/utils/processUserInput/",
+        "src/utils/suggestions/",
+        "src/utils/teleport/",
+        "src/utils/background/",
+        "src/utils/mcp/",
+        "src/utils/filePersistence/",
+        "src/utils/messages/",
+        "src/utils/dxt/",
+        "src/utils/skills/",
+        "src/utils/github/",
+        "src/utils/memory/",
+        "src/utils/todo/",
+        "src/utils/ultraplan/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "DomainHelpers"
+      }
+    }
+  ]
+}

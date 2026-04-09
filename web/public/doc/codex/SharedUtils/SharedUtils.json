@@ -1,0 +1,154 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "e7690bfd-8e0b-4072-93ae-dafe90abd4d1",
+  "description": "工作区共享的通用工具 crate。提供路径处理、PTY 管理、图像处理、字符串工具、缓存、流解析、模板渲染、终端检测、ANSI 转义处理和异步辅助等基础能力。",
+  "codeScope": [
+    "codex-rs/utils/",
+    "codex-rs/ansi-escape/",
+    "codex-rs/async-utils/",
+    "codex-rs/git-utils/",
+    "codex-rs/terminal-detection/",
+    "codex-rs/stdio-to-uds/"
+  ],
+  "nodes": [
+    {
+      "name": "PathAndFilesystem",
+      "description": "路径处理原语：保证绝对路径且已规范化的 AbsolutePathBuf 类型（带 serde 支持）、路径规范化/符号链接解析/原子写入（包括 WSL 大小写不敏感路径处理），以及通过 CODEX_HOME 解析 Codex 主目录（~/.codex）。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/utils/absolute-path/",
+        "codex-rs/utils/path-utils/",
+        "codex-rs/utils/home-dir/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PathAndFilesystem"
+      }
+    },
+    {
+      "name": "ProcessManagement",
+      "description": "进程启动和生命周期工具。PTY crate 提供跨平台（Unix PTY + Windows ConPTY）和基于管道的进程启动，具有输出捕获和终端大小调整功能。Sleep-inhibitor 通过平台原生 API（IOKit/systemd/PowerRequest）在活跃回合期间阻止空闲休眠。Stdio-to-UDS 通过 Unix 域套接字中继 stdin/stdout 用于 IPC 桥接。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/utils/pty/",
+        "codex-rs/utils/sleep-inhibitor/",
+        "codex-rs/stdio-to-uds/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ProcessManagement"
+      }
+    },
+    {
+      "name": "TextProcessing",
+      "description": "字符串和文本处理工具。包括用于 LLM 上下文预算的 token 感知中间截断、工具结果的输出截断策略（字节/token）、带评分的模糊子序列匹配用于文件搜索、用于提示词的严格 {{ placeholder }} 模板渲染，以及 UUID 提取、指标标签清理和 Markdown 位置后缀规范化等辅助函数。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/utils/string/",
+        "codex-rs/utils/output-truncation/",
+        "codex-rs/utils/fuzzy-match/",
+        "codex-rs/utils/template/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TextProcessing"
+      }
+    },
+    {
+      "name": "StreamParsing",
+      "description": "用于增量 LLM 响应处理的流式文本解析器。处理 UTF-8 字节流重组、助手文本块提取、引用检测和剥离、内联隐藏标签解析（用于响应中嵌入的元数据），以及建议计划块提取——全部设计为逐字符流式处理，无需缓冲完整响应。",
+      "edges": [
+        {
+          "target": "TextProcessing",
+          "type": "depends",
+          "description": "使用字符串截断和文本处理工具处理解析后的内容"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/utils/stream-parser/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "StreamParsing"
+      }
+    },
+    {
+      "name": "GitUtils",
+      "description": "Git 仓库操作库。提供补丁应用和暂存、分支合并基点计算、幽灵提交快照（创建和恢复包含未跟踪文件的完整仓库状态捕获）、仓库信息收集（远程 URL、HEAD 哈希、最近提交、与远程的 diff），以及跨平台符号链接创建。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/git-utils/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "GitUtils"
+      }
+    },
+    {
+      "name": "TerminalAndDisplay",
+      "description": "终端环境检测和 ANSI 渲染。Terminal-detection 通过环境变量识别用户的终端模拟器（Ghostty、iTerm2、WezTerm、kitty、VS Code 等）和多路复用器（tmux、zellij），生成结构化元数据和 User-Agent 令牌。Ansi-escape 将 ANSI 转义序列转换为 ratatui Text/Line 类型用于 TUI 渲染，支持制表符扩展。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/terminal-detection/",
+        "codex-rs/ansi-escape/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TerminalAndDisplay"
+      }
+    },
+    {
+      "name": "AsyncAndCaching",
+      "description": "异步并发原语和缓存。Async-utils 提供 OrCancelExt trait 用于将 future 与 CancellationToken 竞速。ReadinessFlag 实现了带令牌授权的异步就绪信号，具有订阅和广播语义。BlockingLruCache 将 LRU 缓存包装在 Tokio 互斥锁中，支持基于内容寻址的 SHA-1 键，在非 Tokio 运行时中优雅降级为无缓存。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/async-utils/",
+        "codex-rs/utils/readiness/",
+        "codex-rs/utils/cache/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "AsyncAndCaching"
+      }
+    },
+    {
+      "name": "ImageProcessing",
+      "description": "用于 LLM 提示词附件的图像加载、缩放和编码。从磁盘加载图像，可选缩小以适应 2048x768 像素边界，编码为 PNG/JPEG/WebP，并生成 base64 数据 URL。使用基于内容寻址的 LRU 缓存避免重复处理未更改的文件。",
+      "edges": [
+        {
+          "target": "AsyncAndCaching",
+          "type": "depends",
+          "description": "使用缓存 crate 中的 BlockingLruCache 和 sha1_digest 进行基于内容寻址的图像缓存"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/utils/image/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ImageProcessing"
+      }
+    },
+    {
+      "name": "ConfigAndBuildHelpers",
+      "description": "各种配置、构建和运行时支持 crate。包括 CLI 参数类型（审批模式、沙箱模式、配置覆盖）、内置审批预设（配对审批和沙箱策略）、沙箱策略摘要格式化、OSS 提供者就绪检查（Ollama/LM Studio）、插件命名空间解析和 MCP 连接器辅助、JSON 到 TOML 转换、经过时间格式化、Cargo/Bazel 测试二进制文件解析，以及一次性 rustls 加密提供者初始化。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/utils/cli/",
+        "codex-rs/utils/approval-presets/",
+        "codex-rs/utils/sandbox-summary/",
+        "codex-rs/utils/oss/",
+        "codex-rs/utils/plugins/",
+        "codex-rs/utils/json-to-toml/",
+        "codex-rs/utils/elapsed/",
+        "codex-rs/utils/cargo-bin/",
+        "codex-rs/utils/rustls-provider/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ConfigAndBuildHelpers"
+      }
+    }
+  ]
+}

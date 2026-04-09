@@ -1,0 +1,146 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "748ef5a7-74c7-46de-adf3-ad2ceb4f65f9",
+  "description": "顶层应用状态机。拥有主事件循环，分发 AppEvent 和 AppCommand，管理 app-server 会话生命周期，协调线程加载/导航，处理回溯，并在 TUI 与核心协议之间桥接审批转换。还包含 crate 入口点（lib.rs/main.rs）和 CLI 参数解析。",
+  "codeScope": [
+    "codex-rs/tui/src/lib.rs",
+    "codex-rs/tui/src/main.rs",
+    "codex-rs/tui/src/cli.rs",
+    "codex-rs/tui/src/app.rs",
+    "codex-rs/tui/src/app/",
+    "codex-rs/tui/src/app_event.rs",
+    "codex-rs/tui/src/app_command.rs",
+    "codex-rs/tui/src/app_event_sender.rs",
+    "codex-rs/tui/src/app_backtrack.rs",
+    "codex-rs/tui/src/app_server_session.rs",
+    "codex-rs/tui/src/app_server_approval_conversions.rs",
+    "codex-rs/tui/src/updates.rs",
+    "codex-rs/tui/src/update_action.rs",
+    "codex-rs/tui/src/update_prompt.rs"
+  ],
+  "nodes": [
+    {
+      "name": "EntryAndCLI",
+      "description": "Crate 入口点和 CLI 参数解析。包含 main.rs 中的二进制 main()、cli.rs 中带有所有 TUI 标志（model、sandbox、approval、--full-auto、--cd、resume/fork 控制）的 Cli 结构体，以及 lib.rs 中的 run_main() 引导函数，负责加载配置、初始化追踪、启动内嵌的 app-server、运行引导流程并启动 App 事件循环。",
+      "edges": [
+        {
+          "target": "AppCore",
+          "type": "calls",
+          "description": "在引导完成后创建并运行 App 状态机"
+        },
+        {
+          "target": "ServerSession",
+          "type": "calls",
+          "description": "在启动期间创建 AppServerSession 并引导 app-server 客户端"
+        },
+        {
+          "target": "UpdateCheck",
+          "type": "calls",
+          "description": "在进入主事件循环之前调用版本检查和更新提示界面"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/tui/src/lib.rs",
+        "codex-rs/tui/src/main.rs",
+        "codex-rs/tui/src/cli.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "EntryAndCLI"
+      }
+    },
+    {
+      "name": "EventBus",
+      "description": "协调所有 UI 到 App 通信的内部消息总线类型。AppEvent（约 80 个变体）是入站事件枚举，涵盖会话控制、文件搜索、插件管理、模型选择、审批策略变更、反馈和 UI 状态更新。AppCommand 通过类型化的 view() 判别器封装核心 Op 协议的出站命令。AppEventSender 提供基于通道的辅助工具，使组件无需直接访问 App 即可发出事件。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/tui/src/app_event.rs",
+        "codex-rs/tui/src/app_command.rs",
+        "codex-rs/tui/src/app_event_sender.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "EventBus"
+      }
+    },
+    {
+      "name": "AppCore",
+      "description": "主 App 结构体及其事件循环——TUI 的核心状态机。拥有 ChatWidget、对话记录单元格、覆盖层状态、配置、遥测以及所有线程/会话簿记。在 select! 循环中处理 TuiEvent 和 AppEvent，将 AppCommand 分发到服务器会话，处理线程的启动/恢复/切换/分叉，管理多代理导航（AgentNavigationState），通过服务器适配器层适配 app-server 事件，跟踪线程切换的待处理交互重放，并解析 app-server 的审批/引出请求。仅 app.rs 就超过 431KB 加上 5 个子模块，需要进一步分解。",
+      "edges": [
+        {
+          "target": "EventBus",
+          "type": "depends",
+          "description": "在整个事件循环中消费 AppEvent 变体并分发 AppCommand 实例"
+        },
+        {
+          "target": "Backtracking",
+          "type": "calls",
+          "description": "将回溯按键处理、回滚暂存和对话记录裁剪委托给 app_backtrack.rs 中 App 的 impl 方法"
+        },
+        {
+          "target": "ServerSession",
+          "type": "calls",
+          "description": "使用 AppServerSession 进行线程启动/恢复/分叉、op 提交和 RPC 请求"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/tui/src/app.rs",
+        "codex-rs/tui/src/app/agent_navigation.rs",
+        "codex-rs/tui/src/app/app_server_adapter.rs",
+        "codex-rs/tui/src/app/app_server_requests.rs",
+        "codex-rs/tui/src/app/loaded_threads.rs",
+        "codex-rs/tui/src/app/pending_interactive_replay.rs"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "AppCore"
+      }
+    },
+    {
+      "name": "Backtracking",
+      "description": "对话记录回退的回溯状态机。实现通过 Esc 键在对话记录覆盖层（Ctrl+T）中按用户消息导航，向核心暂存回滚请求，并在核心确认后裁剪本地对话记录单元格。作为小型状态机运作：准备 -> 打开覆盖层 -> 逐步遍历用户消息 -> 确认回滚。还处理来自服务器发起的线程回滚事件的非待处理回滚，并在对话记录裁剪后保持覆盖层同步。",
+      "edges": [
+        {
+          "target": "EventBus",
+          "type": "depends",
+          "description": "使用 AppEvent::ApplyThreadRollback 和 AppCommand::thread_rollback 进行回滚协调"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/tui/src/app_backtrack.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Backtracking"
+      }
+    },
+    {
+      "name": "ServerSession",
+      "description": "App-server 客户端会话封装器和协议桥接。AppServerSession 封装进程内或远程 AppServerClient，管理请求 ID 分配，提供类型化方法用于引导、线程启动/恢复/分叉、回合提交、配置写入、模型/技能列表和 RPC 调用。包含按线程跟踪运行时状态的 ThreadSessionState。审批转换模块将 app-server 协议类型（NetworkApprovalContext、GrantedPermissionProfile）桥接到核心协议等价类型。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/tui/src/app_server_session.rs",
+        "codex-rs/tui/src/app_server_approval_conversions.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ServerSession"
+      }
+    },
+    {
+      "name": "UpdateCheck",
+      "description": "版本检查与更新提示系统。updates.rs 从 GitHub releases 或 Homebrew cask API 检查最新版本，本地缓存结果，并尊重用户的忽略选择。update_action.rs 检测安装方式（npm、bun、brew）以确定适当的更新命令。update_prompt.rs 在主会话启动前渲染交互式 TUI 选择界面，提供“立即更新“/“跳过“/“不再提醒“选项。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/tui/src/updates.rs",
+        "codex-rs/tui/src/update_action.rs",
+        "codex-rs/tui/src/update_prompt.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "UpdateCheck"
+      }
+    }
+  ]
+}

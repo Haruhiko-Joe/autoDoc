@@ -1,0 +1,199 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "c664814f-4fbd-4404-99e6-f0f6416bd1f7",
+  "description": "LLM 集成层。实现 OpenAI Responses API（HTTP 和 WebSocket）、Realtime API 以及本地模型提供者（Ollama、LM Studio）的 API 客户端。处理请求构造、流式响应解析、速率限制、模型发现，以及用于协议桥接的 responses-api-proxy。",
+  "codeScope": [
+    "codex-rs/codex-api/",
+    "codex-rs/connectors/",
+    "codex-rs/model-provider-info/",
+    "codex-rs/models-manager/",
+    "codex-rs/ollama/",
+    "codex-rs/lmstudio/",
+    "codex-rs/backend-client/",
+    "codex-rs/codex-backend-openapi-models/",
+    "codex-rs/responses-api-proxy/",
+    "codex-rs/codex-client/",
+    "codex-rs/response-debug-context/"
+  ],
+  "nodes": [
+    {
+      "name": "ApiClient",
+      "description": "高层 API 抽象层（codex-api crate）。实现 Responses API（HTTP 和 WebSocket）、Realtime API（版本化 WebSocket 协议）和模型列表端点的特定客户端。同时处理 SSE 流解析、请求构造（包含请求头/请求体构建）、速率限制跟踪、认证委托，以及用于协议转换的 API 桥接逻辑。",
+      "edges": [
+        {
+          "target": "HttpTransport",
+          "type": "calls",
+          "description": "使用 codex-client 的 ReqwestTransport 进行所有出站 HTTP 请求、SSE 流传输和重试逻辑"
+        },
+        {
+          "target": "ResponseDebugContext",
+          "type": "calls",
+          "description": "ApiError 类型被 response-debug-context 消费，用于提取遥测安全的错误信息"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/codex-api/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "ApiClient"
+      }
+    },
+    {
+      "name": "HttpTransport",
+      "description": "底层 HTTP 传输层（codex-client crate）。提供 HttpTransport trait 和 ReqwestTransport 实现，支持自定义 CA 证书、带 gzip 压缩的请求构建、指数退避重试逻辑、SSE 流消费和请求遥测。还包含一个用于诊断证书问题的 custom_ca_probe 二进制文件。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/codex-client/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "HttpTransport"
+      }
+    },
+    {
+      "name": "ModelsManager",
+      "description": "模型发现、选择和元数据管理的中央编排器（codex-models-manager crate）。带 TTL 的模型列表缓存，使用能力信息和预设丰富模型元数据，处理认证路由（API 密钥 vs 基于命令的认证），提供协作模式预设，并集成模型列表操作的遥测。",
+      "edges": [
+        {
+          "target": "ApiClient",
+          "type": "calls",
+          "description": "使用 codex-api 的 ModelsClient 从提供者端点获取可用模型"
+        },
+        {
+          "target": "ProviderRegistry",
+          "type": "depends",
+          "description": "读取 ModelProviderInfo 定义，以配置查询哪些提供者及如何认证"
+        },
+        {
+          "target": "ResponseDebugContext",
+          "type": "calls",
+          "description": "在模型列表请求期间从 API 错误中提取调试上下文和遥测安全的消息"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/models-manager/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ModelsManager"
+      }
+    },
+    {
+      "name": "ProviderRegistry",
+      "description": "模型提供者配置注册表（codex-model-provider-info crate）。定义 ModelProviderInfo 模式用于声明提供者——基础 URL、API 密钥环境变量、认证命令、线路协议、HTTP 头、重试/超时设置。内置 OpenAI、Ollama 和 LM Studio 的定义，并将提供者信息转换为 codex-api 的 Provider 结构体。",
+      "edges": [
+        {
+          "target": "ApiClient",
+          "type": "data-flow",
+          "description": "通过 to_api_provider() 将 ModelProviderInfo 转换为 codex-api 的 Provider 结构体"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/model-provider-info/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ProviderRegistry"
+      }
+    },
+    {
+      "name": "OllamaProvider",
+      "description": "Ollama 本地模型集成（codex-ollama crate）。提供 OllamaClient 用于发现本地可用模型、带进度报告的模型拉取、Ollama 服务器健康和版本兼容性验证（Responses API 支持），以及 OpenAI 兼容端点 URL 验证。",
+      "edges": [
+        {
+          "target": "ProviderRegistry",
+          "type": "depends",
+          "description": "使用内置的 Ollama 提供者信息获取默认端口和端点配置"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/ollama/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "OllamaProvider"
+      }
+    },
+    {
+      "name": "LMStudioProvider",
+      "description": "LM Studio 本地模型集成（codex-lmstudio crate）。提供 LMStudioClient 用于从本地 LM Studio 服务器发现和加载模型，支持健康检查和后台模型加载。",
+      "edges": [
+        {
+          "target": "ProviderRegistry",
+          "type": "depends",
+          "description": "使用内置的 LM Studio 提供者信息获取默认端口和端点配置"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/lmstudio/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "LMStudioProvider"
+      }
+    },
+    {
+      "name": "BackendClient",
+      "description": "ChatGPT 后端 API 的认证 HTTP 客户端（codex-backend-client 和 codex-backend-openapi-models crate）。提供查询速率限制状态、额度状态和云任务管理的方法。使用自动生成的 OpenAPI 模型类型进行请求/响应序列化，支持 CodexApi 和 ChatGptApi 两种路径风格。",
+      "edges": [
+        {
+          "target": "HttpTransport",
+          "type": "calls",
+          "description": "使用 codex-client 进行与 ChatGPT 后端的认证 HTTP 请求"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/backend-client/",
+        "codex-rs/codex-backend-openapi-models/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "BackendClient"
+      }
+    },
+    {
+      "name": "ResponsesApiProxy",
+      "description": "Responses API 的本地 HTTP 代理服务器（codex-responses-api-proxy crate）。将 POST /v1/responses 请求转发到上游提供者，同时注入授权头，使 API 密钥不暴露给子进程。支持临时端口绑定、可选的请求/响应转储用于调试，以及 HTTP 关闭端点。同时作为 NPM 模块发布，用于 Node.js 集成。",
+      "edges": [
+        {
+          "target": "ApiClient",
+          "type": "data-flow",
+          "description": "代理原本直接通过 ApiClient 发送的 Responses API 请求"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/responses-api-proxy/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ResponsesApiProxy"
+      }
+    },
+    {
+      "name": "Connectors",
+      "description": "应用目录和连接器发现服务（codex-connectors crate）。从目录端点获取可用连接器，合并工作区和目录连接器，规范化元数据，并使用按账户/用户/基础 URL 为键的 LRU 缓存进行 1 小时 TTL 的结果缓存。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/connectors/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Connectors"
+      }
+    },
+    {
+      "name": "ResponseDebugContext",
+      "description": "错误上下文提取工具（codex-response-debug-context crate）。从 API 错误响应中提取调试信息——请求 ID、Cloudflare ray ID、认证错误详情——并为可观测性管道格式化遥测安全的错误消息。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/response-debug-context/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ResponseDebugContext"
+      }
+    }
+  ]
+}

@@ -1,0 +1,156 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "165c6df9-ede6-4c8e-8a63-530068d5becc",
+  "description": "各个工具处理器的具体实现。每个处理器实现 ToolHandler trait 以处理特定的工具调用类型：shell 命令执行、apply-patch 文件编辑、多智能体生成与通信（v1 和 v2 协议）、JS REPL 委托、unified-exec 长时间运行进程、MCP 工具/资源调用、目录列表、文件读取、图片查看、计划管理、工具搜索/建议、权限请求、用户输入请求、code-mode 执行/等待、动态工具分发、智能体作业管理和测试同步。",
+  "codeScope": [
+    "codex-rs/core/src/tools/handlers/"
+  ],
+  "nodes": [
+    {
+      "name": "ShellAndPatch",
+      "description": "两个核心的沙箱支持执行处理器。ShellHandler/ShellCommandHandler 对 shell 命令进行分词，选择后端（经典或 zsh-fork），并通过 ToolOrchestrator 的审批/沙箱循环委托给 ShellRuntime。ApplyPatchHandler 解析统一差异格式，计算文件系统权限需求，并委托给 ApplyPatchRuntime。Shell 还会拦截 apply-patch 风格的命令进行透明路由。",
+      "edges": [
+        {
+          "target": "HandlerCommon",
+          "type": "depends",
+          "description": "使用 mod.rs 共享工具中的 parse_arguments、resolve_workdir_base_path、权限规范化/验证和 apply_granted_turn_permissions"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core/src/tools/handlers/shell.rs",
+        "codex-rs/core/src/tools/handlers/shell_tests.rs",
+        "codex-rs/core/src/tools/handlers/apply_patch.rs",
+        "codex-rs/core/src/tools/handlers/apply_patch_tests.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ShellAndPatch"
+      }
+    },
+    {
+      "name": "MultiAgent",
+      "description": "多智能体生成、通信和批量作业编排处理器。包含两代协议（v1: spawn/wait/close/resume/send-input，v2: spawn/wait/close/send-message/list-agents/followup-task，支持命名智能体解析）、共享工具（配置构建、状态格式化、等待超时管理），以及一个批量作业处理器，用于编排 CSV 驱动的并行智能体执行，支持并发控制和进度报告。",
+      "edges": [
+        {
+          "target": "HandlerCommon",
+          "type": "depends",
+          "description": "使用 parse_arguments 反序列化工具调用参数"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core/src/tools/handlers/multi_agents.rs",
+        "codex-rs/core/src/tools/handlers/multi_agents/",
+        "codex-rs/core/src/tools/handlers/multi_agents_v2.rs",
+        "codex-rs/core/src/tools/handlers/multi_agents_v2/",
+        "codex-rs/core/src/tools/handlers/multi_agents_common.rs",
+        "codex-rs/core/src/tools/handlers/multi_agents_tests.rs",
+        "codex-rs/core/src/tools/handlers/agent_jobs.rs",
+        "codex-rs/core/src/tools/handlers/agent_jobs_tests.rs"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "MultiAgent"
+      }
+    },
+    {
+      "name": "McpHandlers",
+      "description": "MCP 工具和资源调用处理器。McpHandler 通过 handle_mcp_tool_call 将工具调用委托给外部 MCP 服务器。McpResourceHandler 处理 MCP 资源读取，支持基于 URI 的路由、内容类型检测、分页支持和结果格式化以供模型消费。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/core/src/tools/handlers/mcp.rs",
+        "codex-rs/core/src/tools/handlers/mcp_resource.rs",
+        "codex-rs/core/src/tools/handlers/mcp_resource_tests.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "McpHandlers"
+      }
+    },
+    {
+      "name": "FileAndMedia",
+      "description": "文件系统浏览和媒体查看处理器。ListDirHandler 生成可配置深度的目录列表，包含文件类型指示器和大小信息。ViewImageHandler 读取图片文件，验证格式，并将其编码为 base64 内容项供模型消费。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/core/src/tools/handlers/list_dir.rs",
+        "codex-rs/core/src/tools/handlers/list_dir_tests.rs",
+        "codex-rs/core/src/tools/handlers/view_image.rs",
+        "codex-rs/core/src/tools/handlers/read_file_tests.rs",
+        "codex-rs/core/src/tools/handlers/grep_files_tests.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "FileAndMedia"
+      }
+    },
+    {
+      "name": "ScriptAndProcess",
+      "description": "脚本执行和长时间运行进程处理器。JsReplHandler 委托给 JsReplKernel 进行 JavaScript 求值（附带用于会话重置的 JsReplResetHandler）。UnifiedExecHandler 通过 unified_exec ProcessManager 管理长时间运行的进程，支持 start/check/kill/write-stdin 生命周期操作，具备权限提升和 apply-patch 拦截功能。",
+      "edges": [
+        {
+          "target": "HandlerCommon",
+          "type": "depends",
+          "description": "使用共享工具中的 parse_arguments、权限验证和 apply_granted_turn_permissions"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core/src/tools/handlers/js_repl.rs",
+        "codex-rs/core/src/tools/handlers/js_repl_tests.rs",
+        "codex-rs/core/src/tools/handlers/unified_exec.rs",
+        "codex-rs/core/src/tools/handlers/unified_exec_tests.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ScriptAndProcess"
+      }
+    },
+    {
+      "name": "ToolDiscovery",
+      "description": "工具发现、建议和计划管理处理器。ToolSearchHandler 使用 BM25 文本搜索按关键词从注册表中查找相关工具。ToolSuggestHandler 根据上下文推荐工具并提供审批提示。PlanHandler 管理结构化计划的创建和更新，用于模型的任务规划工作流。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/core/src/tools/handlers/tool_search.rs",
+        "codex-rs/core/src/tools/handlers/tool_suggest.rs",
+        "codex-rs/core/src/tools/handlers/tool_suggest_tests.rs",
+        "codex-rs/core/src/tools/handlers/plan.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ToolDiscovery"
+      }
+    },
+    {
+      "name": "AuxiliaryHandlers",
+      "description": "用于用户交互、动态分发和测试的轻量级辅助处理器。RequestPermissionsHandler 允许模型请求提升的沙箱权限。RequestUserInputHandler 在回合期间请求用户输入。DynamicToolHandler 通过基于事件的请求/响应机制将调用分发给外部注册的动态工具。TestSyncHandler 为集成测试提供同步原语。",
+      "edges": [
+        {
+          "target": "HandlerCommon",
+          "type": "depends",
+          "description": "使用 parse_arguments 反序列化工具调用参数"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core/src/tools/handlers/request_permissions.rs",
+        "codex-rs/core/src/tools/handlers/request_user_input.rs",
+        "codex-rs/core/src/tools/handlers/dynamic.rs",
+        "codex-rs/core/src/tools/handlers/test_sync.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "AuxiliaryHandlers"
+      }
+    },
+    {
+      "name": "HandlerCommon",
+      "description": "定义在 mod.rs 中的共享处理器基础设施。提供参数解析工具（parse_arguments、parse_arguments_with_base_path、resolve_workdir_base_path）、附加权限验证和规范化（normalize_and_validate_additional_permissions）、有效权限计算（apply_granted_turn_permissions、implicit_granted_permissions），以及为 crate 其余部分重新导出所有处理器类型。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/core/src/tools/handlers/mod.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "HandlerCommon"
+      }
+    }
+  ]
+}

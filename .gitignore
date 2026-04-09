@@ -146,6 +146,6 @@ vite.config.ts.timestamp-*
 .Spotlight-V100
 .Trashes
 
-# Generated doc files (keep directory structure)
-web/doc/**
-!web/doc/**/
+# Generated doc files — tracked on gh-pages-source
+# web/doc/**
+# !web/doc/**/

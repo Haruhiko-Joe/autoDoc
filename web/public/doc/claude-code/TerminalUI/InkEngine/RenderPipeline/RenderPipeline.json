@@ -1,0 +1,154 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "43d557b4-308d-474c-8ffe-2bbe11730a0f",
+  "description": "The multi-stage rendering pipeline that transforms the DOM tree into terminal screen output. Stages: (1) Frame type definitions and empty frame creation, (2) renderer orchestrates per-frame rendering from DOM to screen, (3) render-node-to-output recursively walks the DOM tree producing positioned text with borders and padding, (4) Output manages a 2D grid of styled text cells, (5) Screen is a cell-based buffer with style/char/hyperlink pooling and diff-based updates, (6) render-to-screen applies positioned highlights, (7) render-border draws box borders, (8) colorize applies ANSI color attributes, (9) optimizer deduplicates redundant style sequences. Contains ~4,600 lines with multiple distinct pipeline stages.",
+  "codeScope": [
+    "src/ink/frame.ts",
+    "src/ink/renderer.ts",
+    "src/ink/render-node-to-output.ts",
+    "src/ink/render-border.ts",
+    "src/ink/render-to-screen.ts",
+    "src/ink/output.ts",
+    "src/ink/screen.ts",
+    "src/ink/colorize.ts",
+    "src/ink/optimizer.ts"
+  ],
+  "nodes": [
+    {
+      "name": "FrameOrchestration",
+      "description": "Pipeline entry point and frame lifecycle. Defines the Frame type (screen + viewport + cursor + scroll hints), Patch/Diff types for incremental terminal updates, FrameEvent timing instrumentation, and the shouldClearScreen heuristic. The createRenderer factory owns the per-frame render loop: validates yoga dimensions, manages double-buffered Screen allocation, reuses the Output instance across frames, invokes renderNodeToOutput with blit-safety checks (selection contamination, absolute-node removal), and assembles the final Frame with alt-screen viewport/cursor adjustments.",
+      "edges": [
+        {
+          "target": "RenderNodeToOutput",
+          "type": "calls",
+          "description": "createRenderer invokes renderNodeToOutput to recursively walk the DOM tree and populate the Output buffer each frame"
+        },
+        {
+          "target": "OutputBuffer",
+          "type": "calls",
+          "description": "createRenderer creates and reuses an Output instance across frames, calling reset() and get() to manage the write buffer"
+        },
+        {
+          "target": "ScreenBuffer",
+          "type": "calls",
+          "description": "Creates Screen instances via createScreen for empty frames and back-buffer allocation; reads pool references from Screen"
+        }
+      ],
+      "codeScope": [
+        "src/ink/frame.ts",
+        "src/ink/renderer.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "FrameOrchestration"
+      }
+    },
+    {
+      "name": "RenderNodeToOutput",
+      "description": "The core DOM tree walker (~1,460 lines) that recursively converts DOMElement nodes into positioned text operations on the Output buffer. Handles normal-flow and absolute-positioned layout, ScrollBox viewport clipping with hardware-scroll hints (DECSTBM), blit optimization (copying unchanged regions from the previous Screen to skip re-rendering), pending scroll drain scheduling, border rendering delegation, text node squashing into styled segments, text wrapping and indentation, clip region management, noSelect marking, and layout-shift detection for damage tracking.",
+      "edges": [
+        {
+          "target": "OutputBuffer",
+          "type": "calls",
+          "description": "Writes positioned text, border lines, blit regions, clip/unclip, clear, shift, and noSelect operations to the Output buffer"
+        },
+        {
+          "target": "ScreenBuffer",
+          "type": "depends",
+          "description": "Reads the previous frame's Screen for blit optimization — copies unchanged cell regions instead of re-rendering"
+        },
+        {
+          "target": "VisualFormatting",
+          "type": "calls",
+          "description": "Delegates border drawing to renderBorder and applies text styles via applyTextStyles from colorize"
+        }
+      ],
+      "codeScope": [
+        "src/ink/render-node-to-output.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "RenderNodeToOutput"
+      }
+    },
+    {
+      "name": "OutputBuffer",
+      "description": "The Output class (~800 lines) that collects rendering operations (write, blit, clear, clip, unclip, shift, noSelect) into an ordered queue, then applies them to a Screen buffer in get(). Manages a clip stack for ScrollBox viewport clipping, caches tokenized/clustered character data per unique line (charCache) to avoid repeated ANSI tokenization and grapheme segmentation, handles bidirectional text reordering, and performs the final cell-by-cell Screen population with style interning and hyperlink extraction.",
+      "edges": [
+        {
+          "target": "ScreenBuffer",
+          "type": "calls",
+          "description": "Flushes queued operations into the Screen's cell arrays via setCellAt, blitRegion, shiftRows, resetScreen, and markNoSelectRegion"
+        }
+      ],
+      "codeScope": [
+        "src/ink/output.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "OutputBuffer"
+      }
+    },
+    {
+      "name": "ScreenBuffer",
+      "description": "The Screen type and shared interning pools (~1,490 lines). Screen is a flat cell-based buffer (parallel arrays for styleId, charId, hyperlinkId, width, noSelect) representing the 2D grid of styled terminal cells. CharPool, StylePool, and HyperlinkPool provide session-lived string interning so cells store integer IDs instead of strings — enabling O(1) equality checks during diff and zero-copy blit. StylePool also caches SGR transition strings between any two style IDs (transition(from, to)) and provides style transforms (withInverse, withCurrentMatch). Includes createScreen, setCellAt, cellAtIndex, blitRegion, shiftRows, resetScreen, and diff helpers.",
+      "edges": [],
+      "codeScope": [
+        "src/ink/screen.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ScreenBuffer"
+      }
+    },
+    {
+      "name": "SearchRendering",
+      "description": "Isolated side-rendering pipeline for search functionality. renderToScreen() renders a single React element into a standalone Screen buffer using a reused React reconciler root, Yoga layout, and the standard renderNodeToOutput path — used to render individual messages for search indexing. scanPositions() scans a Screen buffer for case-insensitive query matches, returning cell-precise (row, col, len) positions. applyPositionedHighlight() applies current-match styling to a specific position on the live screen. Includes performance timing and periodic debug logging.",
+      "edges": [
+        {
+          "target": "RenderNodeToOutput",
+          "type": "calls",
+          "description": "renderToScreen invokes renderNodeToOutput to paint the reconciled DOM tree into the Output buffer"
+        },
+        {
+          "target": "OutputBuffer",
+          "type": "calls",
+          "description": "Creates and reuses an Output instance to collect render operations before flushing to Screen"
+        },
+        {
+          "target": "ScreenBuffer",
+          "type": "calls",
+          "description": "Creates Screen buffers for rendering, reads cell data via cellAtIndex for search scanning, and applies style transforms for highlights"
+        }
+      ],
+      "codeScope": [
+        "src/ink/render-to-screen.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SearchRendering"
+      }
+    },
+    {
+      "name": "VisualFormatting",
+      "description": "Terminal visual formatting utilities: (1) colorize.ts applies ANSI color attributes via chalk — supports named ANSI colors, hex, rgb(), ansi256() for both foreground and background, with chalk level boosting for xterm.js and clamping for tmux compatibility. applyTextStyles applies bold/dim/italic/underline/strikethrough/inverse/color to text. (2) render-border.ts draws box borders (top/bottom/left/right with independent colors, dim, and optional embedded text) using cli-boxes character sets plus a custom dashed style. (3) optimizer.ts performs a single-pass diff optimization: removes empty/no-op patches, merges consecutive cursorMove/cursorTo/styleStr patches, deduplicates hyperlinks, and cancels cursor hide/show pairs.",
+      "edges": [
+        {
+          "target": "OutputBuffer",
+          "type": "calls",
+          "description": "renderBorder writes styled border lines to the Output buffer at computed positions"
+        }
+      ],
+      "codeScope": [
+        "src/ink/colorize.ts",
+        "src/ink/render-border.ts",
+        "src/ink/optimizer.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "VisualFormatting"
+      }
+    }
+  ]
+}

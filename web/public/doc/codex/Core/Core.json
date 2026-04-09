@@ -1,0 +1,363 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "502b96fe-ddae-42fd-9305-aa07c9f035ea",
+  "description": "智能体编排引擎——Codex 的大脑。管理用户、LLM 和工具之间的对话循环：向模型提供商发送提示、解析工具调用响应、分发执行任务、跟踪会话状态，并协调端到端的智能体工作流，包括 code-mode 和 collaboration-mode 策略。",
+  "codeScope": [
+    "codex-rs/core/",
+    "codex-rs/protocol/",
+    "codex-rs/state/",
+    "codex-rs/code-mode/",
+    "codex-rs/collaboration-mode-templates/"
+  ],
+  "nodes": [
+    {
+      "name": "Protocol",
+      "description": "所有 Core 子系统共享的类型定义和数据模型。定义通信协议（事件、操作、rollout 项）、对话项、审批类型、权限模型、配置类型、模型元数据、MCP 类型、错误类型和用户输入模式。作为整个智能体系统的规范模式层。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/protocol/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Protocol"
+      }
+    },
+    {
+      "name": "SessionEngine",
+      "description": "主编排循环——智能体的核心。管理会话生命周期（创建、配置、关闭）、回合执行（提交给模型、流式响应、处理工具调用）、线程管理（分叉、恢复、多线程协调）、任务分发（常规回合、压缩、审查、撤销、用户 shell）、模型客户端通信、实时对话支持、rollout 记录和事件流式传输给消费者。",
+      "edges": [
+        {
+          "target": "ToolsOrchestration",
+          "type": "calls",
+          "description": "将模型响应中的工具调用请求分发给工具路由器执行"
+        },
+        {
+          "target": "ContextManagement",
+          "type": "calls",
+          "description": "在每次模型调用前构建和管理上下文窗口（历史记录、压缩、初始上下文注入）"
+        },
+        {
+          "target": "AgentCoordination",
+          "type": "calls",
+          "description": "为多智能体工作流创建和管理子智能体线程"
+        },
+        {
+          "target": "Memories",
+          "type": "calls",
+          "description": "在回合期间和之后触发记忆提取、引用和存储"
+        },
+        {
+          "target": "CoreConfig",
+          "type": "depends",
+          "description": "读取配置、权限、执行策略和功能开关来控制会话行为"
+        },
+        {
+          "target": "PluginsAndSkills",
+          "type": "calls",
+          "description": "加载技能和插件，注入技能提示，并在会话期间管理插件生命周期"
+        },
+        {
+          "target": "CodeMode",
+          "type": "calls",
+          "description": "当模型调用 exec/wait 工具时委托给 code-mode 执行"
+        },
+        {
+          "target": "StatePersistence",
+          "type": "calls",
+          "description": "将会话元数据、线程状态和日志条目持久化到 SQLite 数据库"
+        },
+        {
+          "target": "GuardianReview",
+          "type": "calls",
+          "description": "将审批请求路由到守护审查器进行自动化安全评估"
+        },
+        {
+          "target": "Protocol",
+          "type": "depends",
+          "description": "在整个会话生命周期中使用协议类型（事件、项、操作）"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core/src/codex.rs",
+        "codex-rs/core/src/codex/",
+        "codex-rs/core/src/codex_thread.rs",
+        "codex-rs/core/src/thread_manager.rs",
+        "codex-rs/core/src/tasks/",
+        "codex-rs/core/src/codex_delegate.rs",
+        "codex-rs/core/src/stream_events_utils.rs",
+        "codex-rs/core/src/event_mapping.rs",
+        "codex-rs/core/src/client.rs",
+        "codex-rs/core/src/client_common.rs",
+        "codex-rs/core/src/connectors.rs",
+        "codex-rs/core/src/realtime_context.rs",
+        "codex-rs/core/src/realtime_conversation.rs",
+        "codex-rs/core/src/rollout.rs",
+        "codex-rs/core/src/compact.rs",
+        "codex-rs/core/src/compact_remote.rs",
+        "codex-rs/core/src/state/",
+        "codex-rs/core/src/turn_timing.rs",
+        "codex-rs/core/src/turn_metadata.rs",
+        "codex-rs/core/src/turn_diff_tracker.rs",
+        "codex-rs/core/src/session_prefix.rs",
+        "codex-rs/core/src/session_rollout_init_error.rs",
+        "codex-rs/core/src/session_startup_prewarm.rs",
+        "codex-rs/core/src/commit_attribution.rs",
+        "codex-rs/core/src/file_watcher.rs",
+        "codex-rs/core/src/otel_init.rs",
+        "codex-rs/core/src/prompt_debug.rs",
+        "codex-rs/core/src/arc_monitor.rs",
+        "codex-rs/core/src/review_format.rs",
+        "codex-rs/core/src/review_prompts.rs",
+        "codex-rs/core/src/util.rs",
+        "codex-rs/core/src/utils/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "SessionEngine"
+      }
+    },
+    {
+      "name": "ToolsOrchestration",
+      "description": "Core 内的工具分发和执行层。将模型请求的工具调用通过工具路由器进行路由，管理工具注册表（内置工具和动态工具），编排并行工具执行，执行工具级沙箱和网络审批策略，并承载各个工具处理器（shell、apply-patch、MCP、多智能体、JS REPL、文件操作、计划、工具建议等）及其执行运行时。",
+      "edges": [
+        {
+          "target": "Protocol",
+          "type": "depends",
+          "description": "使用协议类型来定义工具规范、执行输出和动态工具定义"
+        },
+        {
+          "target": "CoreConfig",
+          "type": "depends",
+          "description": "读取执行策略和沙箱配置以进行工具级安全执行"
+        },
+        {
+          "target": "AgentCoordination",
+          "type": "calls",
+          "description": "多智能体工具处理器（spawn、wait、send-message、close）委托给智能体系统"
+        },
+        {
+          "target": "CodeMode",
+          "type": "calls",
+          "description": "code-mode 工具处理器将 exec/wait 调用委托给 code-mode 运行时"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core/src/tools/",
+        "codex-rs/core/src/unified_exec/",
+        "codex-rs/core/src/exec.rs",
+        "codex-rs/core/src/exec_env.rs",
+        "codex-rs/core/src/shell.rs",
+        "codex-rs/core/src/shell_detect.rs",
+        "codex-rs/core/src/shell_snapshot.rs",
+        "codex-rs/core/src/command_canonicalization.rs",
+        "codex-rs/core/src/apply_patch.rs",
+        "codex-rs/core/src/user_shell_command.rs",
+        "codex-rs/core/src/function_tool.rs",
+        "codex-rs/core/src/web_search.rs"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "ToolsOrchestration"
+      }
+    },
+    {
+      "name": "ContextManagement",
+      "description": "管理发送给模型的对话上下文窗口。处理历史记录跟踪和规范化、上下文压缩（总结旧消息以控制在 token 限制内）、线程 rollout 截断、上下文相关的用户消息构建（注入环境信息、项目文档、指令），以及每次回合的初始上下文构建。",
+      "edges": [
+        {
+          "target": "Protocol",
+          "type": "depends",
+          "description": "使用协议项类型（ResponseInputItem、ContentItem）来表示历史记录"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core/src/context_manager/",
+        "codex-rs/core/src/message_history.rs",
+        "codex-rs/core/src/contextual_user_message.rs",
+        "codex-rs/core/src/environment_context.rs",
+        "codex-rs/core/src/project_doc.rs",
+        "codex-rs/core/src/instructions/",
+        "codex-rs/core/src/thread_rollout_truncation.rs",
+        "codex-rs/core/src/original_image_detail.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ContextManagement"
+      }
+    },
+    {
+      "name": "AgentCoordination",
+      "description": "多智能体创建、生命周期管理和通信。包括智能体控制接口（启动、停止、发送消息）、智能体间消息传递的邮箱系统、智能体状态跟踪、管理并发子智能体的智能体注册表、角色分配和解析以及创建深度限制。",
+      "edges": [
+        {
+          "target": "Protocol",
+          "type": "depends",
+          "description": "使用协议类型来定义智能体状态和智能体间通信事件"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core/src/agent/",
+        "codex-rs/core/src/spawn.rs",
+        "codex-rs/core/src/external_agent_config.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "AgentCoordination"
+      }
+    },
+    {
+      "name": "GuardianReview",
+      "description": "自动化安全审查系统，决定工具调用审批请求应自动批准还是升级给用户处理。重建紧凑的对话文本记录，发送给专用的守护模型会话进行风险评估，并应用故障关闭逻辑（超时、解析错误、高风险分数均导致升级处理）。",
+      "edges": [
+        {
+          "target": "SessionEngine",
+          "type": "calls",
+          "description": "创建专用的守护审查会话来评估审批请求"
+        },
+        {
+          "target": "CoreConfig",
+          "type": "depends",
+          "description": "读取审批审查器配置以决定路由策略"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core/src/guardian/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "GuardianReview"
+      }
+    },
+    {
+      "name": "Memories",
+      "description": "记忆管理子系统。处理从对话中提取记忆（第一阶段：候选生成，第二阶段：去重和存储）、响应中的记忆引用、模型的记忆提示、记忆存储后端以及跨会话的记忆使用跟踪。",
+      "edges": [
+        {
+          "target": "StatePersistence",
+          "type": "calls",
+          "description": "通过状态数据库存储和检索记忆记录"
+        },
+        {
+          "target": "Protocol",
+          "type": "depends",
+          "description": "使用协议层的记忆引用类型"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core/src/memories/",
+        "codex-rs/core/src/memory_trace.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Memories"
+      }
+    },
+    {
+      "name": "CoreConfig",
+      "description": "Core 内的配置加载、验证和策略执行。管理分层配置模式（全局/项目/本地层）、权限配置和授权、执行策略加载和检查、网络策略决策、网络代理配置、沙箱策略设置（seatbelt/landlock/Windows）、功能开关、钩子运行时执行、安全检查和配置编辑 API。",
+      "edges": [
+        {
+          "target": "Protocol",
+          "type": "depends",
+          "description": "使用协议中的配置类型、权限模型和网络策略类型"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core/src/config/",
+        "codex-rs/core/src/config_loader/",
+        "codex-rs/core/src/exec_policy.rs",
+        "codex-rs/core/src/flags.rs",
+        "codex-rs/core/src/safety.rs",
+        "codex-rs/core/src/sandboxing/",
+        "codex-rs/core/src/sandbox_tags.rs",
+        "codex-rs/core/src/seatbelt.rs",
+        "codex-rs/core/src/landlock.rs",
+        "codex-rs/core/src/windows_sandbox.rs",
+        "codex-rs/core/src/windows_sandbox_read_grants.rs",
+        "codex-rs/core/src/network_policy_decision.rs",
+        "codex-rs/core/src/network_proxy_loader.rs",
+        "codex-rs/core/src/personality_migration.rs",
+        "codex-rs/core/src/hook_runtime.rs"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "CoreConfig"
+      }
+    },
+    {
+      "name": "PluginsAndSkills",
+      "description": "插件和技能的扩展层。管理插件发现、清单解析、市场集成、插件商店、启动同步、插件渲染和注入提示、技能加载和调用（显式和隐式）、技能依赖解析、MCP 工具审批模板、MCP 技能依赖、提及语法解析以及基于 MCP 的应用渲染。",
+      "edges": [
+        {
+          "target": "CoreConfig",
+          "type": "depends",
+          "description": "从配置层读取插件和技能配置"
+        },
+        {
+          "target": "Protocol",
+          "type": "depends",
+          "description": "使用协议类型来定义技能作用域、MCP 类型和动态工具规范"
+        },
+        {
+          "target": "SessionEngine",
+          "type": "calls",
+          "description": "技能将提示和工具定义注入到会话回合上下文中"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core/src/plugins/",
+        "codex-rs/core/src/skills.rs",
+        "codex-rs/core/src/skills_watcher.rs",
+        "codex-rs/core/src/mcp.rs",
+        "codex-rs/core/src/mcp_skill_dependencies.rs",
+        "codex-rs/core/src/mcp_tool_call.rs",
+        "codex-rs/core/src/mcp_tool_approval_templates.rs",
+        "codex-rs/core/src/apps/",
+        "codex-rs/core/src/mention_syntax.rs"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "PluginsAndSkills"
+      }
+    },
+    {
+      "name": "CodeMode",
+      "description": "代码执行模式运行时和协作模式模板。提供 code-mode 服务，管理具有 exec/wait 工具语义的长时间运行代码执行会话、基于 Deno 的 JavaScript 运行时（带自定义模块加载和全局变量）、用于模型消费的响应适配，以及塑造智能体交互风格的协作模式提示模板（default、execute、pair-programming、plan）。",
+      "edges": [
+        {
+          "target": "Protocol",
+          "type": "depends",
+          "description": "使用协议类型来定义工具定义和内容项"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/code-mode/",
+        "codex-rs/collaboration-mode-templates/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "CodeMode"
+      }
+    },
+    {
+      "name": "StatePersistence",
+      "description": "基于 SQLite 的会话元数据持久化存储。从 JSONL rollout 文件中提取 rollout 元数据到本地 SQLite 数据库，管理线程元数据（标题、时间戳、状态）、智能体任务跟踪、历史会话索引的回填编排、结构化日志查询的日志数据库，并提供会话引擎使用的运行时服务接口。",
+      "edges": [
+        {
+          "target": "Protocol",
+          "type": "depends",
+          "description": "使用协议 rollout 项类型进行元数据提取"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/state/",
+        "codex-rs/core/src/state_db_bridge.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "StatePersistence"
+      }
+    }
+  ]
+}

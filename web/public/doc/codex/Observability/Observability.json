@@ -1,0 +1,49 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "a299befe-9935-455e-b6cc-029c53775793",
+  "description": "遥测、分析和反馈基础设施。集成 OpenTelemetry 进行分布式追踪，收集使用分析事件，并管理用户反馈提交——为 agent 行为和性能提供可视化洞察。",
+  "codeScope": [
+    "codex-rs/otel/",
+    "codex-rs/analytics/",
+    "codex-rs/feedback/"
+  ],
+  "nodes": [
+    {
+      "name": "OpenTelemetry",
+      "description": "OpenTelemetry 集成 crate（codex-otel）。提供 OtelProvider 来配置分布式追踪（OTLP span 导出）、结构化日志导出，以及基于 OpenTelemetry SDK 的指标客户端（计数器、直方图、计时器）。还包含 SessionTelemetry——高层门面，将每个会话的遥测事件（API 调用、工具调用、SSE/WebSocket 事件）同时作为 OTel span/日志和指标发送。支持 gRPC 和 HTTP OTLP 导出器（带 TLS）、W3C trace-context 传播、运行时指标快照，以及基于目标的导出过滤。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/otel/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "OpenTelemetry"
+      }
+    },
+    {
+      "name": "Analytics",
+      "description": "使用分析事件跟踪 crate（codex-analytics）。提供 AnalyticsEventsClient，将分析事实（线程初始化、技能调用、应用提及/使用、插件状态变更）入队到异步 mpsc 通道。AnalyticsReducer 将事实处理为类型化的 TrackEventRequest 载荷，并通过 HTTP 发送到 ChatGPT 分析后端。包含按轮次的应用使用和插件使用事件去重。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/analytics/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Analytics"
+      }
+    },
+    {
+      "name": "Feedback",
+      "description": "用户反馈收集和提交 crate（codex-feedback）。通过 tracing-subscriber 层将全保真追踪日志捕获到有界环形缓冲区（4 MiB），从特殊追踪事件中收集结构化元数据标签，收集连接诊断信息（代理环境变量），并将反馈报告连同日志附件和分类标签（bug、bad_result、good_result、safety_check）上传到 Sentry。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/feedback/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Feedback"
+      }
+    }
+  ]
+}

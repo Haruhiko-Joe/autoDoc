@@ -1,0 +1,141 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "e8fda3d1-c2fe-45a1-a666-5878a7aae832",
+  "description": "Tool permission approval dialogs for every tool type. Contains the PermissionPrompt orchestrator, PermissionDialog wrapper, and 14+ tool-specific permission request components (Bash, FileEdit, FileWrite, Filesystem, PowerShell, SedEdit, NotebookEdit, WebFetch, Skill, AskUserQuestion, EnterPlanMode, ExitPlanMode, ComputerUse, Sandbox), plus permission rule explanations, decision debug info, worker badges, and shared shell permission helpers.",
+  "codeScope": [
+    "src/components/permissions/"
+  ],
+  "nodes": [
+    {
+      "name": "PermissionFramework",
+      "description": "Core orchestration layer for the permission system. PermissionRequest dispatches tool use confirmations to the appropriate tool-specific component via a tool-to-component map. PermissionPrompt manages the shared input handler with option selection, accept/reject feedback modes, and keybinding integration. PermissionDialog provides the styled layout wrapper (border box with title bar, subtitle, worker badge). Supporting pieces include PermissionRequestTitle (header rendering), PermissionExplanation (AI-generated risk-level explanations with shimmer loading), PermissionRuleExplanation (color-coded decision reason display), PermissionDecisionDebugInfo (detailed debug output for permission decisions), WorkerBadge and WorkerPendingPermission (swarm worker indicators), FallbackPermissionRequest (generic handler for tools without specific UIs), SandboxPermissionRequest (network domain access), and shared hooks (usePermissionRequestLogging for analytics/attribution) and utils (unary event logging).",
+      "edges": [
+        {
+          "target": "FilePermissionSystem",
+          "type": "calls",
+          "description": "PermissionRequest dispatcher routes file edit, file write, filesystem, notebook edit, and sed edit tools to FilePermissionSystem components"
+        },
+        {
+          "target": "ShellPermissions",
+          "type": "calls",
+          "description": "PermissionRequest dispatcher routes Bash and PowerShell tool use confirmations to shell permission components"
+        },
+        {
+          "target": "SpecializedPermissions",
+          "type": "calls",
+          "description": "PermissionRequest dispatcher routes AskUserQuestion, Skill, WebFetch, ComputerUse, EnterPlanMode, and ExitPlanMode tools to their specialized components"
+        },
+        {
+          "target": "PermissionRules",
+          "type": "calls",
+          "description": "Permission dialogs can launch the rule management UI for adding allow/deny rules from the permission prompt"
+        }
+      ],
+      "codeScope": [
+        "src/components/permissions/PermissionRequest.tsx",
+        "src/components/permissions/PermissionPrompt.tsx",
+        "src/components/permissions/PermissionDialog.tsx",
+        "src/components/permissions/PermissionRequestTitle.tsx",
+        "src/components/permissions/PermissionExplanation.tsx",
+        "src/components/permissions/PermissionRuleExplanation.tsx",
+        "src/components/permissions/PermissionDecisionDebugInfo.tsx",
+        "src/components/permissions/WorkerBadge.tsx",
+        "src/components/permissions/WorkerPendingPermission.tsx",
+        "src/components/permissions/FallbackPermissionRequest.tsx",
+        "src/components/permissions/SandboxPermissionRequest.tsx",
+        "src/components/permissions/hooks.ts",
+        "src/components/permissions/utils.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PermissionFramework"
+      }
+    },
+    {
+      "name": "FilePermissionSystem",
+      "description": "Shared permission dialog system for all file operations (edit, write, read, sed, notebook). FilePermissionDialog is the generic component handling file read/write/edit permissions with IDE diff support, language detection, and symlink detection. useFilePermissionDialog manages dialog state (feedback, focus, input modes). usePermissionHandler provides accept/reject logic with scope-based permissions (claude-folder, global-claude-folder). permissionOptions generates context-aware options based on file location. Tool-specific wrappers include FileEditPermissionRequest (edit diffs), FileWritePermissionRequest (write diffs with existence checking), FilesystemPermissionRequest (Glob/Grep/FileRead), NotebookEditPermissionRequest (Jupyter notebook diffs), and SedEditPermissionRequest (sed command editing).",
+      "edges": [
+        {
+          "target": "PermissionFramework",
+          "type": "depends",
+          "description": "All file permission components use PermissionDialog for layout, hooks.ts for analytics logging, and PermissionExplanation for risk display"
+        }
+      ],
+      "codeScope": [
+        "src/components/permissions/FilePermissionDialog/",
+        "src/components/permissions/FileEditPermissionRequest/",
+        "src/components/permissions/FileWritePermissionRequest/",
+        "src/components/permissions/FilesystemPermissionRequest/",
+        "src/components/permissions/NotebookEditPermissionRequest/",
+        "src/components/permissions/SedEditPermissionRequest/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "FilePermissionSystem"
+      }
+    },
+    {
+      "name": "ShellPermissions",
+      "description": "Permission request components for shell command execution tools. BashPermissionRequest (~550 lines) is the most complex tool-specific handler, featuring classifier-based auto-approval checking with shimmer animation, sed command detection, destructive command warnings, and integration with the bash classifier utility. PowerShellPermissionRequest mirrors the Bash pattern for Windows environments. Both share shellPermissionHelpers.tsx (generates formatted suggestion labels for shell permission options including Read rules, commands, and directories) and useShellPermissionFeedback.ts (manages feedback input state, Tab-key mode toggling, focus tracking, and analytics for shell permission dialogs). Each tool also has its own toolUseOptions module for generating context-specific permission choices.",
+      "edges": [
+        {
+          "target": "PermissionFramework",
+          "type": "depends",
+          "description": "Shell components use PermissionDialog for layout, PermissionPrompt for input handling, and hooks.ts for permission logging and analytics"
+        }
+      ],
+      "codeScope": [
+        "src/components/permissions/BashPermissionRequest/",
+        "src/components/permissions/PowerShellPermissionRequest/",
+        "src/components/permissions/shellPermissionHelpers.tsx",
+        "src/components/permissions/useShellPermissionFeedback.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ShellPermissions"
+      }
+    },
+    {
+      "name": "SpecializedPermissions",
+      "description": "Tool-specific permission request components for non-file, non-shell tools. AskUserQuestionPermissionRequest is the most complex (~300 lines main + 6 subcomponents), handling multi-choice questions with image support, syntax highlighting, Markdown rendering, and a useMultipleChoiceState hook. SkillPermissionRequest handles MCP skill tool approvals. WebFetchPermissionRequest manages network fetch permissions with URL display. ComputerUseApproval handles computer use tool permissions. EnterPlanModePermissionRequest and ExitPlanModePermissionRequest handle plan mode transition approvals. Each follows the standard pattern of wrapping PermissionDialog or using Select for option presentation.",
+      "edges": [
+        {
+          "target": "PermissionFramework",
+          "type": "depends",
+          "description": "All specialized components use PermissionDialog for layout, PermissionPrompt for input handling, and hooks.ts for permission analytics"
+        }
+      ],
+      "codeScope": [
+        "src/components/permissions/AskUserQuestionPermissionRequest/",
+        "src/components/permissions/SkillPermissionRequest/",
+        "src/components/permissions/WebFetchPermissionRequest/",
+        "src/components/permissions/ComputerUseApproval/",
+        "src/components/permissions/EnterPlanModePermissionRequest/",
+        "src/components/permissions/ExitPlanModePermissionRequest/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SpecializedPermissions"
+      }
+    },
+    {
+      "name": "PermissionRules",
+      "description": "Permission rule management UI for viewing, adding, and removing tool permission rules. PermissionRuleList is the main component with tabbed navigation across Recent Denials, Allow/Ask/Deny rules, and Workspace tabs, featuring search filtering, rule deletion, and unreachable rule detection. AddPermissionRules provides the dialog for creating new rules with save destination selection (local, project, or user settings). PermissionRuleInput handles rule string input with validation and parsing. PermissionRuleDescription renders human-readable rule descriptions (e.g., 'The Bash command ls', 'Any command starting with git'). RecentDenialsTab shows recently denied permissions. WorkspaceTab and AddWorkspaceDirectory/RemoveWorkspaceDirectory manage workspace directory trust configuration.",
+      "edges": [
+        {
+          "target": "PermissionFramework",
+          "type": "depends",
+          "description": "Rules UI is launched from permission dialogs and uses shared PermissionRuleExplanation for displaying decision context"
+        }
+      ],
+      "codeScope": [
+        "src/components/permissions/rules/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PermissionRules"
+      }
+    }
+  ]
+}

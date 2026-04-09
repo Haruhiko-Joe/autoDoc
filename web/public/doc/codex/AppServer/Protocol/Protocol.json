@@ -1,0 +1,155 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "64f5ef4c-ee3b-4df3-846a-5bc431e33f66",
+  "description": "共享协议定义 crate（codex-app-server-protocol）。定义所有 JSON-RPC 消息类型、v1 和 v2 API 版本的请求/响应/通知枚举、线程历史构建、通用数据模型（线程、回合、审批、权限、协作模式）、实验性 API 注解系统，以及用于 IDE 客户端生成的 TypeScript/JSON Schema 导出工具。",
+  "codeScope": [
+    "codex-rs/app-server-protocol/src/lib.rs",
+    "codex-rs/app-server-protocol/src/protocol/",
+    "codex-rs/app-server-protocol/src/jsonrpc_lite.rs",
+    "codex-rs/app-server-protocol/src/experimental_api.rs",
+    "codex-rs/app-server-protocol/src/export.rs",
+    "codex-rs/app-server-protocol/src/schema_fixtures.rs",
+    "codex-rs/app-server-protocol/src/bin/",
+    "codex-rs/app-server-protocol/tests/",
+    "codex-rs/app-server-protocol/Cargo.toml"
+  ],
+  "nodes": [
+    {
+      "name": "JsonRpcBase",
+      "description": "线路协议的基础 JSON-RPC 消息类型。定义 JSONRPCMessage（顶层无标签枚举）、JSONRPCRequest、JSONRPCNotification、JSONRPCResponse、JSONRPCError 和 RequestId 类型（字符串或整数）。使用不带 jsonrpc 版本字段的简化 JSON-RPC 2.0 变体。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/app-server-protocol/src/jsonrpc_lite.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "JsonRpcBase"
+      }
+    },
+    {
+      "name": "RpcMethodRegistry",
+      "description": "宏驱动的 RPC 方法注册表，定义所有客户端和服务端的请求/通知枚举。使用 client_request_definitions!、server_request_definitions!、client_notification_definitions! 和 server_notification_definitions! 宏生成 ClientRequest、ServerRequest、ClientNotification、ServerNotification 枚举，包含 60 多个方法变体，涵盖线程生命周期、回合管理、文件系统操作、配置、认证、模型列表等。还定义了 AuthMode、FuzzyFileSearch 类型和 crate 的公共 API 表面（lib.rs 重新导出）。",
+      "edges": [
+        {
+          "target": "JsonRpcBase",
+          "type": "depends",
+          "description": "使用基础 JSON-RPC 模块中的 RequestId 和 JSONRPCRequest/JSONRPCNotification 类型"
+        },
+        {
+          "target": "V1Types",
+          "type": "depends",
+          "description": "引用 v1 参数/响应类型用于已弃用的方法（Initialize、GetConversationSummary、GetAuthStatus 等）"
+        },
+        {
+          "target": "V2DataModels",
+          "type": "depends",
+          "description": "引用 v2 参数/响应类型用于所有现代 API 方法（thread/*、turn/*、fs/*、config/* 等）"
+        },
+        {
+          "target": "ExperimentalApi",
+          "type": "depends",
+          "description": "在 ClientRequest 上实现 ExperimentalApi trait，用于方法级和字段级的实验性门控"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/app-server-protocol/src/lib.rs",
+        "codex-rs/app-server-protocol/src/protocol/common.rs",
+        "codex-rs/app-server-protocol/src/protocol/mod.rs",
+        "codex-rs/app-server-protocol/Cargo.toml"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "RpcMethodRegistry"
+      }
+    },
+    {
+      "name": "V1Types",
+      "description": "旧版 v1 API 参数和响应类型。包括 InitializeParams/Response、ClientInfo、ConversationSummary、审批类型（ApplyPatchApproval、ExecCommandApproval）、认证类型（GetAuthStatus、LoginApiKey）、带有配置文件和沙箱设置的 UserSavedConfig，以及 GitDiffToRemote。还包含 From<v1> → v2 映射器实现以保持向后兼容性（例如 ExecOneOffCommandParams → CommandExecParams）。",
+      "edges": [
+        {
+          "target": "V2DataModels",
+          "type": "data-flow",
+          "description": "映射器将 v1 类型转换为 v2 等价类型（例如 ExecOneOffCommandParams → CommandExecParams）"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/app-server-protocol/src/protocol/v1.rs",
+        "codex-rs/app-server-protocol/src/protocol/mappers.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "V1Types"
+      }
+    },
+    {
+      "name": "V2DataModels",
+      "description": "全面的 v2 API 数据模型（约 8300 行）。定义所有现代参数/响应/通知结构体和枚举：线程管理（ThreadStartParams、ThreadItem、Turn、TurnStatus）、审批流程（ReviewDecision、PermissionProfile、GranularApprovalConfig）、协作模式、命令执行（CommandExecParams、CommandAction）、文件系统操作、MCP 工具调用、配置读写、模型列表、账户/认证、实时音频、钩子摘要、错误类型（CodexErrorInfo），以及数十个辅助类型。使用 v2_enum_from_core! 宏将核心枚举以 camelCase 格式镜像到线路协议。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/app-server-protocol/src/protocol/v2.rs",
+        "codex-rs/app-server-protocol/src/protocol/serde_helpers.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "V2DataModels"
+      }
+    },
+    {
+      "name": "ThreadHistory",
+      "description": "从持久化的 rollout 事件重建线程历史。将核心 EventMsg 变体序列（TurnStarted、UserMessage、ItemCompleted、ExecCommandBegin/End、PatchApplyBegin/End、McpToolCallBegin/End、TurnComplete、TurnAborted 等）转换为 v2 数据模型（Vec<Turn> 和 ThreadItem）。处理复杂的状态跟踪，包括嵌套工具调用、压缩事件、智能体推理和协作智能体状态转换。",
+      "edges": [
+        {
+          "target": "V2DataModels",
+          "type": "depends",
+          "description": "从核心事件构造 v2 的 Turn、ThreadItem、TurnStatus 及相关类型"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/app-server-protocol/src/protocol/thread_history.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ThreadHistory"
+      }
+    },
+    {
+      "name": "ExperimentalApi",
+      "description": "实验性 API 注解和门控系统。定义 ExperimentalApi trait（当使用实验性功能时返回可选的原因字符串）、通过 inventory 注册的用于字段级门控的 ExperimentalField 结构体，以及 Option<T>、Vec<T>、HashMap<K,V> 和 BTreeMap<K,V> 的 blanket 实现。与 codex-experimental-api-macros derive 宏配合使用，在协议枚举和结构体上自动实现门控。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/app-server-protocol/src/experimental_api.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ExperimentalApi"
+      }
+    },
+    {
+      "name": "SchemaExport",
+      "description": "用于 IDE 客户端代码生成的 TypeScript 和 JSON Schema 生成工具。export 模块通过 ts-rs 生成 TypeScript 类型定义，通过 schemars 从协议类型生成 JSON Schema 文件，支持 v1/v2 目录布局、实验性 API 过滤、index.ts 生成和 prettier 格式化。schema_fixtures 模块管理用于模式回归测试的黄金文件 fixture，支持跨平台规范化。包含两个 CLI 二进制文件（export、write_schema_fixtures）和一个验证 fixture 新鲜度的集成测试。",
+      "edges": [
+        {
+          "target": "RpcMethodRegistry",
+          "type": "depends",
+          "description": "将 ClientRequest、ServerRequest、ClientNotification、ServerNotification 枚举及其参数/响应类型导出为 TypeScript 和 JSON Schema"
+        },
+        {
+          "target": "ExperimentalApi",
+          "type": "depends",
+          "description": "读取实验性字段注册表以从稳定模式输出中过滤实验性类型"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/app-server-protocol/src/export.rs",
+        "codex-rs/app-server-protocol/src/schema_fixtures.rs",
+        "codex-rs/app-server-protocol/src/bin/",
+        "codex-rs/app-server-protocol/tests/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SchemaExport"
+      }
+    }
+  ]
+}

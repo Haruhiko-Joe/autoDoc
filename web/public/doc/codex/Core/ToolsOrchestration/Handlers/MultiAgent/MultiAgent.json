@@ -1,0 +1,93 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "78df6fc5-45d5-4420-ae4b-47943d462022",
+  "description": "多智能体生成、通信和批量作业编排处理器。包含两代协议（v1: spawn/wait/close/resume/send-input，v2: spawn/wait/close/send-message/list-agents/followup-task，支持命名智能体解析）、共享工具（配置构建、状态格式化、等待超时管理），以及一个批量作业处理器，用于编排 CSV 驱动的并行智能体执行，支持并发控制和进度报告。",
+  "codeScope": [
+    "codex-rs/core/src/tools/handlers/multi_agents.rs",
+    "codex-rs/core/src/tools/handlers/multi_agents/",
+    "codex-rs/core/src/tools/handlers/multi_agents_v2.rs",
+    "codex-rs/core/src/tools/handlers/multi_agents_v2/",
+    "codex-rs/core/src/tools/handlers/multi_agents_common.rs",
+    "codex-rs/core/src/tools/handlers/multi_agents_tests.rs",
+    "codex-rs/core/src/tools/handlers/agent_jobs.rs",
+    "codex-rs/core/src/tools/handlers/agent_jobs_tests.rs"
+  ],
+  "nodes": [
+    {
+      "name": "MultiAgentV1",
+      "description": "第一代多智能体协作工具处理器。实现五个工具操作——spawn_agent（分叉会话上下文、应用角色配置、深度限制检查）、wait_agent（使用 FuturesUnordered 以可配置超时轮询多个智能体）、close_agent（终止智能体并报告先前状态）、resume_agent（使用刷新的配置重新连接到先前生成的智能体）和 send_input（向运行中的智能体发送文本/项目，支持可选中断）。每个处理器遵循 ToolHandler trait，发出 Collab 生命周期事件（Begin/End），并委托给 AgentControl 进行实际的智能体管理。通过原始 ThreadId 寻址智能体。",
+      "edges": [
+        {
+          "target": "SharedUtilities",
+          "type": "depends",
+          "description": "使用共享 common 模块中的 function_arguments、parse_collab_input、build_agent_spawn_config、build_agent_resume_config、collab_agent_error、tool_output_* 辅助函数和等待超时常量"
+        },
+        {
+          "target": "MultiAgentV2",
+          "type": "depends",
+          "description": "共享相同的 ToolHandler trait 模式和协议事件类型，但作为旧版协议代独立运行"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core/src/tools/handlers/multi_agents.rs",
+        "codex-rs/core/src/tools/handlers/multi_agents/",
+        "codex-rs/core/src/tools/handlers/multi_agents_tests.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "MultiAgentV1"
+      }
+    },
+    {
+      "name": "MultiAgentV2",
+      "description": "第二代多智能体协作工具处理器，支持命名智能体解析和结构化的智能体间通信。实现六个工具操作——spawn_agent（支持分叉模式和开发者指令注入）、wait_agent（超时限制的多智能体轮询）、close_agent（使用 resolve_agent_target 进行基于名称的定位）、send_message（通过 InterAgentCommunication 进行仅队列消息传递）、followup_task（触发回合的消息传递，支持可选中断）和 list_agents（按路径前缀枚举智能体）。引入了 message_tool 共享模块，通过 MessageDeliveryMode（QueueOnly 与 TriggerTurn）统一 send_message 和 followup_task。使用基于 AgentPath 的路由代替原始 ThreadId。",
+      "edges": [
+        {
+          "target": "SharedUtilities",
+          "type": "depends",
+          "description": "使用共享 common 模块中的 function_arguments、parse_collab_input、collab_agent_error、collab_spawn_error、tool_output_* 辅助函数、等待超时常量和配置构建函数"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core/src/tools/handlers/multi_agents_v2.rs",
+        "codex-rs/core/src/tools/handlers/multi_agents_v2/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "MultiAgentV2"
+      }
+    },
+    {
+      "name": "SharedUtilities",
+      "description": "V1 和 V2 两代多智能体处理器共同使用的共享工具函数和配置构建器。提供：等待超时常量（MIN/DEFAULT/MAX）、参数提取（function_arguments）、序列化辅助函数（tool_output_json_text、tool_output_response_item、tool_output_code_mode_result）、智能体状态格式化（build_wait_agent_statuses）、错误映射（collab_spawn_error、collab_agent_error）、会话源构造（thread_spawn_source）、输入解析与验证（parse_collab_input）、智能体配置构建（build_agent_spawn_config、build_agent_resume_config，支持审批策略、沙箱、cwd 的运行时覆盖传播）、生成深度特性门控（apply_spawn_agent_overrides），以及生成时模型选择的模型/推理强度验证（apply_requested_spawn_agent_model_overrides）。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/core/src/tools/handlers/multi_agents_common.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SharedUtilities"
+      }
+    },
+    {
+      "name": "BatchJobs",
+      "description": "CSV 驱动的批量作业编排处理器（BatchJobHandler）。读取 CSV 文件，将行解析为单独的工作项，并为每行生成带有模板化指令的并行子智能体。管理并发控制（可配置最多 64 个工作者）、每项超时、通过定期后台事件进行的带 ETA 计算的进度报告（JobProgressEmitter）、带结果的输出 CSV 生成，以及带失败摘要的优雅错误处理。还提供 ReportAgentJobResult 工具，供子智能体向编排器提交结构化结果。与 codex_state 集成实现持久化作业进度跟踪。",
+      "edges": [
+        {
+          "target": "SharedUtilities",
+          "type": "depends",
+          "description": "使用 build_agent_spawn_config 在生成批量工作者时构建子智能体配置"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core/src/tools/handlers/agent_jobs.rs",
+        "codex-rs/core/src/tools/handlers/agent_jobs_tests.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "BatchJobs"
+      }
+    }
+  ]
+}

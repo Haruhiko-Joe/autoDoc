@@ -1,0 +1,95 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "45ceabcc-eacb-4ce3-a6be-6b99ef52b12d",
+  "description": "插件和技能的扩展层。管理插件发现、清单解析、市场集成、插件商店、启动同步、插件渲染和注入提示、技能加载和调用（显式和隐式）、技能依赖解析、MCP 工具审批模板、MCP 技能依赖、提及语法解析以及基于 MCP 的应用渲染。",
+  "codeScope": [
+    "codex-rs/core/src/plugins/",
+    "codex-rs/core/src/skills.rs",
+    "codex-rs/core/src/skills_watcher.rs",
+    "codex-rs/core/src/mcp.rs",
+    "codex-rs/core/src/mcp_skill_dependencies.rs",
+    "codex-rs/core/src/mcp_tool_call.rs",
+    "codex-rs/core/src/mcp_tool_approval_templates.rs",
+    "codex-rs/core/src/apps/",
+    "codex-rs/core/src/mention_syntax.rs"
+  ],
+  "nodes": [
+    {
+      "name": "PluginSystem",
+      "description": "插件管理子系统。处理插件发现、清单解析、本地插件商店（缓存）、市场集成（列出和解析精选插件）、远程插件 API（获取状态、启用、卸载）、从 GitHub 同步 OpenAI 精选插件仓库的启动同步、插件渲染为提示部分、插件注入到模型上下文、可发现的插件建议、从消息中收集插件提及以及插件启用/禁用切换。中央 PluginsManager 编排所有子组件的安装、卸载、读取和加载工作流。",
+      "edges": [
+        {
+          "target": "Skills",
+          "type": "data-flow",
+          "description": "PluginsManager 从已加载插件计算 effective_skill_roots，供技能加载系统消费"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core/src/plugins/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "PluginSystem"
+      }
+    },
+    {
+      "name": "Skills",
+      "description": "技能加载、依赖解析和文件监视。将外部 codex_core_skills crate 桥接到核心会话：从配置构建 SkillsLoadInput，在回合时解析技能的环境变量依赖（提示用户提供缺失值），并通过节流文件监视器监视技能目录变更以触发重载事件。",
+      "edges": [
+        {
+          "target": "PluginSystem",
+          "type": "depends",
+          "description": "SkillsWatcher 使用 PluginsManager 计算有效技能根和监视路径以检测文件变更"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core/src/skills.rs",
+        "codex-rs/core/src/skills_watcher.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Skills"
+      }
+    },
+    {
+      "name": "McpToolIntegration",
+      "description": "Core 内的 MCP 工具调用执行及相关审批/依赖流程。包括 McpManager（PluginsManager 的薄封装，用于计算已配置和有效的 MCP 服务器）、主 handle_mcp_tool_call 处理器（参数解析、沙箱策略执行、守护审查审批对话、引导代理、OAuth 登录、遥测发送、工具注解处理）、MCP 工具审批模板（从捆绑模板模式为有后果的工具调用渲染人类可读审批消息）以及 MCP 技能依赖管理（检测被调用技能缺失的 MCP 服务器依赖、提示用户安装并写入配置编辑）。",
+      "edges": [
+        {
+          "target": "PluginSystem",
+          "type": "depends",
+          "description": "McpManager 封装 PluginsManager 以从已加载插件派生 MCP 服务器配置"
+        },
+        {
+          "target": "Skills",
+          "type": "data-flow",
+          "description": "MCP 技能依赖解析消费 SkillMetadata 以检测和安装被提及技能缺失的 MCP 服务器依赖"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core/src/mcp.rs",
+        "codex-rs/core/src/mcp_tool_call.rs",
+        "codex-rs/core/src/mcp_tool_approval_templates.rs",
+        "codex-rs/core/src/mcp_skill_dependencies.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "McpToolIntegration"
+      }
+    },
+    {
+      "name": "AppsAndMentions",
+      "description": "应用渲染和提及语法重导出。apps 模块在可访问且已启用的基于 MCP 的应用存在时，渲染注入到模型提示中的 'Apps (Connectors)' 指令部分。mention_syntax 模块重导出用于解析用户消息中 @-提及和斜杠命令语法的插件文本提及符号和工具提及符号常量。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/core/src/apps/",
+        "codex-rs/core/src/mention_syntax.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "AppsAndMentions"
+      }
+    }
+  ]
+}

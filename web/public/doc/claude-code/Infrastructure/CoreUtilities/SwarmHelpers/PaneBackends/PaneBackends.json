@@ -1,0 +1,156 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "addcfeae-8398-4ec7-88bc-ae60326c98cd",
+  "description": "Terminal multiplexer backend abstraction layer (~3,000 lines). Defines the PaneBackend and TeammateExecutor interfaces, implements three backend strategies (iTerm2 native panes via it2 CLI, tmux session/window splitting, in-process execution), a detection module that probes the terminal environment at startup, a singleton registry with fallback chain for backend selection, the PaneBackendExecutor adapter bridging pane backends to the unified executor interface, it2 CLI installation/setup workflow, and teammate mode snapshot management that freezes configuration at session start.",
+  "codeScope": [
+    "src/utils/swarm/backends/"
+  ],
+  "nodes": [
+    {
+      "name": "TypesAndInterfaces",
+      "description": "Core type definitions for the backend system. Defines the PaneBackend interface (pane lifecycle operations: create, send command, set border/title, kill, hide/show), the TeammateExecutor interface (high-level teammate lifecycle: spawn, sendMessage, terminate, kill, isActive), BackendType/PaneBackendType discriminators, TeammateSpawnConfig/TeammateSpawnResult/TeammateMessage data types, TeammateIdentity, CreatePaneResult, BackendDetectionResult, and the isPaneBackend type guard.",
+      "edges": [],
+      "codeScope": [
+        "src/utils/swarm/backends/types.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TypesAndInterfaces"
+      }
+    },
+    {
+      "name": "DetectionAndRegistry",
+      "description": "Environment detection, backend selection registry, and teammate mode snapshot. Detection probes the terminal environment at module load (TMUX env var, TMUX_PANE, TERM_PROGRAM, ITERM_SESSION_ID) with cached results. The registry implements a singleton with priority-based fallback chain (inside tmux → iTerm2 with it2 → tmux fallback → error), lazy backend class registration to avoid circular deps, in-process fallback tracking, and the getTeammateExecutor() entry point that returns either InProcessBackend or PaneBackendExecutor. The mode snapshot captures teammateMode config at session startup with CLI override support, ensuring runtime config changes don't affect the current session.",
+      "edges": [
+        {
+          "target": "TypesAndInterfaces",
+          "type": "depends",
+          "description": "Uses PaneBackend, TeammateExecutor, BackendDetectionResult, and BackendType types throughout"
+        },
+        {
+          "target": "TmuxBackend",
+          "type": "calls",
+          "description": "Dynamically imports and instantiates TmuxBackend via registered class constructor during detection"
+        },
+        {
+          "target": "ITermBackend",
+          "type": "calls",
+          "description": "Dynamically imports and instantiates ITermBackend via registered class constructor during detection"
+        },
+        {
+          "target": "InProcessBackend",
+          "type": "calls",
+          "description": "Creates and caches InProcessBackend instance via createInProcessBackend() when in-process mode is enabled"
+        },
+        {
+          "target": "PaneBackendExecutor",
+          "type": "calls",
+          "description": "Creates PaneBackendExecutor wrapping the detected PaneBackend to provide unified TeammateExecutor interface"
+        }
+      ],
+      "codeScope": [
+        "src/utils/swarm/backends/detection.ts",
+        "src/utils/swarm/backends/registry.ts",
+        "src/utils/swarm/backends/teammateModeSnapshot.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "DetectionAndRegistry"
+      }
+    },
+    {
+      "name": "TmuxBackend",
+      "description": "Tmux-based PaneBackend implementation (~765 lines). Supports two operating modes: inside tmux (splits leader's window with 30/70 layout using main-vertical) and outside tmux (creates a dedicated claude-swarm session on a separate socket with tiled layout). Handles pane creation with sequential locking, shell initialization delay, border color/title styling via tmux options, pane hiding via break-pane to a hidden session, showing via join-pane, and binary-tree-style splitting for multiple teammates. Self-registers with the registry on import.",
+      "edges": [
+        {
+          "target": "TypesAndInterfaces",
+          "type": "extends",
+          "description": "Implements the PaneBackend interface with all pane lifecycle methods"
+        },
+        {
+          "target": "DetectionAndRegistry",
+          "type": "calls",
+          "description": "Calls registerTmuxBackend() on module load to self-register with the singleton registry"
+        }
+      ],
+      "codeScope": [
+        "src/utils/swarm/backends/TmuxBackend.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TmuxBackend"
+      }
+    },
+    {
+      "name": "ITermBackend",
+      "description": "iTerm2 native split pane backend and it2 CLI setup workflow. ITermBackend (~371 lines) implements PaneBackend using the it2 CLI to create/manage panes: vertical split from leader for first teammate, horizontal splits from last teammate for subsequent ones, with at-fault recovery that prunes dead session IDs and retries. Many operations (border color, title, rebalance) are no-ops for performance since each it2 call spawns a Python process. The it2Setup module (~246 lines) handles CLI installation via uv/pipx/pip with home-directory sandboxing, Python API verification, setup completion persistence in global config, and user preference to prefer tmux over iTerm2.",
+      "edges": [
+        {
+          "target": "TypesAndInterfaces",
+          "type": "extends",
+          "description": "Implements the PaneBackend interface; many methods are no-ops due to it2 CLI performance constraints"
+        },
+        {
+          "target": "DetectionAndRegistry",
+          "type": "calls",
+          "description": "Calls registerITermBackend() on module load; it2Setup provides getPreferTmuxOverIterm2() used by registry detection"
+        }
+      ],
+      "codeScope": [
+        "src/utils/swarm/backends/ITermBackend.ts",
+        "src/utils/swarm/backends/it2Setup.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ITermBackend"
+      }
+    },
+    {
+      "name": "InProcessBackend",
+      "description": "In-process TeammateExecutor implementation (~340 lines). Runs teammates in the same Node.js process with isolated context via AsyncLocalStorage. Delegates spawn to spawnInProcessTeammate() then starts the agent execution loop via startInProcessTeammate(). Uses file-based mailbox for message delivery (same as pane backends). Terminate sends a shutdown request message and sets shutdownRequested flag on the task. Kill uses AbortController to cancel async operations immediately. IsActive checks task status and abort signal state. Always available (no external dependencies).",
+      "edges": [
+        {
+          "target": "TypesAndInterfaces",
+          "type": "extends",
+          "description": "Implements the TeammateExecutor interface for in-process teammate lifecycle management"
+        }
+      ],
+      "codeScope": [
+        "src/utils/swarm/backends/InProcessBackend.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "InProcessBackend"
+      }
+    },
+    {
+      "name": "PaneBackendExecutor",
+      "description": "Adapter bridging PaneBackend to TeammateExecutor interface (~355 lines). Wraps any PaneBackend (tmux or iTerm2) to provide the unified TeammateExecutor API. Spawn creates a pane, builds the Claude CLI command with teammate identity flags and inherited env vars, sends it to the pane, and writes initial prompt to file-based mailbox. Tracks spawned teammates in an agentId→paneId map. Registers cleanup handler to kill all panes on leader exit. SendMessage and terminate use file-based mailbox. Kill delegates to backend.killPane(). Handles external vs internal tmux session routing.",
+      "edges": [
+        {
+          "target": "TypesAndInterfaces",
+          "type": "extends",
+          "description": "Implements TeammateExecutor interface by wrapping a PaneBackend instance"
+        },
+        {
+          "target": "TmuxBackend",
+          "type": "calls",
+          "description": "Delegates pane operations (createPane, sendCommand, killPane) to the wrapped PaneBackend which may be TmuxBackend"
+        },
+        {
+          "target": "ITermBackend",
+          "type": "calls",
+          "description": "Delegates pane operations to the wrapped PaneBackend which may be ITermBackend"
+        }
+      ],
+      "codeScope": [
+        "src/utils/swarm/backends/PaneBackendExecutor.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PaneBackendExecutor"
+      }
+    }
+  ]
+}

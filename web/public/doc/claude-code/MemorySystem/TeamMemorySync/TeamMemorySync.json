@@ -1,0 +1,81 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "59dd44bd-a6e0-424e-bc33-bc4c4aca8afd",
+  "description": "Team memory synchronization service that syncs shared memory files between the local filesystem and the server API. Includes the sync protocol (pull/push with delta uploads, ETag-based conflict detection, checksum verification), file system watcher with debounced push, client-side secret scanning (gitleaks-based rules) to prevent credential leakage, and API types/schemas.",
+  "codeScope": [
+    "src/services/teamMemorySync/index.ts",
+    "src/services/teamMemorySync/watcher.ts",
+    "src/services/teamMemorySync/secretScanner.ts",
+    "src/services/teamMemorySync/teamMemSecretGuard.ts",
+    "src/services/teamMemorySync/types.ts"
+  ],
+  "nodes": [
+    {
+      "name": "SyncProtocol",
+      "description": "Core team memory sync protocol implementing pull (GET with ETag/304 caching, retry logic) and push (delta upload via content-hash comparison against serverChecksums, PUT body batching under gateway size limits, 412 conflict resolution with lightweight hash probes). Manages SyncState (ETag, per-key checksums, learned server entry cap), OAuth authentication, API endpoint construction, local file tree walking with secret scanning and size filtering, remote-to-local writes with path validation and skip-if-unchanged optimization, and bidirectional sync orchestration. Includes telemetry helpers for pull/push analytics events.",
+      "edges": [
+        {
+          "target": "SecretScanning",
+          "type": "calls",
+          "description": "Scans each local file for credentials via scanForSecrets before including it in the upload delta; files with detected secrets are skipped entirely"
+        },
+        {
+          "target": "ApiTypes",
+          "type": "depends",
+          "description": "Uses Zod schemas (TeamMemoryDataSchema, TeamMemoryTooManyEntriesSchema) for response validation and TypeScript types for all result shapes"
+        }
+      ],
+      "codeScope": [
+        "src/services/teamMemorySync/index.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SyncProtocol"
+      }
+    },
+    {
+      "name": "FileWatcher",
+      "description": "File system watcher that monitors the team memory directory for changes and triggers debounced pushes to the server. Uses recursive fs.watch (FSEvents on macOS, inotify on Linux) for O(1) fd usage. Implements permanent failure suppression to prevent infinite retry loops (cleared on file unlink for recovery), push lifecycle tracking (in-flight deduplication, pending flush on shutdown), and the startup sequence (initial pull then unconditional watch start to avoid bootstrap dead zones for fresh repos). Exposes notifyTeamMemoryWrite for explicit push scheduling from PostToolUse hooks.",
+      "edges": [
+        {
+          "target": "SyncProtocol",
+          "type": "calls",
+          "description": "Imports createSyncState, pullTeamMemory, and pushTeamMemory to perform the actual sync operations on watcher events and startup"
+        }
+      ],
+      "codeScope": [
+        "src/services/teamMemorySync/watcher.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "FileWatcher"
+      }
+    },
+    {
+      "name": "SecretScanning",
+      "description": "Client-side credential detection preventing secrets from leaving the user's machine during team memory sync. The scanner (secretScanner.ts) contains ~30 curated high-confidence regex rules from gitleaks covering cloud providers (AWS, GCP, Azure), AI APIs (Anthropic, OpenAI), VCS tokens (GitHub, GitLab), communication platforms (Slack, Twilio, SendGrid), dev tooling (NPM, PyPI, Databricks), observability (Grafana, Sentry), payment (Stripe, Shopify), and private keys. Rules are lazily compiled on first scan. Provides scanForSecrets (detection), redactSecrets (in-place replacement), and getSecretLabel (human-readable names). The guard (teamMemSecretGuard.ts) is a thin integration point called from FileWriteTool and FileEditTool validateInput to block secret writes to team memory paths at the tool level.",
+      "edges": [],
+      "codeScope": [
+        "src/services/teamMemorySync/secretScanner.ts",
+        "src/services/teamMemorySync/teamMemSecretGuard.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SecretScanning"
+      }
+    },
+    {
+      "name": "ApiTypes",
+      "description": "Zod schemas and TypeScript types defining the team memory sync API contract. Includes TeamMemoryDataSchema (full GET response with entries, entryChecksums, version, checksum), TeamMemoryContentSchema (flat key-value entry storage), TeamMemoryTooManyEntriesSchema (structured 413 error with server-enforced max_entries). Defines result types for fetch, push, upload, and hash-probe operations, plus the SkippedSecretFile type for secret scanning integration.",
+      "edges": [],
+      "codeScope": [
+        "src/services/teamMemorySync/types.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ApiTypes"
+      }
+    }
+  ]
+}

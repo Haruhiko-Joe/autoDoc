@@ -1,0 +1,241 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "7e4bbf36-d412-4b12-83d5-ca0da2a9f463",
+  "description": "The interactive terminal user interface built on a customized Ink (React for CLI) rendering engine. Includes the full rendering pipeline (DOM model, layout via Yoga, text measurement, ANSI output, screen rendering), 100+ React components (message display, dialogs, diffs, progress indicators, status lines), 80+ React hooks for state and side effects, screen-level layouts (REPL, Doctor, ResumeConversation), vim mode for input editing, keybinding system with customizable shortcuts, project onboarding state, and bidirectional text/selection handling.",
+  "codeScope": [
+    "src/ink/",
+    "src/ink.ts",
+    "src/components/",
+    "src/hooks/",
+    "src/screens/",
+    "src/state/",
+    "src/context/",
+    "src/keybindings/",
+    "src/vim/",
+    "src/interactiveHelpers.tsx",
+    "src/dialogLaunchers.tsx",
+    "src/replLauncher.tsx",
+    "src/outputStyles/",
+    "src/moreright/",
+    "src/buddy/",
+    "src/native-ts/",
+    "src/projectOnboardingState.ts"
+  ],
+  "nodes": [
+    {
+      "name": "InkEngine",
+      "description": "The customized Ink rendering engine: a full terminal UI framework built on React reconciliation. Contains the DOM model, Yoga-based layout engine, text measurement and string-width utilities, ANSI output generation, screen rendering pipeline (frame → render-node → output → screen), event system (keyboard, click, focus, terminal events), terminal I/O abstraction (CSI/OSC/SGR escape sequences, tokenizer, parser), bidirectional text and selection handling, focus management, search highlighting, and primitive components (Box, Text, ScrollBox, Button, Link). Also includes the Ink entry point (src/ink.ts) and native TypeScript bindings for Yoga layout and color-diff.",
+      "edges": [],
+      "codeScope": [
+        "src/ink/",
+        "src/ink.ts",
+        "src/native-ts/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "InkEngine"
+      }
+    },
+    {
+      "name": "Components",
+      "description": "100+ React components forming the application's visual layer. Includes message display (assistant text, thinking, tool use, system messages), prompt input with autocomplete and suggestions, structured diff views, dialog system (settings, permissions, auth, onboarding, cost threshold, export), design system primitives (Dialog, Tabs, ProgressBar, ThemedText, StatusIcon), status line and progress indicators, agent management UI, memory visualization, MCP server dialogs, team/swarm views, task lists, settings panels, and specialized features like highlighted code blocks, markdown rendering, and virtual message list with scrolling.",
+      "edges": [
+        {
+          "target": "InkEngine",
+          "type": "depends",
+          "description": "All components are built on Ink primitives (Box, Text, ScrollBox) and use Ink hooks for input, focus, and terminal state"
+        },
+        {
+          "target": "Hooks",
+          "type": "depends",
+          "description": "Components consume application-level hooks for state, navigation, keybindings, and side effects"
+        },
+        {
+          "target": "AppState",
+          "type": "depends",
+          "description": "Components read and dispatch to the global app state store and React contexts"
+        },
+        {
+          "target": "Keybindings",
+          "type": "depends",
+          "description": "Components register and respond to configurable keyboard shortcuts via the keybinding system"
+        }
+      ],
+      "codeScope": [
+        "src/components/",
+        "src/outputStyles/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "Components"
+      }
+    },
+    {
+      "name": "Hooks",
+      "description": "80+ React hooks providing reusable state management and side-effect logic for the terminal UI. Covers input handling (text input, paste, vim input, clipboard), session lifecycle (cancel request, exit on Ctrl+C/D, session backgrounding), IDE integration (connection status, selection, logging, at-mentions), external integrations (Chrome extension, voice, SSH, remote session), UI state (blink, elapsed time, terminal size, virtual scroll, history search), tool permissions, diff data, background task navigation, dynamic config, plugin/skill management, suggestion systems, and bridge/mailbox communication.",
+      "edges": [
+        {
+          "target": "InkEngine",
+          "type": "depends",
+          "description": "Hooks build on Ink's core hooks (useInput, useStdin, useApp) and terminal primitives"
+        },
+        {
+          "target": "AppState",
+          "type": "depends",
+          "description": "Hooks read from and subscribe to the global state store and React contexts"
+        }
+      ],
+      "codeScope": [
+        "src/hooks/",
+        "src/moreright/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "Hooks"
+      }
+    },
+    {
+      "name": "Screens",
+      "description": "Top-level screen layouts that serve as page-level containers for the application. REPL is the main interactive screen orchestrating the conversation loop, message display, prompt input, and all overlays/dialogs. Doctor provides the diagnostic screen. ResumeConversation handles session restoration. The REPL launcher (replLauncher.tsx) bootstraps the App wrapper and renders the REPL screen into the Ink root.",
+      "edges": [
+        {
+          "target": "Components",
+          "type": "composes",
+          "description": "Screens compose dozens of components to build the full interactive layouts"
+        },
+        {
+          "target": "Hooks",
+          "type": "depends",
+          "description": "Screens use hooks extensively for input handling, session state, keybindings, and lifecycle"
+        },
+        {
+          "target": "AppState",
+          "type": "depends",
+          "description": "Screens consume and dispatch to the global state store and context providers"
+        },
+        {
+          "target": "InkEngine",
+          "type": "depends",
+          "description": "Screens use Ink primitives (Box, Text, useInput) and the Ink Root for rendering"
+        },
+        {
+          "target": "InteractiveHelpers",
+          "type": "calls",
+          "description": "Screens call interactive helper functions to launch dialogs and handle user interactions"
+        }
+      ],
+      "codeScope": [
+        "src/screens/",
+        "src/replLauncher.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Screens"
+      }
+    },
+    {
+      "name": "AppState",
+      "description": "Global application state management and React context providers. The state store (AppStateStore, store.ts) holds the canonical app state with selectors for derived values and change handlers. React contexts provide scoped state for queued messages, FPS metrics, mailbox communication, modal/overlay stacking, prompt overlays, notifications, statistics, and voice. The AppState component wires up all providers and the settings change listener.",
+      "edges": [
+        {
+          "target": "InkEngine",
+          "type": "depends",
+          "description": "Context providers wrap the Ink component tree and depend on Ink's React reconciliation"
+        }
+      ],
+      "codeScope": [
+        "src/state/",
+        "src/context/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "AppState"
+      }
+    },
+    {
+      "name": "Keybindings",
+      "description": "Customizable keyboard shortcut system. Defines default bindings, loads user overrides from keybindings.json, parses key chord syntax, matches keypress events to bound actions, resolves conflicts between bindings, validates configurations, formats shortcuts for display, and provides React integration (KeybindingContext, useKeybinding hook). Supports reserved shortcuts that cannot be overridden and template-based binding generation.",
+      "edges": [
+        {
+          "target": "InkEngine",
+          "type": "depends",
+          "description": "Processes keyboard events from Ink's input/event system to match against registered bindings"
+        }
+      ],
+      "codeScope": [
+        "src/keybindings/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Keybindings"
+      }
+    },
+    {
+      "name": "VimMode",
+      "description": "Vim-style input editing mode for the text input. Implements vim motions (word, line, character movements), operators (delete, change, yank), text objects (inner/around word, quotes, brackets), and mode transitions (normal, insert, visual, operator-pending). Used by VimTextInput component to provide vim keybindings in the prompt.",
+      "edges": [
+        {
+          "target": "InkEngine",
+          "type": "depends",
+          "description": "Vim mode processes raw keypress events from the Ink input system"
+        }
+      ],
+      "codeScope": [
+        "src/vim/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "VimMode"
+      }
+    },
+    {
+      "name": "InteractiveHelpers",
+      "description": "Orchestration layer for interactive user flows and dialog launching. interactiveHelpers.tsx contains functions that coordinate multi-step interactive sequences (permission prompts, tool approval flows, confirmation dialogs). dialogLaunchers.tsx provides factory functions to imperatively open specific dialogs. projectOnboardingState.ts manages the state machine for first-run project onboarding flows.",
+      "edges": [
+        {
+          "target": "Components",
+          "type": "calls",
+          "description": "Launches dialog components and renders interactive UI elements"
+        },
+        {
+          "target": "AppState",
+          "type": "depends",
+          "description": "Reads and updates application state during interactive flows"
+        }
+      ],
+      "codeScope": [
+        "src/interactiveHelpers.tsx",
+        "src/dialogLaunchers.tsx",
+        "src/projectOnboardingState.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "InteractiveHelpers"
+      }
+    },
+    {
+      "name": "Buddy",
+      "description": "Companion sprite feature providing an animated character in the terminal UI. Includes sprite definitions and rendering (CompanionSprite.tsx, sprites.ts), companion behavior logic (companion.ts), notification integration (useBuddyNotification.tsx), prompt generation, and type definitions.",
+      "edges": [
+        {
+          "target": "InkEngine",
+          "type": "depends",
+          "description": "Renders animated sprites using Ink's component and rendering primitives"
+        },
+        {
+          "target": "AppState",
+          "type": "depends",
+          "description": "Reads application state to determine companion behavior and notifications"
+        }
+      ],
+      "codeScope": [
+        "src/buddy/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Buddy"
+      }
+    }
+  ]
+}

@@ -1,0 +1,222 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "9ae4a8f3-9df3-4afd-8ed8-31ebed16dc57",
+  "description": "The claude.ai remote-control bridge subsystem. Connects Claude Code to claude.ai via WebSocket/SSE for remote-controlled REPL sessions. Encompasses the full bridge lifecycle: session creation, JWT authentication and token refresh, work-dispatch polling, message ingress/egress, permission callbacks, transport layers (env-based and env-less), capacity management, trusted device handling, and bridge UI/debug tooling. Two core architectures coexist: the env-based path (replBridge.ts/bridgeMain.ts, ~5400 lines combined) using the Environments API work-dispatch layer, and the env-less path (remoteBridgeCore.ts, ~1000 lines) connecting directly to session-ingress without the Environments API.",
+  "codeScope": [
+    "src/bridge/"
+  ],
+  "nodes": [
+    {
+      "name": "DaemonBridge",
+      "description": "Multi-session persistent bridge daemon (claude remote-control). Orchestrates the full environment lifecycle: registers a bridge environment with the Environments API, polls for incoming work items, spawns child CLI processes per session (in worktree or same-dir mode), manages session timeouts, handles graceful shutdown with SIGTERM→SIGKILL escalation, and supports session resume via --session-id. bridgeMain.ts (~3000 lines) is the main orchestration loop with backoff/retry logic; sessionRunner.ts (~550 lines) spawns child processes with --sdk-url flags, parses their stdout for activity/permission events, and manages stdin/kill lifecycle.",
+      "edges": [
+        {
+          "target": "BridgeApi",
+          "type": "calls",
+          "description": "Registers environments, polls for work, acknowledges/stops work items, sends permission responses, heartbeats, deregisters on shutdown"
+        },
+        {
+          "target": "AuthAndGating",
+          "type": "depends",
+          "description": "Gets trusted device tokens for API headers, decodes work secrets, refreshes JWT tokens, validates bridge IDs"
+        },
+        {
+          "target": "BridgeDisplay",
+          "type": "calls",
+          "description": "Creates the BridgeLogger for terminal status display, updates idle/attached/reconnecting/failed states and session counts"
+        },
+        {
+          "target": "CorePrimitives",
+          "type": "depends",
+          "description": "Uses BridgeConfig/SessionHandle/SpawnMode types, poll interval config, capacity wake signals, debug utilities"
+        }
+      ],
+      "codeScope": [
+        "src/bridge/bridgeMain.ts",
+        "src/bridge/sessionRunner.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "DaemonBridge"
+      }
+    },
+    {
+      "name": "ReplBridge",
+      "description": "REPL-embedded single-session bridge that runs inside the interactive CLI process. Connects the local REPL session to claude.ai for remote control, using the Environments API work-dispatch layer. replBridge.ts (~2400 lines) contains initBridgeCore: environment registration, poll loop, work acknowledgment, WebSocket/SSE transport management, message forwarding (ingress→REPL and REPL→server), echo deduplication, token refresh, and reconnection with backoff. initReplBridge.ts (~570 lines) is the REPL-specific wrapper handling OAuth, feature gates, git context, session title derivation, and env-less vs env-based path selection. replBridgeTransport.ts (~370 lines) abstracts the v1 (WebSocket HybridTransport) and v2 (SSE+CCRClient) transport layers. replBridgeHandle.ts (~36 lines) provides a global pointer to the active bridge handle for tools and slash commands.",
+      "edges": [
+        {
+          "target": "BridgeApi",
+          "type": "calls",
+          "description": "Registers environment, polls for work, acknowledges work, sends permission responses via the BridgeApiClient"
+        },
+        {
+          "target": "MessageHandling",
+          "type": "calls",
+          "description": "Processes ingress messages via handleIngressMessage, handles server control requests, builds result messages, deduplicates echoes"
+        },
+        {
+          "target": "AuthAndGating",
+          "type": "depends",
+          "description": "Decodes work secrets, builds SDK URLs, refreshes JWT tokens, checks bridge enabled gates, gets trusted device tokens"
+        },
+        {
+          "target": "EnvLessBridge",
+          "type": "calls",
+          "description": "initReplBridge selects and delegates to initEnvLessBridgeCore when the tengu_bridge_repl_v2 gate is enabled"
+        },
+        {
+          "target": "CorePrimitives",
+          "type": "depends",
+          "description": "Uses FlushGate for message ordering, CapacityWake for poll sleep, PollIntervalConfig for timing, types for BridgeConfig/SessionHandle"
+        }
+      ],
+      "codeScope": [
+        "src/bridge/replBridge.ts",
+        "src/bridge/initReplBridge.ts",
+        "src/bridge/replBridgeTransport.ts",
+        "src/bridge/replBridgeHandle.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ReplBridge"
+      }
+    },
+    {
+      "name": "EnvLessBridge",
+      "description": "Env-less bridge core that connects directly to session-ingress without the Environments API work-dispatch layer. Gated by tengu_bridge_repl_v2 flag, REPL-only. Uses a simplified lifecycle: POST /v1/code/sessions to create a session, POST /v1/code/sessions/{id}/bridge to get a worker JWT and epoch (replacing register/poll/ack), then SSE+CCRClient transport. Supports proactive JWT refresh, 401 recovery with transport rebuild (preserving SSE sequence numbers), and graceful teardown with session archival. remoteBridgeCore.ts (~1000 lines) is the main core. envLessBridgeConfig.ts (~165 lines) provides GrowthBook-tuned retry/timeout/heartbeat configuration. codeSessionApi.ts (~170 lines) contains thin HTTP wrappers for the CCR v2 code-session API.",
+      "edges": [
+        {
+          "target": "MessageHandling",
+          "type": "calls",
+          "description": "Reuses the same handleIngressMessage, handleServerControlRequest, and echo dedup machinery as ReplBridge"
+        },
+        {
+          "target": "AuthAndGating",
+          "type": "depends",
+          "description": "Uses createTokenRefreshScheduler for JWT lifecycle, getTrustedDeviceToken for elevated auth, buildCCRv2SdkUrl for URL construction"
+        },
+        {
+          "target": "CorePrimitives",
+          "type": "depends",
+          "description": "Uses FlushGate for message ordering during initial history flush, types for ReplBridgeHandle/BridgeState"
+        }
+      ],
+      "codeScope": [
+        "src/bridge/remoteBridgeCore.ts",
+        "src/bridge/envLessBridgeConfig.ts",
+        "src/bridge/codeSessionApi.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "EnvLessBridge"
+      }
+    },
+    {
+      "name": "BridgeApi",
+      "description": "HTTP API client layer for bridge backend communication. bridgeApi.ts (~540 lines) implements the BridgeApiClient interface: environment registration, work polling with reclaim, work acknowledgment, stop (with retry), heartbeat, deregistration, permission response sending, session archival, and session reconnection. Includes BridgeFatalError for non-retryable errors (auth failures, expired environments), OAuth 401 refresh-and-retry, and trusted device token header injection. createSession.ts (~384 lines) creates sessions on bridge environments via POST /v1/sessions with optional conversation history pre-population and git source metadata. bridgeConfig.ts (~48 lines) centralizes auth token and base URL resolution with ant-only dev overrides.",
+      "edges": [
+        {
+          "target": "AuthAndGating",
+          "type": "depends",
+          "description": "Uses access tokens from bridgeConfig, trusted device tokens for X-Trusted-Device-Token header"
+        },
+        {
+          "target": "CorePrimitives",
+          "type": "depends",
+          "description": "Implements BridgeApiClient/PermissionResponseEvent types, uses debugUtils for error description and secret redaction"
+        }
+      ],
+      "codeScope": [
+        "src/bridge/bridgeApi.ts",
+        "src/bridge/createSession.ts",
+        "src/bridge/bridgeConfig.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "BridgeApi"
+      }
+    },
+    {
+      "name": "MessageHandling",
+      "description": "Shared message processing layer used by both env-based and env-less bridge cores. bridgeMessaging.ts (~460 lines) provides transport-layer helpers: handleIngressMessage parses incoming WebSocket/SSE data and routes user messages, control responses, and result events; handleServerControlRequest processes server-initiated control requests (permission prompts); makeResultMessage builds completion events; isEligibleBridgeMessage filters messages for forwarding; extractTitleText derives session titles from first user message; BoundedUUIDSet provides ring-buffer-based echo deduplication. inboundMessages.ts (~80 lines) extracts and normalizes content from inbound user messages including image blocks. inboundAttachments.ts (~175 lines) resolves file_uuid attachments by downloading from the OAuth files API and writing to local disk. bridgePermissionCallbacks.ts (~43 lines) defines the BridgePermissionCallbacks interface and validates permission response payloads.",
+      "edges": [
+        {
+          "target": "CorePrimitives",
+          "type": "depends",
+          "description": "Uses ReplBridgeTransport type for transport parameter typing, debugUtils for logging"
+        }
+      ],
+      "codeScope": [
+        "src/bridge/bridgeMessaging.ts",
+        "src/bridge/inboundMessages.ts",
+        "src/bridge/inboundAttachments.ts",
+        "src/bridge/bridgePermissionCallbacks.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "MessageHandling"
+      }
+    },
+    {
+      "name": "AuthAndGating",
+      "description": "Authentication, security, and feature gating for bridge sessions. jwtUtils.ts (~256 lines) provides JWT decode (payload, expiry), token refresh scheduling with proactive renewal before expiry, and configurable retry. trustedDevice.ts (~210 lines) manages trusted device tokens for elevated-security bridge sessions — enrollment during login, keychain storage via secureStorage, and GrowthBook-gated header injection. workSecret.ts (~127 lines) decodes base64url work secrets from the Environments API, builds WebSocket SDK URLs (v1 and CCR v2), registers workers, and compares session IDs. sessionIdCompat.ts (~57 lines) translates between cse_* (infrastructure) and session_* (compat API) session ID formats for the CCR v2 compat layer. bridgeEnabled.ts (~202 lines) provides runtime and blocking entitlement checks: OAuth subscription validation, GrowthBook feature gates (tengu_ccr_bridge, tengu_bridge_repl_v2), minimum version enforcement, and CSE shim gating.",
+      "edges": [
+        {
+          "target": "CorePrimitives",
+          "type": "depends",
+          "description": "Uses WorkSecret type definition from types.ts, debugUtils for error logging"
+        }
+      ],
+      "codeScope": [
+        "src/bridge/jwtUtils.ts",
+        "src/bridge/trustedDevice.ts",
+        "src/bridge/workSecret.ts",
+        "src/bridge/sessionIdCompat.ts",
+        "src/bridge/bridgeEnabled.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "AuthAndGating"
+      }
+    },
+    {
+      "name": "BridgeDisplay",
+      "description": "Terminal UI, status display, and crash-recovery for bridge sessions. bridgeUI.ts (~530 lines) implements the BridgeLogger interface: renders the live terminal display with QR code, shimmer animations, spinner frames, idle/attached/reconnecting/failed states, multi-session bullet lists with per-session activity summaries, and session count indicators. bridgeStatusUtil.ts (~163 lines) provides pure formatting helpers: URL builders for connect/session links, duration formatting, activity abbreviation, OSC-8 hyperlink wrapping, and footer text construction. bridgePointer.ts (~210 lines) manages crash-recovery pointers — persistent files written during active sessions and checked on next startup to offer --session-id resume, with TTL-based staleness detection and git worktree fanout scanning.",
+      "edges": [
+        {
+          "target": "CorePrimitives",
+          "type": "depends",
+          "description": "Uses BridgeConfig, BridgeLogger, SessionActivity, SpawnMode types from types.ts"
+        }
+      ],
+      "codeScope": [
+        "src/bridge/bridgeUI.ts",
+        "src/bridge/bridgeStatusUtil.ts",
+        "src/bridge/bridgePointer.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "BridgeDisplay"
+      }
+    },
+    {
+      "name": "CorePrimitives",
+      "description": "Shared type definitions, configuration, debug infrastructure, and concurrency primitives that all other bridge modules depend on. types.ts (~262 lines) defines the core protocol and dependency-injection types: WorkData/WorkResponse/WorkSecret for the Environments API, BridgeConfig for bridge instance configuration, BridgeApiClient interface, SessionHandle/SessionSpawner for process management, and BridgeLogger for UI abstraction. pollConfig.ts (~110 lines) and pollConfigDefaults.ts (~82 lines) provide GrowthBook-tuned poll interval configuration with safety floors. bridgeDebug.ts (~135 lines) provides ant-only fault injection for testing recovery paths via /bridge-kick. debugUtils.ts (~141 lines) provides secret redaction, error description extraction, HTTP status parsing, and debug truncation. flushGate.ts (~71 lines) implements a state machine for gating message writes during initial history flush. capacityWake.ts (~56 lines) provides a shared wake primitive for poll loops to sleep while at capacity but wake on session completion or shutdown.",
+      "edges": [],
+      "codeScope": [
+        "src/bridge/types.ts",
+        "src/bridge/pollConfig.ts",
+        "src/bridge/pollConfigDefaults.ts",
+        "src/bridge/bridgeDebug.ts",
+        "src/bridge/debugUtils.ts",
+        "src/bridge/flushGate.ts",
+        "src/bridge/capacityWake.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "CorePrimitives"
+      }
+    }
+  ]
+}

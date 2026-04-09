@@ -1,0 +1,123 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "3cedb025-5466-4623-b759-54430a246e17",
+  "description": "核心工具定义与注册表 crate（codex-tools）。定义所有代理工具的 schema（shell、apply-patch、code-mode、JS REPL、代理生成、MCP、plan、view-image、实用工具），将其转换为 Responses API 格式，管理工具配置，构建确定会话中哪些工具处于活动状态的工具注册表计划，并提供动态工具搜索的工具发现/建议管道。",
+  "codeScope": [
+    "codex-rs/tools/"
+  ],
+  "nodes": [
+    {
+      "name": "CoreTypes",
+      "description": "工具的基础类型系统。定义了 ToolSpec（表示所有工具类型的标签枚举：function、tool_search、local_shell、web_search、image_generation）、ResponsesApiTool（JSON 可序列化的函数工具 schema）、JsonSchema（参数 schema 类型，包含 Object/String/Boolean/Array 等变体）、ToolDefinition（工具名称 + 描述对）以及图像细节规范化。提供到 OpenAI Responses API 格式的序列化和从 MCP/动态工具到 ResponsesApiTool 的转换函数。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/tools/src/tool_spec.rs",
+        "codex-rs/tools/src/responses_api.rs",
+        "codex-rs/tools/src/tool_definition.rs",
+        "codex-rs/tools/src/json_schema.rs",
+        "codex-rs/tools/src/image_detail.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "CoreTypes"
+      }
+    },
+    {
+      "name": "ToolConfig",
+      "description": "工具配置层。定义 ToolsConfig 和 ToolsConfigParams，根据模型能力、沙箱策略、会话来源（TUI/app-server/CLI）、功能标志和平台计算会话的完整工具配置。包括 shell 后端选择（ShellCommandBackendConfig、UnifiedExecShellMode、ZshForkConfig）、用户 shell 类型检测，以及确定哪些工具变体（shell vs command、apply-patch 格式、代理协议版本）应处于活动状态的 ToolsConfig 构建器。",
+      "edges": [
+        {
+          "target": "CoreTypes",
+          "type": "depends",
+          "description": "使用 ToolSpec 和 ResponsesApiTool 类型表示已配置的工具 schema"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/tools/src/tool_config.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ToolConfig"
+      }
+    },
+    {
+      "name": "BuiltinToolDefs",
+      "description": "所有内置代理工具定义的工厂模块。每个模块提供 create_* 函数，为一类工具生成 ToolSpec 实例：shell/命令执行（local_tool）、代理生成和生命周期管理（agent_tool、agent_job_tool）、apply-patch（apply_patch_tool）、code-mode 增强（code_mode）、MCP 工具/资源桥接（mcp_tool、mcp_resource_tool）、JS REPL（js_repl_tool）、计划管理（plan_tool）、用户输入请求（request_user_input_tool）、目录列表（utility_tool）、图像查看（view_image）和动态工具解析（dynamic_tool）。",
+      "edges": [
+        {
+          "target": "CoreTypes",
+          "type": "depends",
+          "description": "所有工厂函数构造并返回 ToolSpec/ResponsesApiTool/JsonSchema 实例"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/tools/src/agent_tool.rs",
+        "codex-rs/tools/src/local_tool.rs",
+        "codex-rs/tools/src/code_mode.rs",
+        "codex-rs/tools/src/agent_job_tool.rs",
+        "codex-rs/tools/src/apply_patch_tool.rs",
+        "codex-rs/tools/src/mcp_resource_tool.rs",
+        "codex-rs/tools/src/mcp_tool.rs",
+        "codex-rs/tools/src/utility_tool.rs",
+        "codex-rs/tools/src/request_user_input_tool.rs",
+        "codex-rs/tools/src/view_image.rs",
+        "codex-rs/tools/src/js_repl_tool.rs",
+        "codex-rs/tools/src/plan_tool.rs",
+        "codex-rs/tools/src/dynamic_tool.rs"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "BuiltinToolDefs"
+      }
+    },
+    {
+      "name": "RegistryPlan",
+      "description": "工具注册表计划构建器。build_tool_registry_plan() 是核心编排函数，为会话组装完整的工具集：读取 ToolsConfig 和 ToolRegistryPlanParams（携带模型信息、功能标志、MCP 服务器状态、技能配置），调用 BuiltinToolDefs 中适当的 create_* 工厂函数，生成包含每个活动 ToolSpec 及其 ToolHandlerKind（工具应如何执行）的 ToolRegistryPlan。还定义了 ToolRegistryPlan、ToolRegistryPlanAppTool、ToolHandlerSpec 和 ToolHandlerKind 类型。",
+      "edges": [
+        {
+          "target": "BuiltinToolDefs",
+          "type": "calls",
+          "description": "根据会话配置调用 create_* 工厂函数来实例化工具定义"
+        },
+        {
+          "target": "ToolConfig",
+          "type": "depends",
+          "description": "读取 ToolsConfig 以确定使用哪些工具变体和选项"
+        },
+        {
+          "target": "ToolDiscovery",
+          "type": "calls",
+          "description": "调用 collect_tool_search_app_infos 和 collect_tool_suggest_entries 来构建发现工具"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/tools/src/tool_registry_plan.rs",
+        "codex-rs/tools/src/tool_registry_plan_types.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "RegistryPlan"
+      }
+    },
+    {
+      "name": "ToolDiscovery",
+      "description": "动态工具发现与建议管道。提供 tool_search 工具（让代理在运行时搜索可用的 MCP 工具/连接器/插件）和 tool_suggest 工具（让代理向用户推荐启用某个可发现的工具）。定义了 DiscoverableTool、DiscoverableToolType（Connector/Plugin）、DiscoverableToolAction、ToolSearchAppInfo 和 ToolSuggestResult。包含从 MCP 服务器收集可搜索工具、为特定客户端过滤建议，以及构建用户批准建议工具的引出请求的函数。",
+      "edges": [
+        {
+          "target": "CoreTypes",
+          "type": "depends",
+          "description": "使用 ResponsesApiTool、ToolSpec、JsonSchema 和 ToolSearchOutputTool 进行工具 schema 构造"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/tools/src/tool_discovery.rs",
+        "codex-rs/tools/src/tool_suggest.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ToolDiscovery"
+      }
+    }
+  ]
+}

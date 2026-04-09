@@ -1,0 +1,186 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "68c0b3dc-6100-443b-a032-eca36062c555",
+  "description": "Core 内的配置加载、验证和策略执行。管理分层配置模式（全局/项目/本地层）、权限配置和授权、执行策略加载和检查、网络策略决策、网络代理配置、沙箱策略设置（seatbelt/landlock/Windows）、功能开关、钩子运行时执行、安全检查和配置编辑 API。",
+  "codeScope": [
+    "codex-rs/core/src/config/",
+    "codex-rs/core/src/config_loader/",
+    "codex-rs/core/src/exec_policy.rs",
+    "codex-rs/core/src/flags.rs",
+    "codex-rs/core/src/safety.rs",
+    "codex-rs/core/src/sandboxing/",
+    "codex-rs/core/src/sandbox_tags.rs",
+    "codex-rs/core/src/seatbelt.rs",
+    "codex-rs/core/src/landlock.rs",
+    "codex-rs/core/src/windows_sandbox.rs",
+    "codex-rs/core/src/windows_sandbox_read_grants.rs",
+    "codex-rs/core/src/network_policy_decision.rs",
+    "codex-rs/core/src/network_proxy_loader.rs",
+    "codex-rs/core/src/personality_migration.rs",
+    "codex-rs/core/src/hook_runtime.rs"
+  ],
+  "nodes": [
+    {
+      "name": "ConfigTypes",
+      "description": "核心配置数据模型。定义 Config 和 ConfigToml 结构体、支持 profile 的分层 TOML 模式、权限配置类型（文件系统和网络授权）、受管功能开关约束、从分层配置加载和解析智能体角色、JSON Schema 生成、个性迁移和环境标志。这是所有面向用户配置的规范表示。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/core/src/config/mod.rs",
+        "codex-rs/core/src/config/schema.rs",
+        "codex-rs/core/src/config/schema_tests.rs",
+        "codex-rs/core/src/config/profile.rs",
+        "codex-rs/core/src/config/permissions.rs",
+        "codex-rs/core/src/config/permissions_tests.rs",
+        "codex-rs/core/src/config/managed_features.rs",
+        "codex-rs/core/src/config/agent_roles.rs",
+        "codex-rs/core/src/config/config_tests.rs",
+        "codex-rs/core/src/personality_migration.rs",
+        "codex-rs/core/src/flags.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ConfigTypes"
+      }
+    },
+    {
+      "name": "ConfigLoader",
+      "description": "从文件系统加载和合并配置层。读取分层配置栈（系统、全局、项目、本地层）的 TOML 文件，跨平台解析文件路径（包括 macOS MDM 管理的配置文件），按优先级合并各层，验证 TOML 结构，并提供系统其余部分使用的 ConfigLayerStack。",
+      "edges": [
+        {
+          "target": "ConfigTypes",
+          "type": "data-flow",
+          "description": "将原始 TOML 层反序列化为 ConfigToml 类型结构"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core/src/config_loader/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ConfigLoader"
+      }
+    },
+    {
+      "name": "ConfigEditingService",
+      "description": "配置读写 API。edit 模块定义离散的配置变更（模型选择、服务层级、MCP 服务器、权限等），并通过 toml_edit 应用到 TOML 文件以实现无损往返编辑。service 模块提供更高层的 API 供 app-server 使用：带覆盖跟踪的配置读取、批量写入、层元数据查询以及 JSON/TOML 转换。",
+      "edges": [
+        {
+          "target": "ConfigLoader",
+          "type": "depends",
+          "description": "读取配置层栈以确定编辑时的层来源和优先级"
+        },
+        {
+          "target": "ConfigTypes",
+          "type": "depends",
+          "description": "使用 ConfigToml 及相关类型进行编辑的验证和序列化"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core/src/config/edit.rs",
+        "codex-rs/core/src/config/edit_tests.rs",
+        "codex-rs/core/src/config/service.rs",
+        "codex-rs/core/src/config/service_tests.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ConfigEditingService"
+      }
+    },
+    {
+      "name": "ExecPolicy",
+      "description": "执行策略引擎。从配置层目录加载 .rules 文件，通过 codex_execpolicy 将其解析为策略规则集，并根据这些规则评估 shell 命令以产生审批决策（自动批准、询问用户或拒绝）。处理危险命令检测、禁止前缀过滤、感知沙箱的审批逻辑以及用户授予权限的动态策略修正。",
+      "edges": [
+        {
+          "target": "ConfigTypes",
+          "type": "depends",
+          "description": "读取 Config 中的审批策略、信任设置和沙箱权限"
+        },
+        {
+          "target": "ConfigLoader",
+          "type": "depends",
+          "description": "遍历配置层栈以发现用于策略加载的规则目录"
+        },
+        {
+          "target": "SandboxSetup",
+          "type": "depends",
+          "description": "使用 SandboxPermissions 确定审批决策中的可写路径"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core/src/exec_policy.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ExecPolicy"
+      }
+    },
+    {
+      "name": "SandboxSetup",
+      "description": "平台特定的沙箱配置和命令创建。包括用于沙箱转换命令的 ExecRequest 适配器、macOS seatbelt 沙箱创建、Linux landlock/bubblewrap 沙箱创建、Windows 受限令牌沙箱级别解析和设置（包括读取授权管理）、沙箱指标标记以及针对文件系统策略的 apply-patch 安全评估。",
+      "edges": [
+        {
+          "target": "ConfigTypes",
+          "type": "depends",
+          "description": "从 Config 中读取沙箱模式、权限策略和 Windows 沙箱配置"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core/src/sandboxing/",
+        "codex-rs/core/src/seatbelt.rs",
+        "codex-rs/core/src/landlock.rs",
+        "codex-rs/core/src/windows_sandbox.rs",
+        "codex-rs/core/src/windows_sandbox_read_grants.rs",
+        "codex-rs/core/src/sandbox_tags.rs",
+        "codex-rs/core/src/safety.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SandboxSetup"
+      }
+    },
+    {
+      "name": "NetworkPolicy",
+      "description": "网络策略决策和代理配置。将来自网络代理的阻止请求事件转换为面向用户的审批上下文和拒绝消息。从权限配置构建 NetworkProxySpec（代理配置 + 约束）。通过基于 mtime 的变更检测从配置层加载和重新加载网络代理状态，并集成执行策略网络规则。",
+      "edges": [
+        {
+          "target": "ConfigTypes",
+          "type": "depends",
+          "description": "从权限配置中读取网络权限和代理配置"
+        },
+        {
+          "target": "ConfigLoader",
+          "type": "depends",
+          "description": "加载配置层栈以构建代理状态并检测配置变更"
+        },
+        {
+          "target": "ExecPolicy",
+          "type": "depends",
+          "description": "加载执行策略以在代理配置中应用网络规则"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core/src/network_policy_decision.rs",
+        "codex-rs/core/src/network_proxy_loader.rs",
+        "codex-rs/core/src/config/network_proxy_spec.rs",
+        "codex-rs/core/src/config/network_proxy_spec_tests.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "NetworkPolicy"
+      }
+    },
+    {
+      "name": "HookRuntime",
+      "description": "生命周期钩子执行运行时。通过委托给 codex_hooks crate 来编排 pre-tool-use、post-tool-use、session-start 和 user-prompt-submit 钩子。管理钩子结果处理（停止信号、上下文注入、审批阻止），发送 hook-started/hook-completed 事件用于 UI 流式传输，并将钩子结果转换为可操作的会话决策。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/core/src/hook_runtime.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "HookRuntime"
+      }
+    }
+  ]
+}

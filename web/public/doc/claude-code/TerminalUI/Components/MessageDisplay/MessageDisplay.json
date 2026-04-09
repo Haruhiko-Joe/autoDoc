@@ -1,0 +1,136 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "178eb22f-fedf-4dc7-8db9-6f907c8b3d2b",
+  "description": "The conversation message rendering pipeline. Contains 30+ message type components (assistant text, thinking, tool use, system messages, user prompts, tool results, errors, rate limits, attachments, plan approvals, advisor messages, bash I/O, channel/team messages), the VirtualMessageList for efficient scrolling, MessageRow layout, Message dispatcher, message actions, compact summaries, tool use result display (rejected, error, canceled states), thinking toggle, and grouped tool use content.",
+  "codeScope": [
+    "src/components/messages/",
+    "src/components/Message.tsx",
+    "src/components/Messages.tsx",
+    "src/components/MessageRow.tsx",
+    "src/components/MessageResponse.tsx",
+    "src/components/MessageModel.tsx",
+    "src/components/MessageTimestamp.tsx",
+    "src/components/MessageSelector.tsx",
+    "src/components/VirtualMessageList.tsx",
+    "src/components/messageActions.tsx",
+    "src/components/CompactSummary.tsx",
+    "src/components/FallbackToolUseErrorMessage.tsx",
+    "src/components/FallbackToolUseRejectedMessage.tsx",
+    "src/components/FileEditToolUpdatedMessage.tsx",
+    "src/components/FileEditToolUseRejectedMessage.tsx",
+    "src/components/NotebookEditToolUseRejectedMessage.tsx",
+    "src/components/InterruptedByUser.tsx",
+    "src/components/ThinkingToggle.tsx",
+    "src/components/OffscreenFreeze.tsx"
+  ],
+  "nodes": [
+    {
+      "name": "MessagePipeline",
+      "description": "The core message rendering orchestration layer. Messages.tsx is the top-level container that normalizes, reorders, groups, and collapses messages before rendering. Message.tsx is the dispatcher that routes each message type to its specific renderer component. MessageRow.tsx wraps each message with layout concerns (model label, timestamp, response indentation, offscreen freeze optimization). Together they form the data flow: raw messages → normalization/grouping → type dispatch → row layout → rendered output.",
+      "edges": [
+        {
+          "target": "MessageTypeRenderers",
+          "type": "calls",
+          "description": "Message.tsx dispatches to 30+ type-specific renderer components based on message type and content block type"
+        },
+        {
+          "target": "VirtualScrolling",
+          "type": "composes",
+          "description": "Messages.tsx wraps the message list in VirtualMessageList for efficient scrolling in fullscreen mode"
+        },
+        {
+          "target": "MessageActions",
+          "type": "depends",
+          "description": "Messages.tsx provides MessageActionsSelectedContext and navigation state consumed by message action handlers"
+        },
+        {
+          "target": "MessageLayoutHelpers",
+          "type": "composes",
+          "description": "MessageRow composes MessageModel, MessageTimestamp, MessageResponse, and CompactSummary for row-level layout"
+        }
+      ],
+      "codeScope": [
+        "src/components/Messages.tsx",
+        "src/components/Message.tsx",
+        "src/components/MessageRow.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "MessagePipeline"
+      }
+    },
+    {
+      "name": "VirtualScrolling",
+      "description": "Efficient virtual scrolling system for the message list. VirtualMessageList implements windowed rendering with useVirtualScroll, search/jump navigation (JumpHandle), sticky user prompts, search highlighting with match positions, and transcript search text extraction. OffscreenFreeze optimizes performance by freezing React subtrees when they scroll above the viewport, preventing unnecessary re-renders of timer-based content (spinners, elapsed counters).",
+      "edges": [
+        {
+          "target": "MessageActions",
+          "type": "depends",
+          "description": "Uses messageActions types (NavigableMessage, MessageActionsNav) for message navigation and InVirtualListContext"
+        }
+      ],
+      "codeScope": [
+        "src/components/VirtualMessageList.tsx",
+        "src/components/OffscreenFreeze.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "VirtualScrolling"
+      }
+    },
+    {
+      "name": "MessageActions",
+      "description": "Message navigation and interactive actions system. messageActions.tsx defines navigable message filtering, message action types (copy, retry, edit, delete, revert, compact, branch), the MessageActionsSelectedContext for tracking selection state, and tool call content extraction for display. MessageSelector.tsx provides the full message action menu UI with keybinding-driven selection, file history restoration, diff stats display, compact-to-here, branch creation, and context-aware action availability per message type.",
+      "edges": [],
+      "codeScope": [
+        "src/components/messageActions.tsx",
+        "src/components/MessageSelector.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "MessageActions"
+      }
+    },
+    {
+      "name": "MessageTypeRenderers",
+      "description": "30+ individual message type renderer components organized by message role. Assistant renderers handle text output, streaming thinking (with highlighted thinking text), redacted thinking, and tool use blocks. User renderers cover prompts, text, bash I/O, commands, images, plans, channels, teammates, agent notifications, memory input, resource updates, and local command output. System renderers handle API errors, rate limits, shutdown, hook progress, compact boundaries, task assignments, and the large SystemTextMessage dispatcher (25+ system subtypes). Tool result renderers handle success, error, reject, and canceled states with fallback displays. Special renderers include attachments, advisor messages, plan approval, collapsed read/search groups, grouped tool use, and team memory display.",
+      "edges": [
+        {
+          "target": "MessageLayoutHelpers",
+          "type": "depends",
+          "description": "Message type components use MessageResponse for indentation, InterruptedByUser for cancellation display, and fallback error/rejected components"
+        }
+      ],
+      "codeScope": [
+        "src/components/messages/",
+        "src/components/FallbackToolUseErrorMessage.tsx",
+        "src/components/FallbackToolUseRejectedMessage.tsx",
+        "src/components/FileEditToolUpdatedMessage.tsx",
+        "src/components/FileEditToolUseRejectedMessage.tsx",
+        "src/components/NotebookEditToolUseRejectedMessage.tsx",
+        "src/components/InterruptedByUser.tsx"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "MessageTypeRenderers"
+      }
+    },
+    {
+      "name": "MessageLayoutHelpers",
+      "description": "Small shared components for message row layout and metadata display. MessageResponse provides the response indentation gutter (⎿ prefix) with Ratchet-based height locking. MessageModel shows the AI model name in transcript mode. MessageTimestamp formats and displays message timestamps in transcript mode. CompactSummary renders compacted conversation summaries with token/cost metadata and expand shortcuts. ThinkingToggle is a settings dialog for enabling/disabling extended thinking with confirmation for mid-conversation changes.",
+      "edges": [],
+      "codeScope": [
+        "src/components/MessageResponse.tsx",
+        "src/components/MessageModel.tsx",
+        "src/components/MessageTimestamp.tsx",
+        "src/components/CompactSummary.tsx",
+        "src/components/ThinkingToggle.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "MessageLayoutHelpers"
+      }
+    }
+  ]
+}

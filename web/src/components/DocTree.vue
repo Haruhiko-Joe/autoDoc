@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { fetchSubGraph, type NodeProgress } from '../services/doc'
+import { fetchSubGraph } from '../services/doc'
 import type { ScaffoldNode } from '../types'
 import TreeItem from './TreeItem.vue'
 
 const props = defineProps<{
   project: string
   nodes: ScaffoldNode[]
-  nodeStates?: NodeProgress[]  // 实时节点状态（running 期间由 progress 传入）
+  nodeStates?: { nodeId: string; status: string }[]
 }>()
 
 export interface TreeNode {

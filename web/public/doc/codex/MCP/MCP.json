@@ -1,0 +1,60 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "a29eddc6-effc-4042-91ba-b92d55589658",
+  "description": "Model Context Protocol 集成——涵盖客户端和服务端。客户端从外部 MCP 服务器发现并调用工具。服务端将 Codex 自身暴露为 MCP 兼容的工具提供者，实现与其他 MCP 感知应用的集成。",
+  "codeScope": [
+    "codex-rs/codex-mcp/",
+    "codex-rs/mcp-server/",
+    "codex-rs/rmcp-client/"
+  ],
+  "nodes": [
+    {
+      "name": "McpClientIntegration",
+      "description": "高层 MCP 客户端集成层（codex-mcp crate）。通过 McpConnectionManager 管理与外部 MCP 服务器的连接，跨所有配置的服务器发现和聚合工具/资源/资源模板，计算认证状态，解析基于技能的 MCP 依赖，处理 ChatGPT 应用的 MCP 集成，并生成供 Codex agent 核心使用的统一 MCP 快照。",
+      "edges": [
+        {
+          "target": "RmcpClientLib",
+          "type": "depends",
+          "description": "使用 RmcpClient 作为底层传输，连接到各个 MCP 服务器并执行 OAuth 认证状态检查"
+        },
+        {
+          "target": "McpServer",
+          "type": "data-flow",
+          "description": "两个 crate 共享 codex-protocol 的 MCP 类型（Tool、Resource、CallToolResult）以实现互操作，尽管它们分别作为客户端和服务端独立运行"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/codex-mcp/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "McpClientIntegration"
+      }
+    },
+    {
+      "name": "McpServer",
+      "description": "MCP 服务器二进制文件（codex-mcp-server crate），将 Codex 暴露为 MCP 兼容的工具提供者。通过 stdin/stdout JSON-RPC 传输实现 MCP 协议：读取传入的请求/通知，通过 MessageProcessor 路由，暴露 'codex' 和 'codex-reply' 工具用于启动和继续 agent 会话，将工具执行委托给 codex-core 的 ThreadManager，并处理向 MCP 客户端回传的 exec/patch 审批请求。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/mcp-server/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "McpServer"
+      }
+    },
+    {
+      "name": "RmcpClientLib",
+      "description": "底层 RMCP 客户端库（codex-rmcp-client crate）。提供 RmcpClient 类型，通过两种传输方式连接 MCP 服务器：子进程 stdio 和可流式 HTTP（带 SSE）。处理 OAuth 2.0 登录流程（基于浏览器的本地回调服务器）、通过操作系统密钥环或文件系统的令牌持久化、可流式 HTTP 端点的认证状态检测、MCP 服务器程序解析（npx/uvx/PATH）、环境变量设置，以及请求转发。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/rmcp-client/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "RmcpClientLib"
+      }
+    }
+  ]
+}

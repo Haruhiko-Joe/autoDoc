@@ -1,0 +1,169 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "b163a880-82f6-4098-a8ad-7fd79c48ce1b",
+  "description": "插件管理子系统。处理插件发现、清单解析、本地插件商店（缓存）、市场集成（列出和解析精选插件）、远程插件 API（获取状态、启用、卸载）、从 GitHub 同步 OpenAI 精选插件仓库的启动同步、插件渲染为提示部分、插件注入到模型上下文、可发现的插件建议、从消息中收集插件提及以及插件启用/禁用切换。中央 PluginsManager 编排所有子组件的安装、卸载、读取和加载工作流。",
+  "codeScope": [
+    "codex-rs/core/src/plugins/"
+  ],
+  "nodes": [
+    {
+      "name": "PluginsManager",
+      "description": "插件子系统的中央编排器。PluginsManager 结构体管理完整的插件生命周期：通过本地商店和市场安装/卸载插件、从配置加载插件、计算有效技能根、列出已配置市场的安装/启用状态、读取单个插件详情、从远程 ChatGPT 后端同步插件状态、启动启动任务（精选仓库同步、远程插件同步）、缓存精选插件 ID，并提供从插件根加载 MCP 服务器、应用和遥测元数据的辅助函数。",
+      "edges": [
+        {
+          "target": "Manifest",
+          "type": "calls",
+          "description": "在加载插件详情、读取插件和计算技能/MCP/应用路径时调用 load_plugin_manifest 解析 plugin.json"
+        },
+        {
+          "target": "Marketplace",
+          "type": "calls",
+          "description": "调用 list_marketplaces、load_marketplace 和 resolve_marketplace_plugin 来发现可用市场并在安装和列表时解析插件来源"
+        },
+        {
+          "target": "Store",
+          "type": "calls",
+          "description": "使用 PluginStore 将插件安装到本地缓存、卸载、检查安装状态并解析活动插件根路径"
+        },
+        {
+          "target": "RemoteAPI",
+          "type": "calls",
+          "description": "调用 fetch_remote_plugin_status、enable_remote_plugin、uninstall_remote_plugin 和 fetch_remote_featured_plugin_ids 进行 ChatGPT 后端同步"
+        },
+        {
+          "target": "StartupSync",
+          "type": "calls",
+          "description": "触发 sync_openai_plugins_repo 进行精选仓库克隆，以及 start_startup_remote_plugin_sync_once 在 app-server 启动时进行后台远程同步"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core/src/plugins/mod.rs",
+        "codex-rs/core/src/plugins/manager.rs",
+        "codex-rs/core/src/plugins/manager_tests.rs",
+        "codex-rs/core/src/plugins/test_support.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PluginsManager"
+      }
+    },
+    {
+      "name": "Manifest",
+      "description": "插件清单解析器。从插件根目录读取和验证 plugin.json 文件，提取插件名称、描述、技能/MCP 服务器/应用目录路径以及接口元数据（显示名称、描述、分类、能力、URL、默认提示、品牌资源）。执行路径安全规则（仅相对路径、禁止父目录遍历）并规范化默认提示字符串。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/core/src/plugins/manifest.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Manifest"
+      }
+    },
+    {
+      "name": "Marketplace",
+      "description": "市场发现和解析。从主目录和附加根（精选仓库、git 仓库根）发现 marketplace.json 文件，将原始市场清单解析为结构化的 Marketplace/MarketplacePlugin 类型，包含安装策略（NotAvailable、Available、InstalledByDefault）、认证策略（OnInstall、OnUse）、产品门控和源路径解析。提供 resolve_marketplace_plugin 用于安装时的单个插件查找，以及 list_marketplaces 用于完整市场枚举。",
+      "edges": [
+        {
+          "target": "Manifest",
+          "type": "calls",
+          "description": "加载市场时为每个市场插件调用 load_plugin_manifest 读取接口元数据"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core/src/plugins/marketplace.rs",
+        "codex-rs/core/src/plugins/marketplace_tests.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Marketplace"
+      }
+    },
+    {
+      "name": "Store",
+      "description": "本地插件缓存（文件系统存储）。管理 codex_home 下 plugins/cache 目录，采用 marketplace_name/plugin_name/version 层级结构。提供安装（带备份/回滚的原子复制）、卸载、版本发现（优先使用 'local' 版本）和路径解析 API。安装前根据清单验证插件名称。",
+      "edges": [
+        {
+          "target": "Manifest",
+          "type": "calls",
+          "description": "安装前调用 load_plugin_manifest 从源目录提取和验证插件名称"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core/src/plugins/store.rs",
+        "codex-rs/core/src/plugins/store_tests.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Store"
+      }
+    },
+    {
+      "name": "RemoteAPI",
+      "description": "远程插件 API 客户端。与 ChatGPT 后端通信以获取远程插件状态（带启用状态的插件名称列表）、获取平台的精选插件 ID、启用插件和卸载插件。所有端点需要 ChatGPT 认证（bearer 令牌加可选的 account-id 头）。定义 RemotePluginFetchError 和 RemotePluginMutationError 错误类型。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/core/src/plugins/remote.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "RemoteAPI"
+      }
+    },
+    {
+      "name": "StartupSync",
+      "description": "从 GitHub 同步精选插件仓库。启动时通过 git 克隆或更新 openai/plugins 仓库（带 SHA 比较的浅克隆），并提供 HTTP zipball 回退。管理临时目录的过期清理、带备份/回滚的原子仓库激活、SHA 文件跟踪和市场清单验证。还编排一次性远程插件同步（start_startup_remote_plugin_sync_once），等待精选市场就绪后再从 ChatGPT 后端同步插件状态。发送 OpenTelemetry 指标用于同步传输和状态。",
+      "edges": [
+        {
+          "target": "PluginsManager",
+          "type": "calls",
+          "description": "start_startup_remote_plugin_sync_once 接收 Arc<PluginsManager> 并在精选仓库就绪后调用 sync_plugins_from_remote 同步插件状态"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core/src/plugins/startup_sync.rs",
+        "codex-rs/core/src/plugins/startup_sync_tests.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "StartupSync"
+      }
+    },
+    {
+      "name": "PromptIntegration",
+      "description": "插件提示渲染、上下文注入、提及解析和可发现建议。render.rs 生成 '## Plugins' 提示部分，列出可用插件及使用说明，并渲染每个插件的能力指令。injection.rs 为显式提及的插件构建 ResponseItem 注入，解析其可见的 MCP 服务器和应用。mentions.rs 从用户输入中提取插件提及（@-提及符号）、应用提及、工具提及、技能名称计数和连接器标识符计数。discoverable.rs 生成有资格作为 tool-suggest 可发现建议的未安装精选插件列表。",
+      "edges": [
+        {
+          "target": "PluginsManager",
+          "type": "depends",
+          "description": "discoverable.rs 创建 PluginsManager 实例并调用 list_marketplaces_for_config 和 read_plugin_for_config 来解析可发现插件信息"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core/src/plugins/render.rs",
+        "codex-rs/core/src/plugins/render_tests.rs",
+        "codex-rs/core/src/plugins/injection.rs",
+        "codex-rs/core/src/plugins/mentions.rs",
+        "codex-rs/core/src/plugins/mentions_tests.rs",
+        "codex-rs/core/src/plugins/discoverable.rs",
+        "codex-rs/core/src/plugins/discoverable_tests.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PromptIntegration"
+      }
+    },
+    {
+      "name": "Toggles",
+      "description": "从配置编辑中提取插件启用/禁用切换。解析传入的配置写入操作（键路径/值对）以识别跨多种配置编辑格式的插件启用/禁用变更：直接 'plugins.<id>.enabled' 写入、嵌套对象写入和批量 'plugins' 表写入。返回 plugin_id → enabled 状态的 BTreeMap 供下游配置编辑流程处理。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/core/src/plugins/toggles.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Toggles"
+      }
+    }
+  ]
+}

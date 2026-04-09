@@ -1,0 +1,106 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "0efbbe01-9594-4531-aa29-b5e17718d326",
+  "description": "配置、自定义与可扩展性层。管理分层配置文件（全局/项目/本地）、AGENTS.md 指令、带渐进式发布的功能标志、生命周期钩子（工具执行前/后），以及用于扩展 Codex 行为的插件系统。",
+  "codeScope": [
+    "codex-rs/config/",
+    "codex-rs/instructions/",
+    "codex-rs/features/",
+    "codex-rs/rollout/",
+    "codex-rs/hooks/",
+    "codex-rs/plugin/"
+  ],
+  "nodes": [
+    {
+      "name": "ConfigCore",
+      "description": "核心分层配置系统。定义基于 TOML 的配置模式（types.rs），管理多层配置栈（全局 → 项目 → 本地 → CLI 覆盖），跨层合并 TOML 值，处理 MCP 服务器配置、技能配置、配置级需求/约束、执行策略规则、项目根目录检测、配置诊断/错误格式化，以及用于变更检测的配置指纹。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/config/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ConfigCore"
+      }
+    },
+    {
+      "name": "Instructions",
+      "description": "Codex 提示词的用户指令和技能指令管理。加载 AGENTS.md 文件和特定技能的指令，定义上下文片段标记（AGENTS_MD_FRAGMENT、SKILL_FRAGMENT），并组装注入到系统提示词中的 UserInstructions 载荷。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/instructions/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Instructions"
+      }
+    },
+    {
+      "name": "FeatureFlags",
+      "description": "集中式功能标志注册与解析引擎。定义约 50 个功能开关及其生命周期阶段（UnderDevelopment → Experimental → Stable → Deprecated → Removed）、默认状态和配置键。从分层配置源解析有效功能集，处理带弃用通知的旧别名迁移，规范化功能依赖，并通过 OpenTelemetry 发送功能状态指标。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/features/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "FeatureFlags"
+      }
+    },
+    {
+      "name": "Rollout",
+      "description": "会话持久化与发现系统。将 Codex 会话记录为 JSONL 发布文件，管理用于会话元数据和渐进式发布状态的 SQLite 状态数据库，提供基于游标分页的会话列表/搜索/归档功能，按人类可读名称索引会话，定义事件持久化策略，并提取会话元数据（git 信息、模型、时间戳）。",
+      "edges": [
+        {
+          "target": "ConfigCore",
+          "type": "depends",
+          "description": "使用 RolloutConfigView 读取 codex_home、cwd 和模型提供者设置，用于确定会话存储路径"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/rollout/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Rollout"
+      }
+    },
+    {
+      "name": "Hooks",
+      "description": "工具执行前后及会话事件的生命周期钩子引擎。从配置层栈（hooks.json 文件）中发现钩子定义，在生命周期节点（session_start、pre_tool_use、post_tool_use、user_prompt_submit、stop）分发 shell 命令，解析钩子输出以获取控制指令（approve、deny、modify），为钩子载荷生成 JSON Schema fixtures，并支持旧式 notify 风格钩子以保持向后兼容。",
+      "edges": [
+        {
+          "target": "ConfigCore",
+          "type": "depends",
+          "description": "从 ConfigLayerStack 读取钩子定义，跨全局/项目/本地配置层发现 hooks.json 文件"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/hooks/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Hooks"
+      }
+    },
+    {
+      "name": "Plugin",
+      "description": "插件身份与能力元数据。定义带有插件名称段验证规则的 PluginId 类型，描述插件加载结果（已加载插件、有效技能根），提供用于遥测的能力摘要（技能数量、MCP 服务器名称、应用连接器 ID），并从共享工具库中重新导出插件清单路径常量和命名空间工具。",
+      "edges": [
+        {
+          "target": "FeatureFlags",
+          "type": "depends",
+          "description": "插件加载受 Plugins 功能标志的门控"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/plugin/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Plugin"
+      }
+    }
+  ]
+}

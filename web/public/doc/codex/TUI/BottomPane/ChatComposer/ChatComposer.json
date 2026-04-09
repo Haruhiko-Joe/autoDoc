@@ -1,0 +1,110 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "07ad265a-0bce-4eb2-83ca-73a4339f05b4",
+  "description": "主要的文本输入状态机。管理可编辑的提示缓冲区（TextArea 组件）、历史导航（跨会话持久化 + 会话内本地）、非括号粘贴突发检测、斜杠命令/文件搜索/技能内联弹窗路由、图片附件处理（本地和远程）、mention 的文本元素追踪，以及带提示扩展的提交/排队逻辑。是 BottomPane 中最大的子系统（约 12.8K 行）。",
+  "codeScope": [
+    "codex-rs/tui/src/bottom_pane/chat_composer.rs",
+    "codex-rs/tui/src/bottom_pane/chat_composer_history.rs",
+    "codex-rs/tui/src/bottom_pane/textarea.rs",
+    "codex-rs/tui/src/bottom_pane/paste_burst.rs",
+    "codex-rs/tui/src/bottom_pane/prompt_args.rs",
+    "codex-rs/tui/src/bottom_pane/slash_commands.rs",
+    "codex-rs/tui/src/bottom_pane/command_popup.rs",
+    "codex-rs/tui/src/bottom_pane/file_search_popup.rs",
+    "codex-rs/tui/src/bottom_pane/skill_popup.rs"
+  ],
+  "nodes": [
+    {
+      "name": "ComposerStateMachine",
+      "description": "核心 ChatComposer 结构体及其约 60 个方法，构成主要的文本输入状态机。拥有 TextArea、History、PasteBurst 和 ActivePopup 实例。处理键盘事件路由（分派到弹窗特定处理器或基础输入路径）、带待处理粘贴扩展和文本元素重定位的提交/排队逻辑、图片附件管理（本地路径和远程 URL，使用统一占位符编号）、斜杠命令分派（裸命令和带参数的命令）、mention 绑定生命周期、页脚模式选择、输入禁用模式，以及将远程图片行、文本区域和页脚组合成最终布局的 Renderable 实现。还包含约 4400 行快照和行为测试。",
+      "edges": [
+        {
+          "target": "TextArea",
+          "type": "composes",
+          "description": "拥有并驱动 TextArea，用于所有文本编辑、光标管理、元素追踪和 kill-buffer 操作"
+        },
+        {
+          "target": "History",
+          "type": "composes",
+          "description": "拥有 ChatComposerHistory；委托上/下导航并在每次提交后记录本地提交"
+        },
+        {
+          "target": "PasteBurst",
+          "type": "composes",
+          "description": "拥有 PasteBurst 实例；将普通字符事件输入突发检测器，并将结果作为粘贴或键入输入刷新"
+        },
+        {
+          "target": "InlinePopups",
+          "type": "composes",
+          "description": "拥有 ActivePopup 枚举（Command、File、Skill 变体）；创建、同步并将键盘事件路由到活跃的弹窗组件"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/tui/src/bottom_pane/chat_composer.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ComposerStateMachine"
+      }
+    },
+    {
+      "name": "TextArea",
+      "description": "编辑器背后的可编辑缓冲区组件。拥有原始 UTF-8 文本、带首选列追踪的字节索引光标、随编辑（插入、删除、退格、词删除）原子移动的占位符式 TextElements、通过 textwrap 实现的 Unicode 感知行换行（带 RefCell 缓存的 WrapCache）、跨换行行的垂直光标移动、Emacs 风格 Ctrl+A/E/K/Y 编辑（带单条目 kill buffer）、词边界导航（Ctrl+Left/Right），以及将光标位置映射到带滚动支持的屏幕坐标的 StatefulWidgetRef 渲染实现。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/tui/src/bottom_pane/textarea.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TextArea"
+      }
+    },
+    {
+      "name": "History",
+      "description": "与渲染解耦的 Shell 风格历史导航状态机（上/下键）。合并两个来源：持久化的跨会话历史（通过异步 GetHistoryEntryRequest 操作按需获取的纯文本条目，带 LRU 缓存）和本地会话内历史（包含文本元素、图片路径、远程 URL、mention 绑定和待处理粘贴的完整草稿状态）。管理跨两个来源的统一光标，去重连续提交，并通过光标在行边界检查来控制导航，以保持正常的多行编辑。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/tui/src/bottom_pane/chat_composer_history.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "History"
+      }
+    },
+    {
+      "name": "PasteBurst",
+      "description": "用于检测非括号粘贴突发的纯状态机，适用于将粘贴作为快速 KeyCode::Char 流传送（而非单个粘贴事件）的终端（尤其是 Windows）。使用平台特定阈值追踪按键间隔，通过保留第一个快速 ASCII 字符实现闪烁抑制，支持在突发被延迟检测到时对已插入前缀的追溯捕获，管理 Enter 抑制窗口使多行粘贴保持分组，并暴露 flush/clear API 供编辑器将缓冲的突发转换为显式粘贴操作或普通键入输入。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/tui/src/bottom_pane/paste_burst.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PasteBurst"
+      }
+    },
+    {
+      "name": "InlinePopups",
+      "description": "在输入期间出现在编辑器上方的三个内联弹窗组件及共享辅助工具。CommandPopup 渲染带模糊前缀匹配、功能开关门控（协作模式、连接器、fast、realtime 等）和别名隐藏的可过滤斜杠命令菜单。FileSearchPopup 显示带选择和加载中/无匹配状态的异步文件搜索结果。SkillPopup 显示带模糊匹配、排序排名、分类标签和提示页脚的技能/插件/连接器 mention 项目。三者都使用 SelectionFramework 的 GenericDisplayRow 和 render_rows 原语。还包括 slash_commands.rs（共享的内置命令过滤和查找）和 prompt_args.rs（从行中解析 '/name <rest>'）。",
+      "edges": [
+        {
+          "target": "ComposerStateMachine",
+          "type": "data-flow",
+          "description": "弹窗从编辑器接收过滤文本和搜索结果；返回选中项（命令、文件路径、mention）用于插入或分派"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/tui/src/bottom_pane/command_popup.rs",
+        "codex-rs/tui/src/bottom_pane/file_search_popup.rs",
+        "codex-rs/tui/src/bottom_pane/skill_popup.rs",
+        "codex-rs/tui/src/bottom_pane/slash_commands.rs",
+        "codex-rs/tui/src/bottom_pane/prompt_args.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "InlinePopups"
+      }
+    }
+  ]
+}

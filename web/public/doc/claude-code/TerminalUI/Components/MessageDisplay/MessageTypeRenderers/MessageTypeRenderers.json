@@ -1,0 +1,159 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "766aa693-2727-49c7-80be-40c2a7032261",
+  "description": "30+ individual message type renderer components organized by message role. Assistant renderers handle text output, streaming thinking (with highlighted thinking text), redacted thinking, and tool use blocks. User renderers cover prompts, text, bash I/O, commands, images, plans, channels, teammates, agent notifications, memory input, resource updates, and local command output. System renderers handle API errors, rate limits, shutdown, hook progress, compact boundaries, task assignments, and the large SystemTextMessage dispatcher (25+ system subtypes). Tool result renderers handle success, error, reject, and canceled states with fallback displays. Special renderers include attachments, advisor messages, plan approval, collapsed read/search groups, grouped tool use, and team memory display.",
+  "codeScope": [
+    "src/components/messages/",
+    "src/components/FallbackToolUseErrorMessage.tsx",
+    "src/components/FallbackToolUseRejectedMessage.tsx",
+    "src/components/FileEditToolUpdatedMessage.tsx",
+    "src/components/FileEditToolUseRejectedMessage.tsx",
+    "src/components/NotebookEditToolUseRejectedMessage.tsx",
+    "src/components/InterruptedByUser.tsx"
+  ],
+  "nodes": [
+    {
+      "name": "AssistantRenderers",
+      "description": "Renderer components for assistant-role messages. AssistantTextMessage renders streamed text output with markdown, copy actions, and model labeling. AssistantThinkingMessage and HighlightedThinkingText handle streaming thinking display with syntax-highlighted thinking blocks and budget tracking. AssistantRedactedThinkingMessage shows placeholder text for redacted thinking. AssistantToolUseMessage is the largest component, rendering tool invocation blocks with tool-specific display logic, progress indicators, hook progress messages, and error boundaries.",
+      "edges": [
+        {
+          "target": "ToolResultRenderers",
+          "type": "data-flow",
+          "description": "AssistantToolUseMessage renders tool invocations whose results are displayed by ToolResultRenderers in the subsequent message"
+        },
+        {
+          "target": "SpecialRenderers",
+          "type": "depends",
+          "description": "AssistantToolUseMessage delegates to GroupedToolUseContent and CollapsedReadSearchContent for grouped/collapsed tool display"
+        }
+      ],
+      "codeScope": [
+        "src/components/messages/AssistantTextMessage.tsx",
+        "src/components/messages/AssistantThinkingMessage.tsx",
+        "src/components/messages/AssistantRedactedThinkingMessage.tsx",
+        "src/components/messages/AssistantToolUseMessage.tsx",
+        "src/components/messages/HighlightedThinkingText.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "AssistantRenderers"
+      }
+    },
+    {
+      "name": "UserInputRenderers",
+      "description": "13 renderer components for user-role messages covering all forms of user input display. UserPromptMessage renders the main user prompt with attachment indicators. UserTextMessage handles rich text display with markdown and image references. UserBashInputMessage and UserBashOutputMessage show shell command input/output. UserCommandMessage renders slash command invocations. UserImageMessage displays image attachments. UserPlanMessage shows plan mode interactions. UserChannelMessage and UserTeammateMessage render multi-agent channel and teammate communications. UserAgentNotificationMessage shows agent status notifications. UserMemoryInputMessage displays memory-related inputs. UserResourceUpdateMessage renders resource change notifications. UserLocalCommandOutputMessage shows local command execution results.",
+      "edges": [
+        {
+          "target": "ToolResultRenderers",
+          "type": "depends",
+          "description": "UserTextMessage and UserLocalCommandOutputMessage share display patterns with tool result rendering for command output"
+        }
+      ],
+      "codeScope": [
+        "src/components/messages/UserPromptMessage.tsx",
+        "src/components/messages/UserTextMessage.tsx",
+        "src/components/messages/UserBashInputMessage.tsx",
+        "src/components/messages/UserBashOutputMessage.tsx",
+        "src/components/messages/UserCommandMessage.tsx",
+        "src/components/messages/UserImageMessage.tsx",
+        "src/components/messages/UserPlanMessage.tsx",
+        "src/components/messages/UserChannelMessage.tsx",
+        "src/components/messages/UserTeammateMessage.tsx",
+        "src/components/messages/UserAgentNotificationMessage.tsx",
+        "src/components/messages/UserMemoryInputMessage.tsx",
+        "src/components/messages/UserResourceUpdateMessage.tsx",
+        "src/components/messages/UserLocalCommandOutputMessage.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "UserInputRenderers"
+      }
+    },
+    {
+      "name": "SystemRenderers",
+      "description": "Renderer components for system-role messages. The centerpiece is SystemTextMessage (826 lines), a large dispatcher that routes 25+ system message subtypes to inline render functions — including turn duration, memory saved, bridge status, thinking budget, stop hook summary, turn completion, context window, tool recommendations, auto-accept notifications, teammate results, and more. Supporting components include SystemAPIErrorMessage for API error display with retry hints, RateLimitMessage for rate limit warnings with countdown timers, ShutdownMessage for graceful shutdown notifications, HookProgressMessage for hook execution progress, CompactBoundaryMessage for conversation compaction markers, and TaskAssignmentMessage for background task assignment display.",
+      "edges": [
+        {
+          "target": "AssistantRenderers",
+          "type": "depends",
+          "description": "SystemTextMessage references assistant message types for thinking-related system subtypes"
+        }
+      ],
+      "codeScope": [
+        "src/components/messages/SystemTextMessage.tsx",
+        "src/components/messages/SystemAPIErrorMessage.tsx",
+        "src/components/messages/RateLimitMessage.tsx",
+        "src/components/messages/ShutdownMessage.tsx",
+        "src/components/messages/HookProgressMessage.tsx",
+        "src/components/messages/CompactBoundaryMessage.tsx",
+        "src/components/messages/TaskAssignmentMessage.tsx",
+        "src/components/messages/teamMemSaved.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SystemRenderers"
+      }
+    },
+    {
+      "name": "ToolResultRenderers",
+      "description": "Renderer components for tool execution results and fallback states. The UserToolResultMessage dispatcher routes to four outcome states: UserToolSuccessMessage (renders successful tool output with tool-specific formatting), UserToolErrorMessage (displays error details with stack traces), UserToolRejectMessage (shows permission rejection with explanation), and UserToolCanceledMessage (handles user-interrupted tool calls). Includes RejectedPlanMessage and RejectedToolUseMessage for specific rejection displays, plus shared utility functions. Standalone fallback components outside the messages directory handle edge cases: FallbackToolUseErrorMessage and FallbackToolUseRejectedMessage for generic fallbacks, FileEditToolUpdatedMessage and FileEditToolUseRejectedMessage for file edit outcomes, NotebookEditToolUseRejectedMessage for notebook edit rejections, and InterruptedByUser for user cancellation display.",
+      "edges": [
+        {
+          "target": "AssistantRenderers",
+          "type": "depends",
+          "description": "Tool result renderers reference the originating tool use block from AssistantToolUseMessage to display context"
+        }
+      ],
+      "codeScope": [
+        "src/components/messages/UserToolResultMessage/UserToolResultMessage.tsx",
+        "src/components/messages/UserToolResultMessage/UserToolSuccessMessage.tsx",
+        "src/components/messages/UserToolResultMessage/UserToolErrorMessage.tsx",
+        "src/components/messages/UserToolResultMessage/UserToolRejectMessage.tsx",
+        "src/components/messages/UserToolResultMessage/UserToolCanceledMessage.tsx",
+        "src/components/messages/UserToolResultMessage/RejectedPlanMessage.tsx",
+        "src/components/messages/UserToolResultMessage/RejectedToolUseMessage.tsx",
+        "src/components/messages/UserToolResultMessage/utils.tsx",
+        "src/components/FallbackToolUseErrorMessage.tsx",
+        "src/components/FallbackToolUseRejectedMessage.tsx",
+        "src/components/FileEditToolUpdatedMessage.tsx",
+        "src/components/FileEditToolUseRejectedMessage.tsx",
+        "src/components/NotebookEditToolUseRejectedMessage.tsx",
+        "src/components/InterruptedByUser.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ToolResultRenderers"
+      }
+    },
+    {
+      "name": "SpecialRenderers",
+      "description": "Specialized renderer components for composite and cross-cutting message types. AttachmentMessage (535 lines) handles rich attachment display with file previews, image thumbnails, and multi-attachment layouts. CollapsedReadSearchContent (483 lines) renders collapsed groups of read/search tool results with expandable summaries and file path lists. PlanApprovalMessage (221 lines) displays plan review and approval UI with accept/reject actions. AdvisorMessage renders advisor-role messages with distinct styling. GroupedToolUseContent handles display of multiple tool uses grouped into a single visual block. teamMemCollapsed renders collapsed team memory display. nullRenderingAttachments defines attachment types that should not be visually rendered.",
+      "edges": [
+        {
+          "target": "AssistantRenderers",
+          "type": "depends",
+          "description": "GroupedToolUseContent and CollapsedReadSearchContent are composed into AssistantToolUseMessage rendering"
+        },
+        {
+          "target": "ToolResultRenderers",
+          "type": "depends",
+          "description": "CollapsedReadSearchContent aggregates tool results and uses shared tool result display utilities"
+        }
+      ],
+      "codeScope": [
+        "src/components/messages/AttachmentMessage.tsx",
+        "src/components/messages/CollapsedReadSearchContent.tsx",
+        "src/components/messages/PlanApprovalMessage.tsx",
+        "src/components/messages/AdvisorMessage.tsx",
+        "src/components/messages/GroupedToolUseContent.tsx",
+        "src/components/messages/teamMemCollapsed.tsx",
+        "src/components/messages/nullRenderingAttachments.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SpecialRenderers"
+      }
+    }
+  ]
+}

@@ -1,0 +1,189 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "d95550d6-c862-4ef8-86f6-7f5e5b1723b7",
+  "description": "Model Context Protocol client implementation managing connections to MCP servers. Includes the MCP SDK client wrapper, connection manager (lifecycle, reconnection, health), transport layers (stdio, SSE, streamable HTTP, in-process, SDK control), server configuration and normalization, tool/prompt/resource discovery, official registry integration, channel permissions and allowlists, authentication (OAuth port, XAA IdP login), elicitation handling, VS Code SDK MCP bridge, Claude.ai MCP integration, environment variable expansion, and server approval UI.",
+  "codeScope": [
+    "src/services/mcp/",
+    "src/services/mcpServerApproval.tsx"
+  ],
+  "nodes": [
+    {
+      "name": "SDKClient",
+      "description": "Core MCP SDK client wrapper and connection orchestrator. Manages the full lifecycle of MCP server connections: creating clients via various transports (stdio, SSE, streamable HTTP, WebSocket), fetching tools/prompts/resources from connected servers, handling reconnection logic, server health monitoring, and cache management. The central entry point that all other MCP sub-modules feed into.",
+      "edges": [
+        {
+          "target": "Configuration",
+          "type": "calls",
+          "description": "Loads server configurations to determine which MCP servers to connect to and their transport settings"
+        },
+        {
+          "target": "Authentication",
+          "type": "calls",
+          "description": "Invokes OAuth and XAA authentication flows when servers require authorization during connection"
+        },
+        {
+          "target": "Channels",
+          "type": "calls",
+          "description": "Processes channel notification messages and permission relay callbacks from messaging platforms"
+        },
+        {
+          "target": "Transports",
+          "type": "depends",
+          "description": "Uses InProcessTransport and SdkControlTransport for in-process and SDK-bridged server connections"
+        },
+        {
+          "target": "Utilities",
+          "type": "calls",
+          "description": "Uses tool/command filtering, MCP name normalization, and string parsing utilities"
+        }
+      ],
+      "codeScope": [
+        "src/services/mcp/client.ts",
+        "src/services/mcp/types.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SDKClient"
+      }
+    },
+    {
+      "name": "ConnectionUI",
+      "description": "React-level MCP connection management layer. Provides the useManageMCPConnections hook that orchestrates server reconnection, enable/disable toggling, and connection state tracking. Wrapped in an MCPConnectionManager React context provider that exposes reconnect and toggle functions to the component tree.",
+      "edges": [
+        {
+          "target": "SDKClient",
+          "type": "calls",
+          "description": "Invokes client reconnection and tool/resource fetch functions to manage server connection state"
+        },
+        {
+          "target": "Configuration",
+          "type": "calls",
+          "description": "Reads MCP server configurations to build and refresh the list of managed connections"
+        },
+        {
+          "target": "Channels",
+          "type": "calls",
+          "description": "Wires channel notification handlers and permission callbacks into managed connections"
+        }
+      ],
+      "codeScope": [
+        "src/services/mcp/useManageMCPConnections.ts",
+        "src/services/mcp/MCPConnectionManager.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ConnectionUI"
+      }
+    },
+    {
+      "name": "Authentication",
+      "description": "MCP server authentication subsystem supporting multiple auth strategies. Includes standard OAuth 2.0 authorization code flow with PKCE, RFC 8693 cross-app access (XAA) token exchange for silent auth, enterprise IdP login for acquiring OIDC id_tokens, OAuth callback port management, and elicitation handling for interactive auth prompts during server connections.",
+      "edges": [
+        {
+          "target": "Utilities",
+          "type": "depends",
+          "description": "May use shared utility functions for string formatting and server identification"
+        }
+      ],
+      "codeScope": [
+        "src/services/mcp/auth.ts",
+        "src/services/mcp/xaa.ts",
+        "src/services/mcp/xaaIdpLogin.ts",
+        "src/services/mcp/oauthPort.ts",
+        "src/services/mcp/elicitationHandler.ts"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "Authentication"
+      }
+    },
+    {
+      "name": "Configuration",
+      "description": "MCP server configuration loading and normalization pipeline. Loads server configs from multiple scopes (local, user, project, enterprise, dynamic, managed), fetches organization-managed configs from claude.ai, expands environment variables in config strings, and normalizes server names to API-compatible identifiers. Applies feature gates and settings to determine which servers are active.",
+      "edges": [
+        {
+          "target": "SDKClient",
+          "type": "data-flow",
+          "description": "claudeai.ts imports client utilities to fetch SDK MCP server configurations"
+        }
+      ],
+      "codeScope": [
+        "src/services/mcp/config.ts",
+        "src/services/mcp/normalization.ts",
+        "src/services/mcp/envExpansion.ts",
+        "src/services/mcp/claudeai.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Configuration"
+      }
+    },
+    {
+      "name": "Channels",
+      "description": "Multi-channel messaging integration for MCP. Manages channel plugin allowlists (GrowthBook-backed approval of Discord, Slack, etc.), channel-level permission relay for tool approvals over messaging platforms, and inbound channel notification handling that wraps messages in structured XML tags with validation and gating.",
+      "edges": [],
+      "codeScope": [
+        "src/services/mcp/channelPermissions.ts",
+        "src/services/mcp/channelAllowlist.ts",
+        "src/services/mcp/channelNotification.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Channels"
+      }
+    },
+    {
+      "name": "Transports",
+      "description": "Custom MCP transport layer implementations beyond the standard SDK transports. InProcessTransport provides linked transport pairs for running MCP server and client in the same process without subprocesses. SdkControlTransport bridges CLI MCP client and SDK MCP server communication via stdout control messages.",
+      "edges": [],
+      "codeScope": [
+        "src/services/mcp/InProcessTransport.ts",
+        "src/services/mcp/SdkControlTransport.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Transports"
+      }
+    },
+    {
+      "name": "Integrations",
+      "description": "External system integrations for MCP. VS Code SDK MCP bridge provides bidirectional communication with VS Code extensions (file update notifications, experiment gate sync). Official registry client fetches and caches approved MCP server URLs for classification. Server approval UI renders Ink-based approval dialogs for pending project MCP servers.",
+      "edges": [
+        {
+          "target": "SDKClient",
+          "type": "depends",
+          "description": "VS Code SDK MCP bridge interacts with client for server synchronization"
+        },
+        {
+          "target": "Configuration",
+          "type": "depends",
+          "description": "Server approval reads config to identify pending servers requiring user approval"
+        }
+      ],
+      "codeScope": [
+        "src/services/mcp/vscodeSdkMcp.ts",
+        "src/services/mcp/officialRegistry.ts",
+        "src/services/mcpServerApproval.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Integrations"
+      }
+    },
+    {
+      "name": "Utilities",
+      "description": "Shared MCP utility functions. Tool and command filtering by server name and status, MCP tool name string parsing and construction (server/tool name extraction, qualified name building), dynamic header generation by executing custom helper scripts for SSE/HTTP/WebSocket servers, and project-level MCP server status queries.",
+      "edges": [],
+      "codeScope": [
+        "src/services/mcp/utils.ts",
+        "src/services/mcp/mcpStringUtils.ts",
+        "src/services/mcp/headersHelper.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Utilities"
+      }
+    }
+  ]
+}

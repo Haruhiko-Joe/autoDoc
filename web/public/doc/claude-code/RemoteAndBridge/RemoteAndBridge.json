@@ -1,0 +1,107 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "92361d43-d753-4b56-9220-fa82074df2d1",
+  "description": "Multi-session and remote execution architecture enabling Claude Code to operate beyond the local terminal. The Bridge subsystem connects to claude.ai for remote-controlled sessions via WebSocket, handling session creation, JWT authentication, message polling, and permission callbacks. The Remote module manages remote agent sessions with WebSocket transport. The Server module provides direct-connect session management. The Coordinator mode orchestrates multi-agent workflows with team creation and task delegation. Includes upstream proxy support for corporate environments.",
+  "codeScope": [
+    "src/bridge/",
+    "src/remote/",
+    "src/server/",
+    "src/coordinator/",
+    "src/upstreamproxy/",
+    "src/assistant/",
+    "src/voice/"
+  ],
+  "nodes": [
+    {
+      "name": "Bridge",
+      "description": "The claude.ai remote-control bridge subsystem. Connects Claude Code to claude.ai via WebSocket/SSE for remote-controlled REPL sessions. Encompasses the full bridge lifecycle: session creation, JWT authentication and token refresh, work-dispatch polling, message ingress/egress, permission callbacks, transport layers (env-based and env-less), capacity management, trusted device handling, and bridge UI/debug tooling. Two core architectures coexist: the env-based path (replBridge.ts/bridgeMain.ts, ~5400 lines combined) using the Environments API work-dispatch layer, and the env-less path (remoteBridgeCore.ts, ~1000 lines) connecting directly to session-ingress without the Environments API.",
+      "edges": [],
+      "codeScope": [
+        "src/bridge/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "Bridge"
+      }
+    },
+    {
+      "name": "Remote",
+      "description": "Remote agent session management for the client side. Provides WebSocket connectivity to remote Claude Code sessions running on CCR infrastructure, including automatic reconnection with backoff, ping/pong keepalive, and permanent close code handling. Includes permission bridging (translating remote permission requests into local approval dialogs), and an SDK message adapter that converts CCR-format SDKMessages into internal REPL Message types for rendering.",
+      "edges": [],
+      "codeScope": [
+        "src/remote/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Remote"
+      }
+    },
+    {
+      "name": "DirectConnect",
+      "description": "Direct-connect server session management enabling Claude Code to connect to a locally-hosted or custom server endpoint rather than cloud infrastructure. Handles session creation via HTTP POST, WebSocket-based bidirectional communication, message routing (SDK messages vs control/permission requests), and automatic reconnection. Used by the REPL and headless runner as an alternative to the cloud-based remote/bridge paths.",
+      "edges": [
+        {
+          "target": "Remote",
+          "type": "depends",
+          "description": "Imports the RemotePermissionResponse type from RemoteSessionManager for permission handling compatibility"
+        }
+      ],
+      "codeScope": [
+        "src/server/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "DirectConnect"
+      }
+    },
+    {
+      "name": "Coordinator",
+      "description": "Coordinator mode configuration for multi-agent orchestration workflows. Controls whether Claude Code runs in coordinator mode (enabled via environment variable and feature flag), which enables team creation and task delegation tools. Provides allowed tool filtering for coordinator vs worker roles, user context generation with team/task-aware system prompts, and session mode matching for resume scenarios.",
+      "edges": [],
+      "codeScope": [
+        "src/coordinator/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Coordinator"
+      }
+    },
+    {
+      "name": "UpstreamProxy",
+      "description": "Container-side upstream proxy wiring for CCR (Claude Code Remote) environments. When running inside a CCR session container, reads session tokens, downloads and trusts the MITM proxy CA certificate, starts a local CONNECT-over-WebSocket relay that tunnels TCP connections through the CCR upstreamproxy endpoint, and exposes HTTPS_PROXY/SSL_CERT_FILE environment variables for all agent subprocesses. The relay accepts HTTP CONNECT from tools like curl/gh/kubectl and wraps bytes in protobuf-framed WebSocket messages. Fails open to avoid blocking sessions.",
+      "edges": [],
+      "codeScope": [
+        "src/upstreamproxy/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "UpstreamProxy"
+      }
+    },
+    {
+      "name": "AssistantHistory",
+      "description": "Session history fetching for the claude assistant viewer mode. Provides paginated retrieval of session events from the CCR API, converting raw API responses into typed HistoryPage objects with cursor-based pagination. Prepares OAuth authentication context once for reuse across multiple page fetches.",
+      "edges": [],
+      "codeScope": [
+        "src/assistant/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "AssistantHistory"
+      }
+    },
+    {
+      "name": "VoiceGating",
+      "description": "Voice mode feature gating and availability checks. Provides three levels of voice mode readiness: GrowthBook kill-switch check (tengu_amber_quartz_disabled flag), OAuth authentication verification (requires Anthropic OAuth tokens), and a combined runtime check used by commands and UI components to determine if voice mode should be enabled.",
+      "edges": [],
+      "codeScope": [
+        "src/voice/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "VoiceGating"
+      }
+    }
+  ]
+}

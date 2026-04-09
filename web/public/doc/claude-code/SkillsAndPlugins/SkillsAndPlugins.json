@@ -1,0 +1,78 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "722ba142-707a-4f2a-968c-5cf959c836be",
+  "description": "The extensibility layer allowing Claude Code's capabilities to be augmented with custom behaviors. Skills are high-level, prompt-driven capabilities (like /commit, /review-pr, /simplify) that can be bundled or loaded from user directories, with MCP-based skill builders for dynamic skill creation. Plugins provide deeper integration points with lifecycle hooks, bundled implementations, and a plugin loader/recommendation system. Together they enable third-party and user-defined extensions to the CLI.",
+  "codeScope": [
+    "src/skills/",
+    "src/plugins/",
+    "src/services/plugins/"
+  ],
+  "nodes": [
+    {
+      "name": "SkillFramework",
+      "description": "The core skill loading and registration infrastructure. Defines the BundledSkillDefinition type and maintains the in-process skill registry. Loads user-defined skills from filesystem directories (.claude/skills/) by parsing Markdown frontmatter for metadata (description, allowed tools, model, hooks, arguments). Provides the MCP skill builder bridge — a write-once registry that lets MCP server code create skill commands without circular imports through loadSkillsDir. Handles secure extraction of bundled skill reference files to disk with symlink-safe writes.",
+      "edges": [
+        {
+          "target": "BundledSkills",
+          "type": "depends",
+          "description": "BundledSkills register themselves through the registerBundledSkill() API defined in the framework"
+        },
+        {
+          "target": "PluginSystem",
+          "type": "data-flow",
+          "description": "Built-in plugins can contribute skills via BundledSkillDefinition, converted to Commands by the plugin registry"
+        }
+      ],
+      "codeScope": [
+        "src/skills/bundledSkills.ts",
+        "src/skills/loadSkillsDir.ts",
+        "src/skills/mcpSkillBuilders.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SkillFramework"
+      }
+    },
+    {
+      "name": "BundledSkills",
+      "description": "The collection of 17+ skill implementations that ship with the CLI. Each skill follows the same pattern: export a register function that calls registerBundledSkill() with a definition including name, description, trigger conditions (whenToUse), and a getPromptForCommand handler. Includes skills for config updates, keybindings, code verification, debugging, simplification, loremIpsum testing, skill creation (skillify), memory (remember), batch processing, stuck detection, Claude API guidance, Chrome integration, loop scheduling, and remote agent scheduling. Feature-gated skills are conditionally registered at startup via initBundledSkills().",
+      "edges": [
+        {
+          "target": "SkillFramework",
+          "type": "calls",
+          "description": "Each bundled skill calls registerBundledSkill() from the framework to register itself in the global registry"
+        }
+      ],
+      "codeScope": [
+        "src/skills/bundled/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "BundledSkills"
+      }
+    },
+    {
+      "name": "PluginSystem",
+      "description": "The plugin lifecycle management system. The built-in plugin registry (builtinPlugins.ts) manages plugins that ship with the CLI and can be toggled by users, converting their skill definitions to Commands. The plugin operations module (pluginOperations.ts) provides pure library functions for install, uninstall, enable, disable, and update — used by both CLI commands and interactive UI. The CLI commands module (pluginCliCommands.ts) wraps operations with console output, telemetry, and process exit handling. The installation manager (PluginInstallationManager.ts) performs background marketplace reconciliation at startup, auto-refreshing plugins when new marketplaces are cloned and notifying users when updates are available.",
+      "edges": [
+        {
+          "target": "SkillFramework",
+          "type": "depends",
+          "description": "Uses BundledSkillDefinition type to convert plugin-contributed skills into Command objects"
+        }
+      ],
+      "codeScope": [
+        "src/plugins/builtinPlugins.ts",
+        "src/plugins/bundled/index.ts",
+        "src/services/plugins/PluginInstallationManager.ts",
+        "src/services/plugins/pluginCliCommands.ts",
+        "src/services/plugins/pluginOperations.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PluginSystem"
+      }
+    }
+  ]
+}

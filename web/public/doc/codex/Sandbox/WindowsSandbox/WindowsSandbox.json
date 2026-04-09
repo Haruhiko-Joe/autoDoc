@@ -1,0 +1,205 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "a71a4961-ed3c-47f0-be2c-f07e61e9458a",
+  "description": "Windows 沙箱实现，使用受限令牌、基于 ACL 的文件系统隔离和提升权限的进程管理。实现只读和工作区写入模式，具有能力 SID 跟踪、防火墙集成、conpty 终端模拟，以及沙箱用户身份和权限的多阶段设置编排。",
+  "codeScope": [
+    "codex-rs/windows-sandbox-rs/"
+  ],
+  "nodes": [
+    {
+      "name": "SandboxCapture",
+      "description": "沙箱主入口点和编排逻辑。包含 `run_windows_sandbox_capture`，协调策略解析、令牌创建、ACL 应用、进程启动、I/O 捕获和清理。实现了旧版受限令牌路径和非 Windows 桩实现。作为该 crate 的主要公共 API 接口。",
+      "edges": [
+        {
+          "target": "SecurityPrimitives",
+          "type": "calls",
+          "description": "创建受限令牌（只读或工作区写入）并对文件系统路径应用沙箱 SID 的允许/拒绝 ACE"
+        },
+        {
+          "target": "PolicyAndEnvironment",
+          "type": "calls",
+          "description": "从 JSON/预设字符串解析沙箱策略、计算允许/拒绝路径集，并规范化环境变量（网络阻止、分页器、空设备）"
+        },
+        {
+          "target": "ProcessSpawning",
+          "type": "calls",
+          "description": "通过 CreateProcessAsUserW 使用受限令牌和 stdio 管道启动沙箱化的子进程"
+        },
+        {
+          "target": "Utilities",
+          "type": "depends",
+          "description": "使用日志辅助函数记录沙箱启动/成功/失败事件"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/windows-sandbox-rs/src/lib.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SandboxCapture"
+      }
+    },
+    {
+      "name": "SecurityPrimitives",
+      "description": "用于沙箱隔离的核心 Windows 安全原语。创建禁用特权的受限令牌、提取登录 SID、注入能力 SID 以实现只读和工作区写入模式。管理 DACL 操作：在文件系统对象上添加允许/拒绝 ACE、清理时撤销 ACE、保护工作区目录（.codex、.agents）。持久化每个工作区的能力 SID 以确保跨会话 ACL 一致性。",
+      "edges": [
+        {
+          "target": "Utilities",
+          "type": "depends",
+          "description": "使用 winutil 进行宽字符串转换和 SID 字节格式化"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/windows-sandbox-rs/src/token.rs",
+        "codex-rs/windows-sandbox-rs/src/acl.rs",
+        "codex-rs/windows-sandbox-rs/src/cap.rs",
+        "codex-rs/windows-sandbox-rs/src/workspace_acl.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SecurityPrimitives"
+      }
+    },
+    {
+      "name": "PolicyAndEnvironment",
+      "description": "沙箱策略解析和文件系统路径计算。从 JSON 或预设字符串（只读、工作区写入）解析策略，基于可写根目录和策略 CWD 计算允许/拒绝路径集，为沙箱化执行规范化环境变量（网络阻止、NUL 设备、分页器），规范化 Windows 路径，并执行全局可写目录审计以主动拒绝对不安全位置的写入访问。",
+      "edges": [
+        {
+          "target": "SecurityPrimitives",
+          "type": "calls",
+          "description": "审计模块加载能力 SID 并对发现的全局可写目录应用拒绝写入 ACE"
+        },
+        {
+          "target": "Utilities",
+          "type": "depends",
+          "description": "使用路径规范化和日志记录审计扫描进度"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/windows-sandbox-rs/src/policy.rs",
+        "codex-rs/windows-sandbox-rs/src/allow.rs",
+        "codex-rs/windows-sandbox-rs/src/env.rs",
+        "codex-rs/windows-sandbox-rs/src/path_normalization.rs",
+        "codex-rs/windows-sandbox-rs/src/audit.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PolicyAndEnvironment"
+      }
+    },
+    {
+      "name": "ProcessSpawning",
+      "description": "用于沙箱化执行的 Windows 进程创建和终端模拟。提供 CreateProcessAsUserW 包装器，包括环境块构建、stdio 管道设置和可选的私有桌面分配。包含 ConPTY 伪控制台支持，通过 PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE 实现 TTY 模式执行，以及通过随机命名的 Windows 桌面和为沙箱 SID 设置宽松 DACL 实现桌面隔离。",
+      "edges": [
+        {
+          "target": "Utilities",
+          "type": "depends",
+          "description": "使用 winutil 进行 Windows 参数引用、宽字符串转换和错误格式化"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/windows-sandbox-rs/src/process.rs",
+        "codex-rs/windows-sandbox-rs/src/conpty/mod.rs",
+        "codex-rs/windows-sandbox-rs/src/conpty/proc_thread_attr.rs",
+        "codex-rs/windows-sandbox-rs/src/desktop.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ProcessSpawning"
+      }
+    },
+    {
+      "name": "ElevatedBackend",
+      "description": "提升权限的沙箱执行路径，在专用沙箱用户账户（CodexSandboxOffline/Online）下运行命令。父进程创建具有宽松 ACL 的命名管道，并在沙箱用户的登录会话下启动 command_runner 二进制文件。runner 通过帧化 IPC 协议接收启动请求，从沙箱用户创建受限令牌，通过 ConPTY 或管道启动子进程，并将输出/退出帧流式传回。包括用于跨用户目录访问的 CWD junction 创建。",
+      "edges": [
+        {
+          "target": "SecurityPrimitives",
+          "type": "calls",
+          "description": "command runner 从沙箱用户的登录令牌创建受限令牌并为能力 SID 应用 ACE"
+        },
+        {
+          "target": "ProcessSpawning",
+          "type": "calls",
+          "description": "通过 ConPTY（tty=true）或基于管道的进程创建（tty=false）启动沙箱化的子进程"
+        },
+        {
+          "target": "PolicyAndEnvironment",
+          "type": "calls",
+          "description": "解析沙箱策略并为提升权限的执行上下文计算允许/拒绝路径"
+        },
+        {
+          "target": "Utilities",
+          "type": "depends",
+          "description": "使用 winutil 进行 SID 解析、参数引用，以及用于 IPC 诊断的日志记录"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/windows-sandbox-rs/src/elevated_impl.rs",
+        "codex-rs/windows-sandbox-rs/src/elevated/command_runner_win.rs",
+        "codex-rs/windows-sandbox-rs/src/elevated/runner_pipe.rs",
+        "codex-rs/windows-sandbox-rs/src/elevated/ipc_framed.rs",
+        "codex-rs/windows-sandbox-rs/src/elevated/cwd_junction.rs",
+        "codex-rs/windows-sandbox-rs/src/bin/command_runner.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ElevatedBackend"
+      }
+    },
+    {
+      "name": "SetupOrchestration",
+      "description": "多阶段提升权限的设置流程，为 Windows 系统准备沙箱化执行环境。创建专用沙箱用户账户（离线/在线）、配置 Windows 防火墙规则以按用户 SID 阻止/允许网络流量、使用 DPAPI 加密管理凭据、将辅助二进制文件物化到 sandbox-bin 目录、应用带有敏感目录排除的只读根 ACL、写入版本戳记的设置标记，并提供运行时凭据加载的身份验证。",
+      "edges": [
+        {
+          "target": "SecurityPrimitives",
+          "type": "calls",
+          "description": "在设置过程中创建能力 SID 并对只读根目录为沙箱用户应用 ACL"
+        },
+        {
+          "target": "PolicyAndEnvironment",
+          "type": "depends",
+          "description": "从沙箱策略中收集读/写根路径以确定哪些目录需要 ACL 设置"
+        },
+        {
+          "target": "Utilities",
+          "type": "depends",
+          "description": "使用 DPAPI 进行凭据加密、日志记录设置进度，以及 winutil 进行 SID 操作"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/windows-sandbox-rs/src/setup_orchestrator.rs",
+        "codex-rs/windows-sandbox-rs/src/setup_main_win.rs",
+        "codex-rs/windows-sandbox-rs/src/setup_error.rs",
+        "codex-rs/windows-sandbox-rs/src/identity.rs",
+        "codex-rs/windows-sandbox-rs/src/sandbox_users.rs",
+        "codex-rs/windows-sandbox-rs/src/firewall.rs",
+        "codex-rs/windows-sandbox-rs/src/hide_users.rs",
+        "codex-rs/windows-sandbox-rs/src/helper_materialization.rs",
+        "codex-rs/windows-sandbox-rs/src/bin/setup_main.rs"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "SetupOrchestration"
+      }
+    },
+    {
+      "name": "Utilities",
+      "description": "共享的 Win32 辅助函数和横切关注点工具。包括宽字符串转换、SID 字节/字符串格式化、Windows 参数引用、DPAPI 数据保护（加密/解密）、带时间戳的结构化日志文件写入、用于序列化并发 ACL 修改的文件系统 ACL 互斥锁、各种沙箱路径辅助函数，以及 crate 配置的构建脚本。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/windows-sandbox-rs/src/winutil.rs",
+        "codex-rs/windows-sandbox-rs/src/dpapi.rs",
+        "codex-rs/windows-sandbox-rs/src/logging.rs",
+        "codex-rs/windows-sandbox-rs/src/read_acl_mutex.rs",
+        "codex-rs/windows-sandbox-rs/src/sandbox_utils.rs",
+        "codex-rs/windows-sandbox-rs/build.rs",
+        "codex-rs/windows-sandbox-rs/Cargo.toml"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Utilities"
+      }
+    }
+  ]
+}

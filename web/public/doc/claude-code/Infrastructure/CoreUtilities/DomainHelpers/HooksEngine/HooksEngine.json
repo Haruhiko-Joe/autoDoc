@@ -1,0 +1,129 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "47f0e424-7872-48f5-89ea-08b82137526f",
+  "description": "Extensible hook execution system (3700+ lines, 17 files). Provides an async hook registry for tracking pending shell-based hooks, four execution backends (bash, HTTP with SSRF guard, single-turn prompt, multi-turn agent), a decoupled event broadcasting system for hook lifecycle, session-scoped hook storage, post-sampling hook callbacks, skill improvement analysis via LLM, skill/frontmatter hook registration, config management and snapshots, file change watching, and shared helpers for argument substitution and structured output enforcement.",
+  "codeScope": [
+    "src/utils/hooks/"
+  ],
+  "nodes": [
+    {
+      "name": "ExecutionBackends",
+      "description": "Four hook execution backends and their shared utilities. execAgentHook spawns a multi-turn LLM agent with tool access and structured output enforcement. execPromptHook runs a single-turn LLM evaluation for hook conditions. execHttpHook POSTs JSON to configured URLs with environment variable interpolation, sandbox proxy routing, and URL allowlist enforcement. ssrfGuard validates DNS resolutions against blocked private/link-local address ranges. hookHelpers provides shared utilities: Zod response schema, argument substitution into prompts, structured output tool creation, and enforcement registration.",
+      "edges": [
+        {
+          "target": "SessionAndConfig",
+          "type": "calls",
+          "description": "hookHelpers registers structured output enforcement via addFunctionHook from sessionHooks; execAgentHook calls clearSessionHooks to isolate agent sessions"
+        },
+        {
+          "target": "AsyncRegistry",
+          "type": "data-flow",
+          "description": "Execution backends are invoked by the async registry system which tracks their pending status and collects responses"
+        }
+      ],
+      "codeScope": [
+        "src/utils/hooks/execAgentHook.ts",
+        "src/utils/hooks/execHttpHook.ts",
+        "src/utils/hooks/execPromptHook.ts",
+        "src/utils/hooks/ssrfGuard.ts",
+        "src/utils/hooks/hookHelpers.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ExecutionBackends"
+      }
+    },
+    {
+      "name": "AsyncRegistry",
+      "description": "Async hook execution tracking and lifecycle event broadcasting. AsyncHookRegistry maintains a global registry of pending async hooks (shell-based), providing registration, status polling, response collection, finalization, and cleanup. hookEvents implements a decoupled event system for hook lifecycle with typed events (HookStarted, HookProgress, HookResponse), progress intervals, event filtering based on configuration, and a queue for events emitted before handler registration.",
+      "edges": [
+        {
+          "target": "SessionAndConfig",
+          "type": "depends",
+          "description": "Hook event filtering reads hook configuration to determine which events to emit"
+        }
+      ],
+      "codeScope": [
+        "src/utils/hooks/AsyncHookRegistry.ts",
+        "src/utils/hooks/hookEvents.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "AsyncRegistry"
+      }
+    },
+    {
+      "name": "SessionAndConfig",
+      "description": "Session-scoped hook storage, configuration management, and settings queries. sessionHooks manages session-scoped hooks stored in app state with support for command hooks, prompt hooks, and in-memory function hooks with callbacks. hooksSettings provides utilities for querying hooks from all sources (user, project, local, session, plugin, managed), comparison, display, and priority sorting. hooksConfigManager and hooksConfigSnapshot capture and cache hooks configuration snapshots with policy enforcement (managed-only, disable-all) and lazy invalidation.",
+      "edges": [],
+      "codeScope": [
+        "src/utils/hooks/sessionHooks.ts",
+        "src/utils/hooks/hooksSettings.ts",
+        "src/utils/hooks/hooksConfigManager.ts",
+        "src/utils/hooks/hooksConfigSnapshot.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SessionAndConfig"
+      }
+    },
+    {
+      "name": "HookRegistration",
+      "description": "Hook registration from skills and agent frontmatter. registerSkillHooks registers hooks defined in skill frontmatter as session hooks, supporting one-shot hooks that auto-remove after first execution. registerFrontmatterHooks registers hooks from agent/skill frontmatter into session-scoped hooks, converting Stop hooks to SubagentStop for agent-context hooks.",
+      "edges": [
+        {
+          "target": "SessionAndConfig",
+          "type": "calls",
+          "description": "Both registration modules call addSessionHook/removeSessionHook from sessionHooks to manage the session hook store"
+        }
+      ],
+      "codeScope": [
+        "src/utils/hooks/registerSkillHooks.ts",
+        "src/utils/hooks/registerFrontmatterHooks.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "HookRegistration"
+      }
+    },
+    {
+      "name": "PostSamplingAndImprovement",
+      "description": "Post-sampling hook callbacks and LLM-based skill improvement analysis. postSamplingHooks provides an internal registry for hooks called after model sampling completes, used for side-channel operations. apiQueryHookHelper offers a factory function for creating API query hooks with custom message building and response parsing. skillImprovement uses these to implement skill improvement detection as a post-sampling hook that analyzes user messages for improvement suggestions and applies them by rewriting skill files via LLM.",
+      "edges": [
+        {
+          "target": "SessionAndConfig",
+          "type": "depends",
+          "description": "apiQueryHookHelper uses session context types; skill improvement hooks are registered in session scope"
+        }
+      ],
+      "codeScope": [
+        "src/utils/hooks/postSamplingHooks.ts",
+        "src/utils/hooks/apiQueryHookHelper.ts",
+        "src/utils/hooks/skillImprovement.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PostSamplingAndImprovement"
+      }
+    },
+    {
+      "name": "FileWatcher",
+      "description": "File change watching for hook triggers. Uses chokidar to monitor file system changes and execute FileChanged and CwdChanged hooks when files are modified. Manages dynamic watch paths with add/remove support, working directory change notifications, and environment hook notifier callbacks. Reads hook configuration from snapshots to determine which paths to watch.",
+      "edges": [
+        {
+          "target": "SessionAndConfig",
+          "type": "depends",
+          "description": "Reads hooks configuration from hooksConfigSnapshot to determine which file change hooks are active and what paths to watch"
+        }
+      ],
+      "codeScope": [
+        "src/utils/hooks/fileChangedWatcher.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "FileWatcher"
+      }
+    }
+  ]
+}

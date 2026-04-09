@@ -1,0 +1,93 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "99b493bd-33c4-4de4-ac1c-7690247ae8e4",
+  "description": "Terminal I/O abstraction layer encompassing escape sequence generation, parsing, and terminal interaction. The termio/ subdirectory provides a complete library of terminal escape sequences: CSI (cursor movement, erase, scroll regions, cursor styles), OSC (hyperlinks, clipboard, tab status, iTerm2 progress), SGR (text styling — colors, bold, italic, underline, etc.), DEC private modes (alt screen, mouse tracking, focus events), and ESC sequences. Includes a tokenizer and parser for reading terminal responses, the Terminal type abstraction for write operations and capability detection, log-update for intelligent screen diffing and writing, terminal querier for DA1/background color queries, and focus state tracking.",
+  "codeScope": [
+    "src/ink/termio/",
+    "src/ink/terminal.ts",
+    "src/ink/terminal-querier.ts",
+    "src/ink/terminal-focus-state.ts",
+    "src/ink/log-update.ts",
+    "src/ink/clearTerminal.ts",
+    "src/ink/termio.ts",
+    "src/ink/supports-hyperlinks.ts"
+  ],
+  "nodes": [
+    {
+      "name": "EscapeSequences",
+      "description": "Complete ANSI escape sequence library providing both generation and parsing. Generation side: ANSI control character constants and introducers (ansi.ts), CSI sequences for cursor movement, erase, scroll regions, and cursor styles (csi.ts), OSC sequences for hyperlinks, clipboard, tab status, iTerm2 progress, and multiplexer passthrough (osc.ts), SGR parser for text styling — colors (named, 256, RGB), bold, italic, underline styles (sgr.ts), DEC private mode sequences for alt screen, mouse tracking, focus events, synchronized output, bracketed paste (dec.ts), and simple ESC sequences for cursor save/restore and reset (esc.ts). Parsing side: a streaming tokenizer that splits raw terminal input into text chunks and escape sequence boundaries (tokenize.ts), and a semantic parser that interprets tokenized sequences into structured Action objects with style tracking (parser.ts). Shared type definitions describe the semantic action model: TextSegment, CursorAction, EraseAction, ScrollAction, LinkAction, ModeAction, Color, TextStyle, and Grapheme types (types.ts). The barrel module (termio.ts) re-exports the Parser class and all public types.",
+      "edges": [],
+      "codeScope": [
+        "src/ink/termio/",
+        "src/ink/termio.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "EscapeSequences"
+      }
+    },
+    {
+      "name": "Terminal",
+      "description": "Terminal type abstraction and capability detection layer. Defines the Terminal type (stdout/stderr writable streams) and writeDiffToTerminal which buffers a Diff patch list into a single write with optional DEC 2026 synchronized-output wrapping. Provides capability detection functions: isSynchronizedOutputSupported (DEC 2026 across iTerm, WezTerm, ghostty, kitty, foot, etc.), isProgressReportingAvailable (OSC 9;4 in ConEmu, Ghostty, iTerm2), supportsExtendedKeys (Kitty keyboard protocol allowlist), isXtermJs (TERM_PROGRAM + XTVERSION probe for VS Code/SSH), hasCursorUpViewportYankBug (Windows conhost workaround), and supportsHyperlinks (OSC 8 detection with additional terminal list). Also includes focus state tracking (focused/blurred/unknown signal with useSyncExternalStore-compatible subscribe/get pattern) and cross-platform terminal clearing with scrollback support (ESC[3J detection for Windows Terminal, mintty, legacy console).",
+      "edges": [
+        {
+          "target": "EscapeSequences",
+          "type": "depends",
+          "description": "Imports CSI functions (cursorMove, cursorTo, eraseLines), DEC constants (BSU, ESU, HIDE_CURSOR, SHOW_CURSOR), OSC link function, and CSI primitives (CURSOR_HOME, ERASE_SCREEN, ERASE_SCROLLBACK) for generating terminal output"
+        },
+        {
+          "target": "LogUpdate",
+          "type": "data-flow",
+          "description": "writeDiffToTerminal consumes the Diff type produced by LogUpdate's render methods, applying patches to the terminal stream"
+        }
+      ],
+      "codeScope": [
+        "src/ink/terminal.ts",
+        "src/ink/terminal-focus-state.ts",
+        "src/ink/clearTerminal.ts",
+        "src/ink/supports-hyperlinks.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Terminal"
+      }
+    },
+    {
+      "name": "LogUpdate",
+      "description": "Intelligent screen diffing engine that computes minimal terminal update patches. The LogUpdate class compares successive rendered frames (Screen buffers) and produces a Diff — a list of typed patch operations (stdout content, clear lines, cursorMove, cursorTo, carriageReturn, cursorHide/Show, hyperlink, styleStr) that efficiently update the terminal display. Supports full-frame rendering (walking every cell with ANSI style and hyperlink transitions), cell-level diff rendering (only emitting changed cells using the Screen's diffEach iterator), scroll-region optimization (using CSI scroll-up/down with DECSTBM to shift content instead of redrawing), and non-TTY fallback. Handles style pooling for compact ANSI diff output and coordinates with the screen's row-shift tracking for scroll detection.",
+      "edges": [
+        {
+          "target": "EscapeSequences",
+          "type": "depends",
+          "description": "Uses CSI functions (CURSOR_HOME, scrollDown, scrollUp, setScrollRegion, RESET_SCROLL_REGION) and OSC functions (link, LINK_END) for generating diff patches"
+        }
+      ],
+      "codeScope": [
+        "src/ink/log-update.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "LogUpdate"
+      }
+    },
+    {
+      "name": "TerminalQuerier",
+      "description": "Timeout-free terminal query/response protocol using DA1 sentinels. The TerminalQuerier class manages a queue of outbound queries (DECRQM mode status, DA1/DA2 device attributes, Kitty keyboard flags, DECXCPR cursor position, OSC dynamic colors, XTVERSION) paired with response matchers. Each query batch is flushed with a DA1 sentinel — since terminals answer in order, if DA1 arrives before a query's response, the terminal doesn't support it (resolved as undefined). Provides query builder functions (decrqm, da1, da2, kittyKeyboard, cursorPosition, oscColor, xtversion) that return TerminalQuery objects with request sequences and type-safe match predicates. The onResponse dispatcher matches incoming TerminalResponse events from the input parser, resolving pending promises or draining unsupported queries at sentinel boundaries.",
+      "edges": [
+        {
+          "target": "EscapeSequences",
+          "type": "depends",
+          "description": "Uses csi() and osc() functions from the escape sequence library to construct query request strings"
+        }
+      ],
+      "codeScope": [
+        "src/ink/terminal-querier.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TerminalQuerier"
+      }
+    }
+  ]
+}

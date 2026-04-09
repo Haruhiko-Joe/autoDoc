@@ -1,0 +1,124 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "eba0099b-273a-4358-a966-a52848fc29ab",
+  "description": "所有内置代理工具定义的工厂模块。每个模块提供 create_* 函数，为一类工具生成 ToolSpec 实例：shell/命令执行（local_tool）、代理生成和生命周期管理（agent_tool、agent_job_tool）、apply-patch（apply_patch_tool）、code-mode 增强（code_mode）、MCP 工具/资源桥接（mcp_tool、mcp_resource_tool）、JS REPL（js_repl_tool）、计划管理（plan_tool）、用户输入请求（request_user_input_tool）、目录列表（utility_tool）、图像查看（view_image）和动态工具解析（dynamic_tool）。",
+  "codeScope": [
+    "codex-rs/tools/src/agent_tool.rs",
+    "codex-rs/tools/src/local_tool.rs",
+    "codex-rs/tools/src/code_mode.rs",
+    "codex-rs/tools/src/agent_job_tool.rs",
+    "codex-rs/tools/src/apply_patch_tool.rs",
+    "codex-rs/tools/src/mcp_resource_tool.rs",
+    "codex-rs/tools/src/mcp_tool.rs",
+    "codex-rs/tools/src/utility_tool.rs",
+    "codex-rs/tools/src/request_user_input_tool.rs",
+    "codex-rs/tools/src/view_image.rs",
+    "codex-rs/tools/src/js_repl_tool.rs",
+    "codex-rs/tools/src/plan_tool.rs",
+    "codex-rs/tools/src/dynamic_tool.rs"
+  ],
+  "nodes": [
+    {
+      "name": "ShellExecution",
+      "description": "shell 和命令执行工具的工厂函数。创建 exec_command（基于 PTY 的命令运行器，支持登录 shell、TTY、yield 和 token 限制选项）、write_stdin（向运行中的会话发送输入）、shell（基于数组的命令变体）和 kill_session 工具。处理平台特定的指引（Windows 破坏性文件系统警告）和执行权限审批参数。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/tools/src/local_tool.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ShellExecution"
+      }
+    },
+    {
+      "name": "AgentLifecycle",
+      "description": "多代理编排工具的工厂函数。提供版本化的 spawn_agent（v1/v2）用于启动带有模型选择和任务命名的子代理，send_input（v1/v2）用于向运行中的代理发送消息，wait_agent 支持可配置超时，get_agent_state 用于状态轮询，cancel_agent 用于终止，以及 spawn_agents_on_csv 用于通过并发工作代理批量处理 CSV 行。定义了 SpawnAgentToolOptions 和 WaitAgentTimeoutOptions 配置类型。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/tools/src/agent_tool.rs",
+        "codex-rs/tools/src/agent_job_tool.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "AgentLifecycle"
+      }
+    },
+    {
+      "name": "CodeMode",
+      "description": "Code-mode 工具增强与创建。augment_tool_spec_for_code_mode 使用 code-mode 执行示例丰富任何 ToolSpec 的描述。collect_code_mode_tool_definitions 提取符合条件的嵌套工具用于 code-mode 运行时。创建自由格式 exec 工具（使用 Lark 语法处理 pragma 前缀的源码）和用于轮询已 yield 执行单元的 wait 工具。桥接到 codex_code_mode crate 进行描述生成和工具类型分类。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/tools/src/code_mode.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "CodeMode"
+      }
+    },
+    {
+      "name": "PatchTool",
+      "description": "apply-patch 文件编辑工具的工厂函数。提供 JSON 参数变体（create_apply_patch_tool）和自由格式语法变体（create_apply_patch_freeform_tool），后者使用自定义 Lark 语法处理精简的 unified-diff 格式，支持基于 hunk 上下文匹配的 Add/Delete/Update 文件操作。定义了 ApplyPatchToolFormat 枚举和 ApplyPatchToolCreateOptions。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/tools/src/apply_patch_tool.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PatchTool"
+      }
+    },
+    {
+      "name": "McpBridge",
+      "description": "工具和资源的 MCP 协议桥接。parse_mcp_tool 将 rmcp::model::Tool 转换为内部 ToolDefinition，规范化 schema（缺少时插入空 properties）并构造输出 schema。资源工具提供 list_mcp_resources（带服务器过滤和分页游标）、list_mcp_resource_templates 和 read_mcp_resource，用于访问 MCP 服务器提供的数据源。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/tools/src/mcp_tool.rs",
+        "codex-rs/tools/src/mcp_resource_tool.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "McpBridge"
+      }
+    },
+    {
+      "name": "JsRepl",
+      "description": "JavaScript REPL 工具的工厂函数。create_js_repl_tool 生成一个自由格式工具，使用 Lark 语法接受原始 JS 源码（可选 pragma 行配置超时），同时拒绝格式错误的输入（JSON 包装器、引号字符串、markdown 代码围栏）。create_js_repl_reset_tool 创建一个简单的函数工具用于重启持久化的 Node 内核。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/tools/src/js_repl_tool.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "JsRepl"
+      }
+    },
+    {
+      "name": "UserInteraction",
+      "description": "面向用户的交互工具的工厂函数。create_request_user_input_tool 构建一个结构化问卷工具，包含多选选项（标签 + 描述）、问题 schema 和协作模式选择。create_update_plan_tool 创建一个计划管理工具，接受步骤/状态项数组用于跟踪任务进度。包含 RequestUserInputArgs 集成和 ModeKind 感知的描述生成。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/tools/src/request_user_input_tool.rs",
+        "codex-rs/tools/src/plan_tool.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "UserInteraction"
+      }
+    },
+    {
+      "name": "UtilityAndParsing",
+      "description": "其余小型实用工具工厂。create_list_dir_tool 用于带深度控制的分页目录列表。create_view_image_tool 用于加载本地图像，可选原始分辨率细节覆盖（ViewImageToolOptions）。parse_dynamic_tool 通过解析输入 schema 将 codex_protocol 中的 DynamicToolSpec 转换为内部 ToolDefinition。还包括用于测试屏障同步的 create_test_sync_tool。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/tools/src/utility_tool.rs",
+        "codex-rs/tools/src/view_image.rs",
+        "codex-rs/tools/src/dynamic_tool.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "UtilityAndParsing"
+      }
+    }
+  ]
+}

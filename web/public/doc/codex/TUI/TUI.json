@@ -1,0 +1,251 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "518d7515-f647-45e4-81b3-9bd0fabb7d9f",
+  "description": "基于 ratatui 和 crossterm 构建的终端用户界面。在终端中提供交互式聊天体验，包含 markdown 渲染、语法高亮的 diff、工具调用审批对话框、文件搜索、模型/连接器选择和流式输出显示。",
+  "codeScope": [
+    "codex-rs/tui/"
+  ],
+  "nodes": [
+    {
+      "name": "AppOrchestrator",
+      "description": "顶层应用状态机。拥有主事件循环，分发 AppEvent 和 AppCommand，管理 app-server 会话生命周期，协调线程加载/导航，处理回溯，并在 TUI 与核心协议之间桥接审批转换。还包含 crate 入口点（lib.rs/main.rs）和 CLI 参数解析。",
+      "edges": [
+        {
+          "target": "ChatSurface",
+          "type": "composes",
+          "description": "拥有并驱动 ChatWidget，将协议事件和用户操作转发给它"
+        },
+        {
+          "target": "TerminalRuntime",
+          "type": "calls",
+          "description": "初始化终端，运行事件循环，并分发 TuiEvent"
+        },
+        {
+          "target": "Onboarding",
+          "type": "calls",
+          "description": "在进入主聊天循环之前，在首次运行时启动引导/身份验证界面"
+        },
+        {
+          "target": "PickersAndStatus",
+          "type": "calls",
+          "description": "响应用户命令打开会话恢复选择器、模型选择和状态视图"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/tui/src/lib.rs",
+        "codex-rs/tui/src/main.rs",
+        "codex-rs/tui/src/cli.rs",
+        "codex-rs/tui/src/app.rs",
+        "codex-rs/tui/src/app/",
+        "codex-rs/tui/src/app_event.rs",
+        "codex-rs/tui/src/app_command.rs",
+        "codex-rs/tui/src/app_event_sender.rs",
+        "codex-rs/tui/src/app_backtrack.rs",
+        "codex-rs/tui/src/app_server_session.rs",
+        "codex-rs/tui/src/app_server_approval_conversions.rs",
+        "codex-rs/tui/src/updates.rs",
+        "codex-rs/tui/src/update_action.rs",
+        "codex-rs/tui/src/update_prompt.rs"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "AppOrchestrator"
+      }
+    },
+    {
+      "name": "ChatSurface",
+      "description": "主聊天视口组件（ChatWidget）。消费来自代理会话的协议事件，构建和管理可滚动的 HistoryCell 对话记录，处理中断和键盘路由（在对话记录和 BottomPane 之间），管理实时/语音会话、插件和技能集成界面，并渲染包含模型/代理信息的会话头部。",
+      "edges": [
+        {
+          "target": "BottomPane",
+          "type": "composes",
+          "description": "拥有 BottomPane，提供输入编辑器和弹出/模态窗口栈"
+        },
+        {
+          "target": "ContentRendering",
+          "type": "calls",
+          "description": "使用 markdown 渲染、diff 渲染和流式管道生成对话记录单元格内容"
+        },
+        {
+          "target": "PickersAndStatus",
+          "type": "calls",
+          "description": "在聊天界面中显示状态指示器并打开多代理选择器"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/tui/src/chatwidget.rs",
+        "codex-rs/tui/src/chatwidget/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "ChatSurface"
+      }
+    },
+    {
+      "name": "BottomPane",
+      "description": "聊天 UI 的交互式底栏。包含 ChatComposer（可编辑的提示输入框，支持历史记录、粘贴处理和 mention 功能），以及一组分层的临时视图：工具调用审批覆盖层、文件搜索弹出窗口、斜杠命令菜单、MCP 服务器引出表单、技能/插件开关、反馈提交、模型/主题选择弹出窗口、状态栏配置及其他模态对话框。处理活动视图与编辑器之间的本地输入路由。",
+      "edges": [
+        {
+          "target": "ContentRendering",
+          "type": "calls",
+          "description": "使用语法高亮和行渲染工具处理审批 diff 和命令预览"
+        },
+        {
+          "target": "SharedUtilities",
+          "type": "depends",
+          "description": "使用按键提示、剪贴板、滚动状态和 UI 常量"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/tui/src/bottom_pane/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "BottomPane"
+      }
+    },
+    {
+      "name": "ContentRendering",
+      "description": "内容渲染管道。将 markdown 解析为带有内联代码样式的 ratatui Lines，渲染语法高亮的 diff（统一和并排模式），管理流式对话记录管道（换行符门控的 markdown 收集、自适应排空分块、提交节拍），并提供表示已完成和进行中对话记录条目的 HistoryCell 和 ExecCell 数据模型。还处理文本换行、行截断以及用于灵活布局的 renderable 抽象。",
+      "edges": [
+        {
+          "target": "SharedUtilities",
+          "type": "depends",
+          "description": "使用颜色/样式定义、文本格式化辅助函数和行工具"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/tui/src/markdown.rs",
+        "codex-rs/tui/src/markdown_render.rs",
+        "codex-rs/tui/src/markdown_render_tests.rs",
+        "codex-rs/tui/src/markdown_stream.rs",
+        "codex-rs/tui/src/diff_render.rs",
+        "codex-rs/tui/src/render/",
+        "codex-rs/tui/src/history_cell.rs",
+        "codex-rs/tui/src/exec_cell/",
+        "codex-rs/tui/src/streaming/",
+        "codex-rs/tui/src/live_wrap.rs",
+        "codex-rs/tui/src/wrapping.rs",
+        "codex-rs/tui/src/line_truncation.rs",
+        "codex-rs/tui/src/text_formatting.rs"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "ContentRendering"
+      }
+    },
+    {
+      "name": "TerminalRuntime",
+      "description": "终端基础设施层。管理 raw 模式终端的初始化和清理（crossterm/ratatui）、键盘/鼠标/窗口大小调整事件的异步事件流代理、帧率限制和重绘调度、作业控制（Unix 上的 Ctrl+Z 挂起/恢复）、桌面通知后端（BEL 和 OSC9）、自定义终端扩展，以及终端调色板/标题管理。",
+      "edges": [
+        {
+          "target": "AppOrchestrator",
+          "type": "event",
+          "description": "发出被 App 事件循环消费的 TuiEvent（按键、窗口大小调整、焦点变化）"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/tui/src/tui.rs",
+        "codex-rs/tui/src/tui/",
+        "codex-rs/tui/src/custom_terminal.rs",
+        "codex-rs/tui/src/terminal_palette.rs",
+        "codex-rs/tui/src/terminal_title.rs",
+        "codex-rs/tui/src/frames.rs",
+        "codex-rs/tui/src/notifications/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TerminalRuntime"
+      }
+    },
+    {
+      "name": "Onboarding",
+      "description": "在主聊天会话之前显示的首次运行和身份验证流程。包括引导界面序列（欢迎消息、身份验证提供商选择、无头 ChatGPT 登录）、本地 ChatGPT 认证令牌处理、项目级配置的信任目录确认，以及让用户确认或更改会话工作目录的工作目录提示。",
+      "edges": [
+        {
+          "target": "TerminalRuntime",
+          "type": "depends",
+          "description": "使用终端渲染引导界面"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/tui/src/onboarding/",
+        "codex-rs/tui/src/local_chatgpt_auth.rs",
+        "codex-rs/tui/src/cwd_prompt.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Onboarding"
+      }
+    },
+    {
+      "name": "PickersAndStatus",
+      "description": "选择列表 UI 和状态显示界面。包括会话恢复选择器（浏览/过滤历史会话）、主题选择器、模型目录和 OSS 模型选择、模型迁移提示、协作模式选择、多代理导航和选择器、可滚动的分页覆盖层（Ctrl+T 对话记录）、通用选择列表组件，以及显示账户信息、速率限制和 token 使用量的状态卡片系统。",
+      "edges": [
+        {
+          "target": "ContentRendering",
+          "type": "depends",
+          "description": "使用 markdown 渲染处理状态卡片内容和分页覆盖层对话记录"
+        },
+        {
+          "target": "SharedUtilities",
+          "type": "depends",
+          "description": "使用样式、颜色和格式化工具"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/tui/src/resume_picker.rs",
+        "codex-rs/tui/src/theme_picker.rs",
+        "codex-rs/tui/src/model_catalog.rs",
+        "codex-rs/tui/src/oss_selection.rs",
+        "codex-rs/tui/src/model_migration.rs",
+        "codex-rs/tui/src/collaboration_modes.rs",
+        "codex-rs/tui/src/multi_agents.rs",
+        "codex-rs/tui/src/selection_list.rs",
+        "codex-rs/tui/src/pager_overlay.rs",
+        "codex-rs/tui/src/status/",
+        "codex-rs/tui/src/status_indicator_widget.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PickersAndStatus"
+      }
+    },
+    {
+      "name": "SharedUtilities",
+      "description": "TUI 中跨模块使用的小型共享工具模块。包括颜色和样式常量、按键提示格式化、工具提示、闪烁和 ASCII 动画效果、剪贴板读写、编辑器中 @-mention 的 mention 编解码、语音捕获和音频播放（实时模式）、文件搜索管理器、会话日志、git diff 获取、执行命令字符串解析、斜杠命令定义、技能辅助函数、额外目录管理、版本常量、外部编辑器集成、调试配置、UI 布局常量以及 public_widgets 重新导出。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/tui/src/color.rs",
+        "codex-rs/tui/src/style.rs",
+        "codex-rs/tui/src/tooltips.rs",
+        "codex-rs/tui/src/shimmer.rs",
+        "codex-rs/tui/src/ascii_animation.rs",
+        "codex-rs/tui/src/key_hint.rs",
+        "codex-rs/tui/src/ui_consts.rs",
+        "codex-rs/tui/src/clipboard_paste.rs",
+        "codex-rs/tui/src/clipboard_text.rs",
+        "codex-rs/tui/src/mention_codec.rs",
+        "codex-rs/tui/src/voice.rs",
+        "codex-rs/tui/src/audio_device.rs",
+        "codex-rs/tui/src/session_log.rs",
+        "codex-rs/tui/src/file_search.rs",
+        "codex-rs/tui/src/debug_config.rs",
+        "codex-rs/tui/src/get_git_diff.rs",
+        "codex-rs/tui/src/exec_command.rs",
+        "codex-rs/tui/src/slash_command.rs",
+        "codex-rs/tui/src/skills_helpers.rs",
+        "codex-rs/tui/src/additional_dirs.rs",
+        "codex-rs/tui/src/version.rs",
+        "codex-rs/tui/src/external_editor.rs",
+        "codex-rs/tui/src/public_widgets/",
+        "codex-rs/tui/src/bin/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SharedUtilities"
+      }
+    }
+  ]
+}

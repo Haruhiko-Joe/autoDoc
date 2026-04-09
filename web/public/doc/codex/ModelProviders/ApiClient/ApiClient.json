@@ -1,0 +1,139 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "23430b47-7c8e-4f98-a71b-45d5c2afb71e",
+  "description": "高层 API 抽象层（codex-api crate）。实现 Responses API（HTTP 和 WebSocket）、Realtime API（版本化 WebSocket 协议）和模型列表端点的特定客户端。同时处理 SSE 流解析、请求构造（包含请求头/请求体构建）、速率限制跟踪、认证委托，以及用于协议转换的 API 桥接逻辑。",
+  "codeScope": [
+    "codex-rs/codex-api/"
+  ],
+  "nodes": [
+    {
+      "name": "ResponsesClients",
+      "description": "Responses API 的 HTTP 和 WebSocket 客户端实现。ResponsesClient 发送 POST 请求并通过 codex-client 的传输层消费 SSE 流。ResponsesWebsocketClient 维护持久 WebSocket 连接，支持逐消息 deflate 压缩、跨轮次连接复用和空闲超时处理。包括 SSE 流解析器，将服务端发送事件解码为类型化的 ResponseEvent 值（输出项、文本增量、推理摘要、token 用量、速率限制），以及用于 Azure item-ID 附加和 zstd 压缩选择的请求体辅助工具。",
+      "edges": [
+        {
+          "target": "CoreInfra",
+          "type": "depends",
+          "description": "使用 EndpointSession 进行 HTTP 请求，Provider 进行 URL/头部配置，AuthProvider 获取 bearer 令牌，公共类型（ResponsesApiRequest、ResponseEvent、ResponseStream）、头部构建器，以及 SseTelemetry/WebsocketTelemetry trait"
+        },
+        {
+          "target": "RateLimits",
+          "type": "calls",
+          "description": "SSE 流解析器对响应头调用 parse_all_rate_limits；WebSocket 客户端对速率限制 SSE 事件调用 parse_rate_limit_event"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/codex-api/src/endpoint/responses.rs",
+        "codex-rs/codex-api/src/endpoint/responses_websocket.rs",
+        "codex-rs/codex-api/src/sse/mod.rs",
+        "codex-rs/codex-api/src/sse/responses.rs",
+        "codex-rs/codex-api/src/requests/responses.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ResponsesClients"
+      }
+    },
+    {
+      "name": "RealtimeClient",
+      "description": "Realtime API 的 WebSocket 客户端，支持版本化线路协议（v1 和 v2）。管理用于音频和文本流的持久双向连接、会话配置（模型、模态、语音、工具）、对话项管理和响应生成触发。协议层定义版本化事件解析器，将入站 JSON 消息解码为类型化的 RealtimeEvent 值（转录增量、音频帧、工具调用、错误），并编码出站会话更新、对话项和响应触发。版本分发通过 RealtimeEventParser trait 的 v1/v2 实现处理。",
+      "edges": [
+        {
+          "target": "CoreInfra",
+          "type": "depends",
+          "description": "使用 Provider 进行 WebSocket URL 构造和头部配置，使用 ApiError 进行错误传播"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/codex-api/src/endpoint/realtime_websocket/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "RealtimeClient"
+      }
+    },
+    {
+      "name": "UtilityClients",
+      "description": "辅助 API 操作的端点客户端。ModelsClient 使用基于 ETag 的缓存和客户端版本查询参数获取可用模型列表。CompactClient 将对话历史发送到 responses/compact 端点进行上下文窗口压缩。MemoriesClient 调用 memories/trace_summarize 端点从原始对话轨迹生成记忆摘要。三者共享 EndpointSession 模式以实现认证和带重试的 HTTP 请求。",
+      "edges": [
+        {
+          "target": "CoreInfra",
+          "type": "depends",
+          "description": "使用 EndpointSession 进行认证 HTTP 执行，Provider 进行 URL 配置，AuthProvider 进行认证，公共类型（CompactionInput、MemorySummarizeInput/Output），以及 ApiError"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/codex-api/src/endpoint/models.rs",
+        "codex-rs/codex-api/src/endpoint/compact.rs",
+        "codex-rs/codex-api/src/endpoint/memories.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "UtilityClients"
+      }
+    },
+    {
+      "name": "CoreInfra",
+      "description": "所有端点客户端的基础类型和共享基础设施。包括：Provider 结构体（基础 URL、默认头部、查询参数、重试配置、请求构建、Azure 检测）；AuthProvider trait（bearer 令牌和账户 ID 注入）；EndpointSession 泛型包装器，将传输 + 提供者 + 认证组合为带重试和遥测的认证 execute/stream 方法；ApiError 枚举；公共领域类型（ResponsesApiRequest、ResponseEvent、ResponseStream、CompactionInput、Reasoning、TextControls）；请求头构建器（对话头、子 agent 头）；以及遥测 trait（SseTelemetry、WebsocketTelemetry）和 run_with_request_telemetry 重试检测包装器。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/codex-api/src/lib.rs",
+        "codex-rs/codex-api/src/common.rs",
+        "codex-rs/codex-api/src/provider.rs",
+        "codex-rs/codex-api/src/auth.rs",
+        "codex-rs/codex-api/src/error.rs",
+        "codex-rs/codex-api/src/telemetry.rs",
+        "codex-rs/codex-api/src/endpoint/mod.rs",
+        "codex-rs/codex-api/src/endpoint/session.rs",
+        "codex-rs/codex-api/src/requests/mod.rs",
+        "codex-rs/codex-api/src/requests/headers.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "CoreInfra"
+      }
+    },
+    {
+      "name": "RateLimits",
+      "description": "速率限制头部解析和跟踪。解析 x-ratelimit-* HTTP 头部族（包括按限制 ID 的变体如 x-ratelimit-codex-*）为 RateLimitSnapshot 结构体，包含剩余 token/请求数、时间窗口和重置时间。同时从响应头中提取额度快照和促销消息。提供默认的单限制解析和针对所有已知头部族的多限制解析。",
+      "edges": [
+        {
+          "target": "CoreInfra",
+          "type": "depends",
+          "description": "生成 RateLimitError 值，通过 From 实现转换为 ApiError"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/codex-api/src/rate_limits.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "RateLimits"
+      }
+    },
+    {
+      "name": "ApiBridge",
+      "description": "协议桥接器，将 codex-api 的错误类型映射为 agent 核心消费的 codex-protocol 错误类型。将 ApiError 和 TransportError 变体转换为 CodexErr 变体，并进行适当的语义映射（429 → UsageLimitReached 带速率限制详情，503 → ServerOverloaded，400 → InvalidRequest 等）。从响应头中提取调试上下文（x-request-id、cf-ray、x-openai-authorization-error、base64 编码的 x-error-json）。同时提供 CoreAuthProvider，即 agent 核心使用的具体 AuthProvider 实现，包含 bearer 令牌和账户 ID 字段。",
+      "edges": [
+        {
+          "target": "CoreInfra",
+          "type": "depends",
+          "description": "消费 ApiError 并使用 AuthProvider trait 实现 CoreAuthProvider"
+        },
+        {
+          "target": "RateLimits",
+          "type": "calls",
+          "description": "调用 parse_rate_limit_for_limit 和 parse_promo_message 为 UsageLimitReached 错误丰富速率限制详情"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/codex-api/src/api_bridge.rs",
+        "codex-rs/codex-api/src/api_bridge_tests.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ApiBridge"
+      }
+    }
+  ]
+}

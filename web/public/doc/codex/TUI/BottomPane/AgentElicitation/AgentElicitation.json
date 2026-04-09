@@ -1,0 +1,49 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "8fabe847-2748-4b9e-8c64-99a061e8f94a",
+  "description": "Agent 到用户的结构化输入请求的模态覆盖层。三个独立的视图实现：MCP 服务器引导（带 JSON Schema 驱动字段渲染的 OAuth/凭证表单）、通用请求用户输入覆盖层（带布局引擎的多字段表单，用于 Agent 发起的问题）、应用链接视图（带推理展示的安装/启用建议）。每个都实现了 BottomPaneView 并管理自己的表单状态、验证和提交。",
+  "codeScope": [
+    "codex-rs/tui/src/bottom_pane/mcp_server_elicitation.rs",
+    "codex-rs/tui/src/bottom_pane/request_user_input/",
+    "codex-rs/tui/src/bottom_pane/app_link_view.rs"
+  ],
+  "nodes": [
+    {
+      "name": "McpServerElicitation",
+      "description": "MCP 服务器引导覆盖层。渲染由 JSON Schema 字段定义驱动的 OAuth/凭证输入表单（文本输入、单选枚举、审批操作）。管理带逐字段编辑器草稿、滚动状态和字段导航的多字段表单。构建并提交结构化 JSON 响应（包括带持久化/会话/始终语义的审批元数据）到 MCP 协议层（通过 AppEventSender）。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/tui/src/bottom_pane/mcp_server_elicitation.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "McpServerElicitation"
+      }
+    },
+    {
+      "name": "RequestUserInputOverlay",
+      "description": "用于 Agent 发起的多问题表单的通用请求用户输入覆盖层。支持每个问题的选项选择和自由文本备注（带焦点切换）、自适应分配垂直空间的布局引擎（进度条、问题文本、可滚动选项、备注编辑器、页脚提示），以及未回答问题确认子屏幕。通过 selection_popup_common 原语渲染，使用底部对齐的选项行和基于单词边界的行截断。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/tui/src/bottom_pane/request_user_input/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "RequestUserInputOverlay"
+      }
+    },
+    {
+      "name": "AppLinkView",
+      "description": "用于安装/启用流程的应用链接建议覆盖层。显示应用标题、描述、推理和说明，使用两屏状态机（Link 屏幕 → InstallConfirmation 屏幕）。管理操作选择（在 ChatGPT 上安装、启用/禁用、管理、返回）、为工具建议解析 MCP 引导决策（接受/拒绝），并通过 AppEvents 触发浏览器 URL 打开和连接器刷新。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/tui/src/bottom_pane/app_link_view.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "AppLinkView"
+      }
+    }
+  ]
+}

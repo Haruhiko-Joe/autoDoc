@@ -1,0 +1,105 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "4831db58-e071-4a9b-9e9b-6828ac85ab02",
+  "description": "工具框架，定义、发现和执行 Agent 工具。包括内置工具（shell 执行、apply-patch、文件搜索、code-mode、JS REPL）、MCP 桥接工具、技能定义、动态工具注册，以及工具审批/建议管道。",
+  "codeScope": [
+    "codex-rs/tools/",
+    "codex-rs/core-skills/",
+    "codex-rs/skills/",
+    "codex-rs/apply-patch/",
+    "codex-rs/file-search/",
+    "codex-rs/shell-command/"
+  ],
+  "nodes": [
+    {
+      "name": "ToolDefinitions",
+      "description": "核心工具定义和注册中心 crate（codex-tools）。定义所有 Agent 工具的 schema（shell、apply-patch、code-mode、JS REPL、Agent 启动、MCP、plan、view-image、utility），将其转换为 Responses API 格式，管理工具配置，构建决定会话中哪些工具处于活跃状态的工具注册计划，并提供用于动态工具搜索的工具发现/建议管道。",
+      "edges": [
+        {
+          "target": "ApplyPatch",
+          "type": "depends",
+          "description": "apply_patch_tool 模块将 apply-patch crate 的功能包装为 Agent 工具定义"
+        },
+        {
+          "target": "Skills",
+          "type": "depends",
+          "description": "工具注册计划和工具发现引用了技能相关类型和配置"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/tools/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "ToolDefinitions"
+      }
+    },
+    {
+      "name": "Skills",
+      "description": "技能管理系统（codex-core-skills）。处理完整的技能生命周期：从层级根目录发现技能目录、加载 SKILL.md 前置元数据和元数据文件、解析配置规则（启用/禁用）、将技能指令注入对话上下文、管理远程技能归档、检测隐式技能调用，以及为 UI 渲染技能区域。",
+      "edges": [
+        {
+          "target": "SystemSkills",
+          "type": "depends",
+          "description": "使用 codex-skills 在加载之前定位和安装捆绑的系统技能"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core-skills/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "Skills"
+      }
+    },
+    {
+      "name": "SystemSkills",
+      "description": "嵌入式系统技能安装器（codex-skills）。在编译时通过 include_dir 将内置技能定义（如 skill-creator）捆绑到二进制文件中，并在启动时安装到 CODEX_HOME/skills/.system。使用基于指纹的缓存避免冗余写入。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/skills/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SystemSkills"
+      }
+    },
+    {
+      "name": "ApplyPatch",
+      "description": "apply-patch 工具实现（codex-apply-patch）。解析自定义的类 unified-diff 补丁格式，解析文件路径，通过模糊寻址序列匹配计算行级替换，并原子地应用多文件补丁。还提供独立的 CLI 入口点用于直接调用。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/apply-patch/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ApplyPatch"
+      }
+    },
+    {
+      "name": "FileSearch",
+      "description": "模糊文件搜索引擎（codex-file-search）。遍历项目目录树（通过 ignore crate 遵循 .gitignore），将路径输入 nucleo 模糊匹配器，返回带评分/排名的文件匹配结果，可选提供字符级匹配索引用于高亮显示。支持库和独立 CLI 两种使用方式。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/file-search/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "FileSearch"
+      }
+    },
+    {
+      "name": "ShellCommand",
+      "description": "Shell 命令解析和安全分析（codex-shell-command）。解析 bash 和 PowerShell 的 shell 命令字符串，检测用户的 shell，基于精选的白名单/黑名单将命令分类为安全或危险，并提供工具审批管道使用的命令安全基础设施。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/shell-command/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ShellCommand"
+      }
+    }
+  ]
+}

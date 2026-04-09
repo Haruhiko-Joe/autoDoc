@@ -1,0 +1,127 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "268af680-83b2-4149-a056-be63d9cec9a1",
+  "description": "技能管理系统（codex-core-skills）。处理完整的技能生命周期：从层级化根目录中发现技能目录、加载 SKILL.md frontmatter 和元数据文件、解析配置规则（启用/禁用）、将技能指令注入对话上下文、管理远程技能归档、检测隐式技能调用，以及为 UI 渲染技能面板。",
+  "codeScope": [
+    "codex-rs/core-skills/"
+  ],
+  "nodes": [
+    {
+      "name": "SkillModel",
+      "description": "技能系统的核心数据类型。定义了 SkillMetadata（名称、描述、接口、依赖、策略、作用域）、SkillPolicy（隐式调用控制、产品门控）、SkillInterface（显示元数据、图标、品牌颜色）、SkillDependencies/SkillToolDependency、SkillLoadOutcome（已加载技能 + 错误 + 禁用集合 + 隐式调用索引），以及按产品表面限制技能的产品过滤函数。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/core-skills/src/model.rs",
+        "codex-rs/core-skills/src/lib.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SkillModel"
+      }
+    },
+    {
+      "name": "SkillDiscovery",
+      "description": "技能根目录解析与文件系统发现。从配置层（项目/用户/系统/管理员）、插件根目录和仓库 .agents/skills 目录解析层级化技能根。执行 BFS 目录遍历（带深度/数量限制和符号链接跟踪）以查找 SKILL.md 文件。解析 YAML frontmatter 获取名称/描述，加载可选的 agents/openai.yaml 元数据（接口、依赖、策略），验证字段长度，解析资源路径，并处理命名空间技能名称。同时封装 codex-skills crate 用于安装/卸载内置系统技能。",
+      "edges": [
+        {
+          "target": "SkillModel",
+          "type": "data-flow",
+          "description": "从发现的 SKILL.md 文件生成 SkillMetadata 和 SkillLoadOutcome 实例"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core-skills/src/loader.rs",
+        "codex-rs/core-skills/src/loader_tests.rs",
+        "codex-rs/core-skills/src/system.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SkillDiscovery"
+      }
+    },
+    {
+      "name": "SkillManager",
+      "description": "SkillsManager 编排器，将发现、配置规则和缓存整合在一起。提供两种加载路径：skills_for_cwd（基于 cwd 的缓存，支持额外用户根目录和强制重新加载）和 skills_for_config（基于配置状态的缓存，用于会话隔离）。管理启动时的系统技能安装，应用配置规则确定禁用的技能，按产品限制过滤，并构建隐式调用索引。config_rules 模块从配置层栈中解析启用/禁用规则（按技能名称或路径），并具有适当的优先级排序。",
+      "edges": [
+        {
+          "target": "SkillDiscovery",
+          "type": "calls",
+          "description": "调用 skill_roots() 和 load_skills_from_roots() 从文件系统发现技能"
+        },
+        {
+          "target": "SkillModel",
+          "type": "data-flow",
+          "description": "生成并缓存 SkillLoadOutcome 结果"
+        },
+        {
+          "target": "ImplicitInvocation",
+          "type": "calls",
+          "description": "在结果最终化过程中调用 build_implicit_skill_path_indexes()"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core-skills/src/manager.rs",
+        "codex-rs/core-skills/src/manager_tests.rs",
+        "codex-rs/core-skills/src/config_rules.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SkillManager"
+      }
+    },
+    {
+      "name": "SkillInjection",
+      "description": "将技能注入对话上下文。处理显式技能引用：从用户文本输入中解析 $skill-name 标记和 [name](path) 资源链接，通过路径解析结构化的 UserInput::Skill 选择，使用技能名称计数和连接器 slug 计数消歧普通名称。读取匹配的 SKILL.md 文件内容并将其封装为 ResponseItem/SkillInstructions 供 LLM 上下文使用。为每个注入的技能发出遥测指标和分析事件。还包括 mention_counts（计算技能名称出现次数用于消歧）、env_var_dependencies（从技能中提取 env_var 工具依赖）和 render（格式化可用技能部分及使用说明，用于系统提示词）。",
+      "edges": [
+        {
+          "target": "SkillModel",
+          "type": "depends",
+          "description": "操作 SkillMetadata 和 SkillLoadOutcome 以解析和注入技能"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core-skills/src/injection.rs",
+        "codex-rs/core-skills/src/injection_tests.rs",
+        "codex-rs/core-skills/src/mention_counts.rs",
+        "codex-rs/core-skills/src/env_var_dependencies.rs",
+        "codex-rs/core-skills/src/render.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SkillInjection"
+      }
+    },
+    {
+      "name": "ImplicitInvocation",
+      "description": "从 shell 命令中检测隐式技能调用。通过 shlex 进行命令分词，检测脚本运行器（python、bash、node 等）执行技能 scripts/ 目录内脚本的情况，或文件读取器（cat、sed、head 等）读取技能 SKILL.md 文件的情况。使用从 SkillLoadOutcome 构建的基于路径的索引（implicit_skills_by_scripts_dir 和 implicit_skills_by_doc_path）将命令匹配到技能，无需用户显式提及。",
+      "edges": [
+        {
+          "target": "SkillModel",
+          "type": "depends",
+          "description": "从 SkillLoadOutcome 读取隐式技能路径索引并返回匹配的 SkillMetadata"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/core-skills/src/invocation_utils.rs",
+        "codex-rs/core-skills/src/invocation_utils_tests.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ImplicitInvocation"
+      }
+    },
+    {
+      "name": "RemoteSkills",
+      "description": "通过 ChatGPT 后端 API 进行远程技能归档管理。按作用域（工作区共享、全部共享、个人、示例）和产品表面（chatgpt、codex、api、atlas）过滤列出可用的远程技能。以 zip 归档形式导出/下载单个技能，解压到 $CODEX_HOME/skills/{id}/ 并提供路径遍历保护，同时规范化 zip 条目路径。需要 ChatGPT 身份验证（非 API 密钥验证），使用 bearer token + account-id 请求头。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/core-skills/src/remote.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "RemoteSkills"
+      }
+    }
+  ]
+}

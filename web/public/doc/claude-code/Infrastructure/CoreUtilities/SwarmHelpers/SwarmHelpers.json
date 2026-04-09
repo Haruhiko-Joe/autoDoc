@@ -1,0 +1,129 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "e7d9c7f9-33c1-4165-a9fe-76ae81900e9e",
+  "description": "Multi-agent swarm coordination utilities (7,500+ lines). Includes terminal multiplexer backends (iTerm2, tmux, in-process) for spawning agent panes, backend detection and registry, spawn utilities, team helpers, permission synchronization between leader and teammate agents, reconnection logic, and teammate mode snapshot management.",
+  "codeScope": [
+    "src/utils/swarm/"
+  ],
+  "nodes": [
+    {
+      "name": "PaneBackends",
+      "description": "Terminal multiplexer backend abstraction layer (~3,000 lines). Defines the PaneBackend and TeammateExecutor interfaces, implements three backend strategies (iTerm2 native panes via it2 CLI, tmux session/window splitting, in-process execution), a detection module that probes the terminal environment at startup, a singleton registry with fallback chain for backend selection, the PaneBackendExecutor adapter bridging pane backends to the unified executor interface, it2 CLI installation/setup workflow, and teammate mode snapshot management that freezes configuration at session start.",
+      "edges": [
+        {
+          "target": "TeammateConfig",
+          "type": "depends",
+          "description": "Uses constants for session naming, spawnUtils for building CLI commands sent to panes, and mode snapshot for freezing teammate mode at startup"
+        },
+        {
+          "target": "InProcessExecution",
+          "type": "calls",
+          "description": "InProcessBackend delegates to spawnInProcessTeammate() and startInProcessTeammate() for in-process teammate lifecycle"
+        },
+        {
+          "target": "TeamManagement",
+          "type": "calls",
+          "description": "PaneBackendExecutor and InProcessBackend update team file entries when spawning or killing teammates"
+        }
+      ],
+      "codeScope": [
+        "src/utils/swarm/backends/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "PaneBackends"
+      }
+    },
+    {
+      "name": "InProcessExecution",
+      "description": "In-process teammate execution engine (~1,880 lines). The inProcessRunner (1,552 lines) implements the full agent execution loop for teammates running within the leader's process: isolated context creation, permission polling via leader bridge, idle notification to leader, plan mode coordination, message routing through mailbox, and tool use gating. spawnInProcess manages lifecycle via AbortController, registers teammates as tasks in AppState, and handles cleanup on termination.",
+      "edges": [
+        {
+          "target": "PermissionCoordination",
+          "type": "calls",
+          "description": "In-process teammates send permission requests via mailbox and leader permission bridge for tool execution approval"
+        },
+        {
+          "target": "TeamManagement",
+          "type": "calls",
+          "description": "Registers and removes team members in the team file during teammate spawn and termination"
+        },
+        {
+          "target": "TeammateConfig",
+          "type": "depends",
+          "description": "Uses TEAMMATE_SYSTEM_PROMPT_ADDENDUM for teammate system prompt and constants for environment variable names"
+        }
+      ],
+      "codeScope": [
+        "src/utils/swarm/inProcessRunner.ts",
+        "src/utils/swarm/spawnInProcess.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "InProcessExecution"
+      }
+    },
+    {
+      "name": "TeamManagement",
+      "description": "Team file I/O and member lifecycle management (683 lines). Provides CRUD operations for the JSON team config file that serves as the source of truth for active teammates: reading/writing team state, adding/removing members by agent ID, tracking member activity status, synchronizing permission modes across all teammates, and cleanup of stale team entries. Used by nearly every other sub-unit in the swarm module.",
+      "edges": [],
+      "codeScope": [
+        "src/utils/swarm/teamHelpers.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TeamManagement"
+      }
+    },
+    {
+      "name": "PermissionCoordination",
+      "description": "Permission synchronization between leader and teammate agents (~982 lines). Implements two communication channels: file-based permission request/response files for external (pane) teammates, and mailbox-based messaging for in-process teammates. Defines SwarmPermissionRequest and PermissionResponse Zod schemas, handles sandbox permission forwarding, and includes the leaderPermissionBridge module that provides a registration pattern allowing in-process teammates to access the leader's permission UI without circular dependencies.",
+      "edges": [
+        {
+          "target": "TeamManagement",
+          "type": "depends",
+          "description": "Reads team file to discover active teammates and their permission state when processing requests"
+        }
+      ],
+      "codeScope": [
+        "src/utils/swarm/permissionSync.ts",
+        "src/utils/swarm/leaderPermissionBridge.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PermissionCoordination"
+      }
+    },
+    {
+      "name": "TeammateConfig",
+      "description": "Teammate configuration, initialization, and shared utilities (~552 lines across 8 files). Constants for session/socket naming, spawn utilities that build inherited CLI flags and environment variables for new teammates, teammate initialization hooks (idle notification, permission rule application), model fallback selection, system prompt addendum for SendMessage requirements, layout manager for color assignment and pane creation delegation, reconnection logic for resuming sessions with team context, and the It2SetupPrompt React component for interactive it2 CLI installation.",
+      "edges": [
+        {
+          "target": "TeamManagement",
+          "type": "depends",
+          "description": "teammateInit reads team file to apply permission rules and set member active status on startup"
+        },
+        {
+          "target": "PaneBackends",
+          "type": "calls",
+          "description": "teammateLayoutManager delegates pane creation to the detected backend via the registry"
+        }
+      ],
+      "codeScope": [
+        "src/utils/swarm/constants.ts",
+        "src/utils/swarm/spawnUtils.ts",
+        "src/utils/swarm/teammateInit.ts",
+        "src/utils/swarm/teammateModel.ts",
+        "src/utils/swarm/teammatePromptAddendum.ts",
+        "src/utils/swarm/teammateLayoutManager.ts",
+        "src/utils/swarm/reconnection.ts",
+        "src/utils/swarm/It2SetupPrompt.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TeammateConfig"
+      }
+    }
+  ]
+}

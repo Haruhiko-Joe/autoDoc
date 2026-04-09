@@ -1,0 +1,91 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "12a75916-ce91-4f10-8770-acd2033c2898",
+  "description": "Windows PowerShell command execution tool (~8.9k lines, 14 files). Mirrors BashTool's architecture for PowerShell: tool definition with command execution, timeout and background task handling, plus PowerShell-specific subsystems for CLM (Constrained Language Mode) type handling, git safety checks, cmdlet-based permission matching, PowerShell security validation, path validation with UNC/drive-letter support, and read-only enforcement via cmdlet whitelisting. Reuses BashTool's sandbox detection and output utilities.",
+  "codeScope": [
+    "src/tools/PowerShellTool/"
+  ],
+  "nodes": [
+    {
+      "name": "ToolDefinitionAndExecution",
+      "description": "The PowerShell tool's entry point and command execution lifecycle. Defines the tool via buildTool (input schema, prompt, rendering), spawns PowerShell processes via Shell.exec, handles timeouts, background task management, progress streaming, output processing (truncation, image detection, large result storage), and exit code interpretation via command semantics. Imports from BashTool for sandbox detection and output utilities. Includes the React UI components for rendering tool use messages and results.",
+      "edges": [
+        {
+          "target": "PermissionAndModeChecking",
+          "type": "calls",
+          "description": "Delegates to powershellToolHasPermission to check whether the command is allowed before execution"
+        },
+        {
+          "target": "PathAndReadOnlyValidation",
+          "type": "calls",
+          "description": "Calls isReadOnlyCommand and hasSyncSecurityConcerns from readOnlyValidation to classify commands during validation"
+        }
+      ],
+      "codeScope": [
+        "src/tools/PowerShellTool/PowerShellTool.tsx",
+        "src/tools/PowerShellTool/UI.tsx",
+        "src/tools/PowerShellTool/prompt.ts",
+        "src/tools/PowerShellTool/toolName.ts",
+        "src/tools/PowerShellTool/commandSemantics.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ToolDefinitionAndExecution"
+      }
+    },
+    {
+      "name": "SecurityAnalysis",
+      "description": "PowerShell-specific security analysis detecting dangerous command patterns. The core powershellCommandIsSafe function performs AST-based checks for code injection, download cradles, privilege escalation, dynamic command names, COM objects, and other attack vectors. Uses the CLM (Constrained Language Mode) type allowlist to flag .NET types not permitted under Windows AppLocker/WDAC lockdown. Includes git-specific safety checks (bare-repo attacks, git-internal path writes) and destructive command warning generation for the permission dialog.",
+      "edges": [],
+      "codeScope": [
+        "src/tools/PowerShellTool/powershellSecurity.ts",
+        "src/tools/PowerShellTool/clmTypes.ts",
+        "src/tools/PowerShellTool/gitSafety.ts",
+        "src/tools/PowerShellTool/destructiveCommandWarning.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SecurityAnalysis"
+      }
+    },
+    {
+      "name": "PermissionAndModeChecking",
+      "description": "Cmdlet-based permission checking adapted from BashTool for case-insensitive PowerShell matching. The powershellToolHasPermission orchestrator parses commands, applies permission rules (wildcard pattern matching against cmdlet names), checks permission mode (acceptEdits auto-allows filesystem-modifying cmdlets like Set-Content, Remove-Item), detects symlink-creating commands, validates against git safety rules, and delegates to security analysis and path validation. Generates permission request messages and rule suggestions for the permission dialog.",
+      "edges": [
+        {
+          "target": "SecurityAnalysis",
+          "type": "calls",
+          "description": "Invokes powershellCommandIsSafe and git safety checks (isDotGitPathPS, isGitInternalPathPS) during permission evaluation"
+        },
+        {
+          "target": "PathAndReadOnlyValidation",
+          "type": "calls",
+          "description": "Delegates to checkPathConstraints and dangerousRemovalDeny for path-based permission decisions, and to readOnlyValidation for read-only command classification"
+        }
+      ],
+      "codeScope": [
+        "src/tools/PowerShellTool/powershellPermissions.ts",
+        "src/tools/PowerShellTool/modeValidation.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PermissionAndModeChecking"
+      }
+    },
+    {
+      "name": "PathAndReadOnlyValidation",
+      "description": "Path constraint validation and read-only command enforcement for PowerShell. Path validation (~2k lines) extracts file paths from parsed PowerShell commands and validates they stay within allowed project directories, with support for UNC paths, drive-letter paths, PowerShell wildcards, symlink resolution, and sandbox write allowlists. Read-only validation (~1.8k lines) maintains a comprehensive cmdlet whitelist classifying commands as read-only via canonical cmdlet names, safe flags, regex constraints, and pipeline-tail analysis. Includes shared common parameter definitions used by both subsystems.",
+      "edges": [],
+      "codeScope": [
+        "src/tools/PowerShellTool/pathValidation.ts",
+        "src/tools/PowerShellTool/readOnlyValidation.ts",
+        "src/tools/PowerShellTool/commonParameters.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PathAndReadOnlyValidation"
+      }
+    }
+  ]
+}

@@ -1,0 +1,163 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "cd50ca61-da0f-4f29-9d71-ed0ce31aaf13",
+  "description": "全面的 RPC 方法处理器，实现了所有 Codex 专用的 JSON-RPC 操作。涵盖会话生命周期（start、resume、fork、archive、close、read、list、unsubscribe、compact、rollback）、轮次管理（start、interrupt、steer）、账户与认证（login、logout、auth status、account info、rate limits）、模型列表与协作模式、插件管理（install、uninstall、list、read、marketplace、skills、apps）、审批处理（命令执行、文件更改、权限、apply-patch、MCP elicitation、用户输入）、命令执行、模糊文件搜索会话、反馈上传、动态工具注册、审查工作流、实时音频会话、Windows 沙箱设置以及 MCP 服务器状态/OAuth。代码约 10K 行，包含多个子模块，需要进一步分解。",
+  "codeScope": [
+    "codex-rs/app-server/src/codex_message_processor.rs",
+    "codex-rs/app-server/src/codex_message_processor/apps_list_helpers.rs",
+    "codex-rs/app-server/src/codex_message_processor/plugin_app_helpers.rs",
+    "codex-rs/app-server/src/codex_message_processor/plugin_mcp_oauth.rs"
+  ],
+  "nodes": [
+    {
+      "name": "ThreadLifecycle",
+      "description": "会话的创建、恢复、分叉、归档、读取、列表和销毁。实现了 thread_start（包括配置推导、监听器附加和后台任务生成）、thread_resume（从历史记录、rollout 或正在运行的会话恢复，带有覆盖不匹配检测）、thread_fork（基于快照的分支，支持元数据传播）、thread_archive/unarchive（带有 rollout 协调和状态数据库更新）、thread_read（从 rollout 项目加载轮次，支持基于游标的分页）、thread_list/thread_loaded_list（文件系统 + 状态数据库扫描，支持过滤、排序和分页）、thread_unsubscribe（优雅的监听器分离和可选关闭）、thread_compact_start、thread_rollback、thread_set_name、thread_metadata_update（git 信息、elicitation 计数器、元数据持久化）、thread_shell_command、thread_background_terminals_clean，以及用于摘要提取、元数据合并、rollout 路径解析和从快照构建会话的大量辅助函数。",
+      "edges": [
+        {
+          "target": "TurnAndListenerManagement",
+          "type": "calls",
+          "description": "会话启动/恢复时通过 ensure_conversation_listener 和 submit_core_op 附加对话监听器并管理轮次生命周期"
+        },
+        {
+          "target": "AuthAndAccount",
+          "type": "depends",
+          "description": "会话启动时推导的配置依赖于当前认证状态；会话列表过滤可能引用受认证限制的功能"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/app-server/src/codex_message_processor.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ThreadLifecycle"
+      }
+    },
+    {
+      "name": "AuthAndAccount",
+      "description": "认证流程和账户信息处理器。实现了 login_v2（根据参数分派到 API key 或 ChatGPT 登录）、login_api_key_common/v2（验证和存储 API key，支持可选的数据驻留配置）、login_chatgpt_common/v2（基于浏览器的 OAuth，带有本地 HTTP 回调服务器和超时）、login_chatgpt_device_code_v2（设备码轮询流程，支持取消令牌）、login_chatgpt_auth_tokens（直接基于令牌的认证）、cancel_login_v2（通过 login_id 中止活跃登录）、logout_common/v2（从 AuthManager 清除凭据）、get_auth_status（返回当前认证模式，支持可选令牌刷新）、get_account（从后端获取账户详情及套餐类型）、get_account_rate_limits（查询后端获取模型级别的速率限制快照），以及管理并发登录生命周期的 ActiveLogin 状态机（带有基于 Drop 的清理机制）。",
+      "edges": [
+        {
+          "target": "ThreadLifecycle",
+          "type": "event",
+          "description": "登录完成和账户更新会发出 AccountLoginCompleted 和 AccountUpdated 通知，可能触发会话配置重新加载"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/app-server/src/codex_message_processor.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "AuthAndAccount"
+      }
+    },
+    {
+      "name": "TurnAndListenerManagement",
+      "description": "轮次提交、引导、中断以及对话事件监听器基础设施。实现了 turn_start（验证输入限制、应用每轮覆盖如 model/cwd/approval_policy/collaboration_mode、向核心提交 Op::UserInput）、turn_steer（通过轮次 ID 验证向活跃轮次注入附加输入）、turn_interrupt（通过 ThreadStateManager 排队中断），以及监听器子系统：ensure_conversation_listener（将每连接事件监听器附加到会话）、ensure_listener_task_running（生成轮询 CodexThread 事件的后台 tokio 任务）、handle_thread_listener_command（处理监听器命令，包括 set/cancel/clear）和 handle_pending_thread_resume_request（在监听器附加后解析延迟的恢复操作）。还包括 submit_core_op（向 CodexThread 提交操作并传播追踪上下文的核心辅助函数）。",
+      "edges": [
+        {
+          "target": "ThreadLifecycle",
+          "type": "depends",
+          "description": "在提交轮次或附加监听器前通过 load_thread 加载会话"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/app-server/src/codex_message_processor.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TurnAndListenerManagement"
+      }
+    },
+    {
+      "name": "PluginsSkillsAndApps",
+      "description": "插件、技能和应用连接器管理 RPC 及辅助子模块。实现了 plugin_list（加载已安装插件及 marketplace 元数据、技能摘要和应用认证状态）、plugin_read（详细插件信息，包括 MCP 服务器状态和应用摘要）、plugin_install（从 marketplace、URL 或本地路径安装，支持 MCP OAuth 自动登录）、plugin_uninstall（移除插件配置并清除缓存）、skills_list（聚合内置和插件提供的技能，支持 MCP 工具映射）、skills_config_write（将技能启用/禁用持久化到 TOML 配置）、apps_list（并发加载可访问和目录应用连接器，采用缓存优先刷新模式和渐进式 AppListUpdated 通知）。子模块：apps_list_helpers（合并、分页、通知辅助函数）、plugin_app_helpers（加载插件应用摘要及认证状态解析）、plugin_mcp_oauth（插件 MCP 服务器的后台静默 OAuth 登录）。",
+      "edges": [
+        {
+          "target": "McpAndModelOps",
+          "type": "calls",
+          "description": "插件安装通过 queue_mcp_server_refresh_for_config 触发 MCP 服务器刷新；插件 MCP OAuth 使用 MCP 认证基础设施"
+        },
+        {
+          "target": "AuthAndAccount",
+          "type": "depends",
+          "description": "插件和应用列表检查认证状态以确定应用可访问性和套餐限制功能"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/app-server/src/codex_message_processor.rs",
+        "codex-rs/app-server/src/codex_message_processor/apps_list_helpers.rs",
+        "codex-rs/app-server/src/codex_message_processor/plugin_app_helpers.rs",
+        "codex-rs/app-server/src/codex_message_processor/plugin_mcp_oauth.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PluginsSkillsAndApps"
+      }
+    },
+    {
+      "name": "SpecializedThreadModes",
+      "description": "实时音频会话操作和代码审查工作流——超越标准文本轮次的两种专用会话交互模式。实时模式：prepare_realtime_conversation_thread（加载会话并附加监听器）、thread_realtime_start（提交带有音频参数的 Op::ConversationAudioStart）、thread_realtime_append_audio/text（向活跃实时会话流式传输音频块和文本）、thread_realtime_stop（结束实时会话）。审查模式：review_start（根据 ReviewDelivery 分派到内联或分离审查）、start_inline_review（在现有会话内创建审查轮次）、start_detached_review（分叉新会话用于审查，带有合成轮次历史）、review_request_from_target（将 API 审查目标映射到核心 ReviewRequest）、build_review_turn（构建带有审查显示文本的合成 Turn）、emit_review_started（向发起连接发送 ReviewStarted 通知）。",
+      "edges": [
+        {
+          "target": "ThreadLifecycle",
+          "type": "calls",
+          "description": "分离审查内部使用 thread_fork；实时操作通过 load_thread 加载会话"
+        },
+        {
+          "target": "TurnAndListenerManagement",
+          "type": "calls",
+          "description": "实时和审查操作都会提交核心操作并附加对话监听器"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/app-server/src/codex_message_processor.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SpecializedThreadModes"
+      }
+    },
+    {
+      "name": "McpAndModelOps",
+      "description": "MCP 服务器管理、模型/协作模式发现以及实验性功能列表。MCP：mcp_server_refresh（从最新配置重新加载 MCP 服务器连接）、queue_mcp_server_refresh_for_config（构建有效 MCP 服务器列表并提交刷新到 ThreadManager）、mcp_server_oauth_login（交互式基于浏览器的 MCP 服务器 OAuth，支持作用域发现和无作用域回退重试）、list_mcp_server_status/list_mcp_server_status_task（从所有已加载会话收集每个服务器的连接状态快照）。模型：list_models（通过 supported_models 进行分页模型列表，支持游标）、list_collaboration_modes（枚举可用的协作模式预设）。功能：experimental_feature_list（分页列出功能标志及其阶段/描述/启用状态，来自最新配置）、mock_experimental_method（实验性 API 验证的测试端点）。",
+      "edges": [
+        {
+          "target": "AuthAndAccount",
+          "type": "depends",
+          "description": "MCP OAuth 登录和模型列表依赖于当前认证凭据"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/app-server/src/codex_message_processor.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "McpAndModelOps"
+      }
+    },
+    {
+      "name": "ClientServiceOps",
+      "description": "面向客户端的各类服务操作：命令执行、文件搜索、反馈、平台设置和共享工具函数。命令执行：exec_one_off_command（生成沙箱化的一次性 shell 命令，支持 PTY、输出流、按 cwd 推导配置和动态工具注册）、command_exec_write/resize/terminate（运行命令的 PTY 交互）。模糊文件搜索：fuzzy_file_search（一次性搜索，支持取消令牌）、fuzzy_file_search_session_start/update/stop（持久化的基于会话的增量搜索）。反馈：upload_feedback（收集 rollout 日志、SQLite 反馈日志和附件，然后通过 CodexFeedback 上传）。平台：windows_sandbox_setup_start（配置 Windows 沙箱权限，支持提权/非提权模式）。Git：git_diff_to_origin。共享工具函数：send_invalid_request_error、send_internal_error、send_marketplace_error、input_too_large_error、validate_v2_input_limit、validate_dynamic_tools、config_load_error、derive_config_from_params、derive_config_for_cwd 以及配置/云需求辅助函数。",
+      "edges": [
+        {
+          "target": "ThreadLifecycle",
+          "type": "depends",
+          "description": "一次性命令执行使用 derive_config_for_cwd，与会话启动共享配置推导逻辑"
+        },
+        {
+          "target": "AuthAndAccount",
+          "type": "depends",
+          "description": "配置推导检查云需求，可能需要重新认证"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/app-server/src/codex_message_processor.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ClientServiceOps"
+      }
+    }
+  ]
+}

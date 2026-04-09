@@ -1,0 +1,115 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "5cb76d60-aca0-46c7-8fd4-666334e5be76",
+  "description": "OpenTelemetry instrumentation setup (traces, metrics, logs), BigQuery exporter for custom analytics, Perfetto-format tracing for local profiling, session-level trace management, plugin telemetry hooks, and telemetry attribute constants. Provides the full observability pipeline from span creation to export.",
+  "codeScope": [
+    "src/utils/telemetry/",
+    "src/utils/telemetryAttributes.ts"
+  ],
+  "nodes": [
+    {
+      "name": "Instrumentation",
+      "description": "Core telemetry bootstrap and OpenTelemetry provider initialization. Sets up OTEL environment variables, configures metric/log/trace exporters (OTLP, Prometheus, console), detects resource attributes (OS, host, service), integrates BigQuery and beta tracing, handles proxy/mTLS for exporter connections, and provides telemetry flush on shutdown. Includes the OTel diagnostic logger that routes errors/warnings to the application log while suppressing verbose output.",
+      "edges": [
+        {
+          "target": "SessionTracing",
+          "type": "calls",
+          "description": "Calls endInteractionSpan on shutdown and checks isEnhancedTelemetryEnabled to configure tracing providers"
+        },
+        {
+          "target": "PerfettoTracing",
+          "type": "calls",
+          "description": "Invokes initializePerfettoTracing during bootstrap to start local Chrome Trace Event recording"
+        },
+        {
+          "target": "BigQueryExporter",
+          "type": "composes",
+          "description": "Instantiates BigQueryMetricsExporter and registers it as a PeriodicExportingMetricReader in the OTel pipeline"
+        }
+      ],
+      "codeScope": [
+        "src/utils/telemetry/instrumentation.ts",
+        "src/utils/telemetry/logger.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Instrumentation"
+      }
+    },
+    {
+      "name": "SessionTracing",
+      "description": "High-level OpenTelemetry span management for user interaction sessions. Provides start/end APIs for interaction, LLM request, tool execution, tool-blocked-on-user, and hook spans with TTL-based cleanup. Beta tracing extension adds detailed attribute injection: system prompt logging with hash deduplication, tool schema tracking, model output and thinking output capture, per-agent message context, and content truncation for Honeycomb limits.",
+      "edges": [
+        {
+          "target": "PerfettoTracing",
+          "type": "calls",
+          "description": "Delegates to Perfetto span start/end functions in parallel with OTel spans for dual-format tracing"
+        },
+        {
+          "target": "EventsAndAttributes",
+          "type": "calls",
+          "description": "Beta tracing calls logOTelEvent to emit structured events for system prompts and model outputs"
+        }
+      ],
+      "codeScope": [
+        "src/utils/telemetry/sessionTracing.ts",
+        "src/utils/telemetry/betaSessionTracing.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SessionTracing"
+      }
+    },
+    {
+      "name": "PerfettoTracing",
+      "description": "Local performance profiling in Chrome Trace Event (Perfetto) format, restricted to Anthropic-internal use. Records LLM request spans with TTFT/TTLT and token stats, tool execution spans, user input wait spans, and interaction spans. Manages agent hierarchy with process/thread ID mapping, periodic and on-exit trace file writing (~trace-{sessionId}.json), stale span eviction, and an in-memory event buffer.",
+      "edges": [],
+      "codeScope": [
+        "src/utils/telemetry/perfettoTracing.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PerfettoTracing"
+      }
+    },
+    {
+      "name": "BigQueryExporter",
+      "description": "Custom PushMetricExporter implementation that sends OpenTelemetry metrics to an internal BigQuery analytics API. Transforms metric data points into BigQuery row format, selects aggregation temporality, respects organization-level metrics opt-out, and authenticates via getAuthHeaders().",
+      "edges": [],
+      "codeScope": [
+        "src/utils/telemetry/bigqueryExporter.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "BigQueryExporter"
+      }
+    },
+    {
+      "name": "PluginTelemetry",
+      "description": "Plugin-specific telemetry helpers for privacy-safe analytics. Provides plugin ID hashing for aggregation, scope classification (official/org/user-local/default-bundle), telemetry field builders with privacy twin columns, plugin load error classification for bounded cardinality, and session-level plugin enabled event logging.",
+      "edges": [],
+      "codeScope": [
+        "src/utils/telemetry/pluginTelemetry.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PluginTelemetry"
+      }
+    },
+    {
+      "name": "EventsAndAttributes",
+      "description": "Shared telemetry foundations: structured OTel event emission with sequencing and prompt ID tracking, user prompt redaction control, skill availability logging at startup, and the telemetry attribute builder that constructs user ID, session ID, organization, terminal type, and cardinality control fields used across all telemetry modules.",
+      "edges": [],
+      "codeScope": [
+        "src/utils/telemetry/events.ts",
+        "src/utils/telemetry/skillLoadedEvent.ts",
+        "src/utils/telemetryAttributes.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "EventsAndAttributes"
+      }
+    }
+  ]
+}

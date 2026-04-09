@@ -1,0 +1,191 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "d17c1a19-d0da-4e6a-92e4-b776f8580f7b",
+  "description": "Unix/macOS shell command execution tool (~12k lines, 18 files). Defines the Bash tool's entry point, input schema, execution logic (command spawning via Shell.exec, timeout handling, background task management, progress streaming), and output processing (truncation, image detection, large result storage). Orchestrates the full command lifecycle by delegating to specialized subsystems for security validation, permission checking, path validation, sed edit detection, read-only enforcement, sandbox decisions, and destructive command warnings. Also provides shared utilities (shouldUseSandbox, image output helpers, UI components) reused by PowerShellTool.",
+  "codeScope": [
+    "src/tools/BashTool/"
+  ],
+  "nodes": [
+    {
+      "name": "CoreExecution",
+      "description": "The main BashTool definition and command execution pipeline. BashTool.tsx is the entry point: defines the input schema (command, timeout, run_in_background, dangerouslyDisableSandbox), orchestrates the full command lifecycle (Shell.exec spawning, timeout handling with configurable default/max, background task management via LocalShellTask, progress streaming after 2s threshold, auto-backgrounding in assistant mode after 15s), output processing (truncation via EndTruncatingAccumulator, image detection and resizing, large result storage to disk, sed edit rendering). Classifies commands as search/read/list/silent for UI collapse behavior. Also includes prompt.ts (system prompt generation with tool-specific instructions, timeout defaults, sandbox notes, background usage guidance), commandSemantics.ts (exit code interpretation — grep/rg/find/diff/test return non-zero for non-error conditions), commentLabel.ts (extracts leading # comments as UI labels), and toolName.ts (BASH_TOOL_NAME constant).",
+      "edges": [
+        {
+          "target": "SecurityValidation",
+          "type": "calls",
+          "description": "Invokes parseForSecurity to validate command safety before execution"
+        },
+        {
+          "target": "PermissionChecking",
+          "type": "calls",
+          "description": "Delegates to bashToolHasPermission and checkCommandOperatorPermissions for permission decisions"
+        },
+        {
+          "target": "PathValidation",
+          "type": "calls",
+          "description": "Calls checkPathConstraints to validate file paths referenced in commands"
+        },
+        {
+          "target": "ReadOnlyValidation",
+          "type": "calls",
+          "description": "Calls checkReadOnlyConstraints to enforce read-only mode restrictions"
+        },
+        {
+          "target": "SedHandling",
+          "type": "calls",
+          "description": "Uses parseSedEditCommand to detect and render sed in-place edits as file-edit-style diffs"
+        },
+        {
+          "target": "SafetyGuards",
+          "type": "calls",
+          "description": "Checks shouldUseSandbox to decide sandbox enforcement for command execution"
+        },
+        {
+          "target": "UIAndOutput",
+          "type": "calls",
+          "description": "Uses render functions (renderToolUseMessage, BackgroundHint, renderToolResultMessage) and output utilities (buildImageToolResult, stripEmptyLines, resetCwdIfOutsideProject)"
+        }
+      ],
+      "codeScope": [
+        "src/tools/BashTool/BashTool.tsx",
+        "src/tools/BashTool/prompt.ts",
+        "src/tools/BashTool/commandSemantics.ts",
+        "src/tools/BashTool/commentLabel.ts",
+        "src/tools/BashTool/toolName.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "CoreExecution"
+      }
+    },
+    {
+      "name": "SecurityValidation",
+      "description": "Command security validation and injection detection (~2592 lines). Implements multi-layered security checks: detects command substitution patterns ($(), ${}, process substitution, Zsh-specific expansions like =cmd and zmodload), validates against dangerous Zsh commands (sysopen, ztcp, zpty, zf_* builtins), checks for jq system() calls, incomplete/multi-line command injection, heredoc-in-substitution attacks, backtick escaping exploits, and PowerShell comment syntax. Uses both regex-based pattern matching and AST-based analysis (via tree-sitter parsed commands). Provides bashCommandIsSafe_DEPRECATED (sync) and bashCommandIsSafeAsync_DEPRECATED (async with AST) entry points, plus stripSafeHeredocSubstitutions for permission-safe heredoc handling.",
+      "edges": [],
+      "codeScope": [
+        "src/tools/BashTool/bashSecurity.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SecurityValidation"
+      }
+    },
+    {
+      "name": "PermissionChecking",
+      "description": "Permission rule matching and command approval logic (~3001 lines across 3 files). bashPermissions.ts is the core: implements bashToolHasPermission which evaluates commands against user-configured permission rules (exact match, prefix match, wildcard patterns), handles the bash classifier system (classifyBashCommand with allow/ask/deny behaviors), strips safe wrappers (env vars, timeout, nice) and binary hijack variables before matching, normalizes git/cd commands, manages compound command permission (&&, ||, ;, |), and generates permission request messages with suggested rules. bashCommandHelpers.ts handles operator-level permission checking for compound commands using AST-parsed nodes. modeValidation.ts provides mode-based auto-approval (e.g., acceptEdits mode auto-allows mkdir, touch, rm, mv, cp, sed).",
+      "edges": [
+        {
+          "target": "SecurityValidation",
+          "type": "calls",
+          "description": "Calls bashCommandIsSafeAsync_DEPRECATED and stripSafeHeredocSubstitutions during permission evaluation"
+        },
+        {
+          "target": "SedHandling",
+          "type": "calls",
+          "description": "Checks sedCommandIsAllowedByAllowlist during permission evaluation of sed commands"
+        },
+        {
+          "target": "SafetyGuards",
+          "type": "calls",
+          "description": "Uses shouldUseSandbox and matchWildcardPattern in sandbox-related permission decisions"
+        }
+      ],
+      "codeScope": [
+        "src/tools/BashTool/bashPermissions.ts",
+        "src/tools/BashTool/bashCommandHelpers.ts",
+        "src/tools/BashTool/modeValidation.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PermissionChecking"
+      }
+    },
+    {
+      "name": "PathValidation",
+      "description": "File path constraint enforcement for shell commands (~1303 lines). Validates that commands only access paths within allowed working directories. Defines PATH_EXTRACTORS mapping 30+ commands (cd, ls, rm, mv, cp, cat, grep, sed, git, jq, etc.) to their path argument extraction logic, accounting for each command's flag syntax. COMMAND_OPERATION_TYPE classifies commands as read or write operations. checkPathConstraints is the main entry point: parses commands, extracts file paths, expands tildes, resolves relative paths, validates against allowed directories, and checks for dangerous removal paths. Handles redirect-based path validation (>, >>), and provides permission suggestions for path-related denials.",
+      "edges": [
+        {
+          "target": "SedHandling",
+          "type": "calls",
+          "description": "Calls sedCommandIsAllowedByAllowlist to determine if sed commands need path validation"
+        }
+      ],
+      "codeScope": [
+        "src/tools/BashTool/pathValidation.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PathValidation"
+      }
+    },
+    {
+      "name": "ReadOnlyValidation",
+      "description": "Read-only mode enforcement for bash commands (~1990 lines). Validates that commands in read-only contexts (sandbox, plan mode) do not perform write operations. Implements a comprehensive command classification system: defines safe flags for 40+ commands (fd, fdfind, xargs, npm, pnpm, yarn, bun, cargo, python, pip, go, dotnet, make, bazel, buck2, pants, gradle, mvn, mix, stack, cabal, deno, poetry, nix, conda, mamba, pixi, uv, ruff), each with their own flag allowlist and custom validation callbacks. Uses CommandConfig with safeFlags, regex patterns, and additionalCommandIsDangerousCallback for nuanced validation. Delegates to external read-only command validation for git, ripgrep, docker, gh, and pyright. Also handles bare git repo detection and UNC path vulnerability checks.",
+      "edges": [
+        {
+          "target": "SecurityValidation",
+          "type": "calls",
+          "description": "Uses bashCommandIsSafe_DEPRECATED for additional safety checks on commands in read-only mode"
+        },
+        {
+          "target": "PathValidation",
+          "type": "depends",
+          "description": "Imports PathCommand type and COMMAND_OPERATION_TYPE to classify command operations"
+        },
+        {
+          "target": "SedHandling",
+          "type": "calls",
+          "description": "Checks sedCommandIsAllowedByAllowlist when validating sed commands in read-only mode"
+        }
+      ],
+      "codeScope": [
+        "src/tools/BashTool/readOnlyValidation.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ReadOnlyValidation"
+      }
+    },
+    {
+      "name": "SedHandling",
+      "description": "Sed command validation and edit parsing (~1006 lines across 2 files). sedValidation.ts validates sed commands against an allowlist of safe patterns: line-printing commands (sed -n 'Np'), line-range printing, address-based printing, deletion commands, and in-place substitutions. Validates flags against allowed sets, parses sed expressions, and provides sedCommandIsAllowedByAllowlist as the main entry point used by permission, path, and read-only validation subsystems. sedEditParser.ts parses sed -i (in-place edit) commands into structured SedEditInfo objects containing filePath, search pattern, replacement, flags, and extendedRegex flag. Handles BRE-to-ERE regex conversion with placeholder-based escaping, multiple -e expressions, and various sed argument formats for rendering sed edits as file-edit-style diffs in the UI.",
+      "edges": [],
+      "codeScope": [
+        "src/tools/BashTool/sedValidation.ts",
+        "src/tools/BashTool/sedEditParser.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SedHandling"
+      }
+    },
+    {
+      "name": "SafetyGuards",
+      "description": "Sandbox enforcement and destructive command warnings (~255 lines across 2 files). shouldUseSandbox.ts determines whether a command should run in the macOS sandbox: checks if sandboxing is enabled, respects dangerouslyDisableSandbox flag (only when unsandboxed commands are allowed by policy), filters user-configured excluded commands (matching via prefix/exact/wildcard rules with env-var and wrapper stripping), and checks dynamic disabled-command config for internal users. destructiveCommandWarning.ts detects potentially destructive commands via regex patterns (git reset --hard, git push --force, git clean -f, git checkout/restore ., git stash drop/clear, rm -rf, docker system prune, etc.) and returns informational warning strings for display in the permission dialog.",
+      "edges": [],
+      "codeScope": [
+        "src/tools/BashTool/shouldUseSandbox.ts",
+        "src/tools/BashTool/destructiveCommandWarning.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SafetyGuards"
+      }
+    },
+    {
+      "name": "UIAndOutput",
+      "description": "UI rendering components and output processing utilities (~597 lines across 3 files). UI.tsx provides React components for the terminal interface: renderToolUseMessage (command display with comment labels), renderToolUseProgressMessage (streaming progress), renderToolUseQueuedMessage, renderToolUseErrorMessage, renderToolResultMessage (formatted output with truncation indicators), and BackgroundHint (background task notification component shared with PowerShellTool). BashToolResultMessage.tsx renders detailed tool result displays including sed edit diffs, image outputs, and collapsible search/read results. utils.ts provides shared utility functions exported to PowerShellTool: stripEmptyLines (trims empty lines from output), isImageOutput/buildImageToolResult/resizeShellImageOutput (image data URI detection, parsing, and resizing), formatOutput (output truncation with line counting), resetCwdIfOutsideProject (working directory safety reset), stdErrAppendShellResetMessage, and createContentSummary (MCP result rendering).",
+      "edges": [],
+      "codeScope": [
+        "src/tools/BashTool/UI.tsx",
+        "src/tools/BashTool/BashToolResultMessage.tsx",
+        "src/tools/BashTool/utils.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "UIAndOutput"
+      }
+    }
+  ]
+}

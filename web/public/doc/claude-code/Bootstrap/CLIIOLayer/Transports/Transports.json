@@ -1,0 +1,122 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "0734e166-0cfd-4d4c-bc6a-93f886a683df",
+  "description": "Transport implementations for server-side communication in remote/bridge sessions. WebSocketTransport (800 lines) provides bidirectional WebSocket with reconnection, buffering, keep-alive, and proxy/mTLS support. SSETransport (711 lines) implements Server-Sent Events for reads with HTTP POST for writes, including reconnection and liveness timeouts. HybridTransport (282 lines) extends WebSocketTransport to use WebSocket for reads but HTTP POST for writes with batched uploads. CCRClient (998 lines) orchestrates CCR v2 protocol: worker registration, epoch management, heartbeats, stream event accumulation/batching, internal event persistence, delivery acknowledgments, and worker state reporting. SerialBatchEventUploader (275 lines) provides ordered batch uploading with retry and backpressure. WorkerStateUploader (131 lines) coalesces and uploads worker state with exponential backoff. transportUtils (45 lines) selects the appropriate transport based on URL and environment flags.",
+  "codeScope": [
+    "src/cli/transports/"
+  ],
+  "nodes": [
+    {
+      "name": "WebSocketTransport",
+      "description": "Bidirectional WebSocket transport implementing the Transport interface. Manages the full WebSocket lifecycle: connection with proxy/mTLS support, automatic reconnection with exponential backoff and sleep/wake detection, message buffering via CircularBuffer during disconnects, keep-alive frame emission, ping/pong health checks, and session activity tracking. Handles permanent close codes (session expired, unauthorized) vs transient failures with a 10-minute reconnection budget.",
+      "edges": [],
+      "codeScope": [
+        "src/cli/transports/WebSocketTransport.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "WebSocketTransport"
+      }
+    },
+    {
+      "name": "SSETransport",
+      "description": "Server-Sent Events transport implementing the Transport interface for CCR v2 environments. Uses an SSE stream for reading server events (with incremental frame parsing, last-event-id resumption, and a 45-second liveness timeout) and HTTP POST for writing client events (with retry and exponential backoff). Includes reconnection logic with a 10-minute budget, permanent HTTP code detection, and session ingress auth header refresh.",
+      "edges": [],
+      "codeScope": [
+        "src/cli/transports/SSETransport.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SSETransport"
+      }
+    },
+    {
+      "name": "HybridTransport",
+      "description": "Hybrid transport that extends WebSocketTransport to use WebSocket for reads but HTTP POST for writes. Accumulates stream_event messages in a 100ms delay buffer to reduce POST frequency, then delegates serialized batch uploading to SerialBatchEventUploader. Handles graceful shutdown with a drain grace period, permanent vs retryable HTTP error classification, and session ingress auth tokens. Converts WebSocket URLs to HTTP POST endpoint URLs.",
+      "edges": [
+        {
+          "target": "WebSocketTransport",
+          "type": "extends",
+          "description": "Extends WebSocketTransport, inheriting WebSocket read path, reconnection, and connection lifecycle"
+        },
+        {
+          "target": "SerialBatchEventUploader",
+          "type": "depends",
+          "description": "Delegates all write serialization, batching, retry, and backpressure to a SerialBatchEventUploader instance"
+        }
+      ],
+      "codeScope": [
+        "src/cli/transports/HybridTransport.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "HybridTransport"
+      }
+    },
+    {
+      "name": "CCRClient",
+      "description": "Orchestrator for the CCR (Claude Code Remote) v2 protocol. Manages worker registration with the server, epoch tracking, periodic heartbeat emission (20s interval), stream event accumulation with text_delta coalescing into full-so-far snapshots, batched event uploading via three SerialBatchEventUploader instances (client events, internal worker events, delivery acknowledgments), worker state reporting via WorkerStateUploader (status, metadata with coalescing), auth token expiry detection, and consecutive auth failure tracking. The ~1000-line CCRClient class plus the ~130-line WorkerStateUploader together implement the complete server-side worker lifecycle.",
+      "edges": [
+        {
+          "target": "SSETransport",
+          "type": "depends",
+          "description": "Receives server events through the SSETransport's SSE stream and uses its session URL for API calls"
+        },
+        {
+          "target": "SerialBatchEventUploader",
+          "type": "depends",
+          "description": "Creates three SerialBatchEventUploader instances for client events, internal events, and delivery acknowledgments"
+        }
+      ],
+      "codeScope": [
+        "src/cli/transports/ccrClient.ts",
+        "src/cli/transports/WorkerStateUploader.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "CCRClient"
+      }
+    },
+    {
+      "name": "SerialBatchEventUploader",
+      "description": "Generic serial ordered event uploader providing batching, retry with exponential backoff and jitter, and backpressure. Ensures at most one POST is in-flight at a time, batches pending items up to configurable count and byte limits, blocks enqueue() when queue exceeds maxQueueSize, supports optional maxConsecutiveFailures for batch dropping, and honors server-supplied Retry-After via RetryableError. Shared primitive used by both HybridTransport and CCRClient.",
+      "edges": [],
+      "codeScope": [
+        "src/cli/transports/SerialBatchEventUploader.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SerialBatchEventUploader"
+      }
+    },
+    {
+      "name": "TransportFactory",
+      "description": "The getTransportForUrl factory function that selects the appropriate transport implementation based on the URL protocol and environment flags. Returns SSETransport when CLAUDE_CODE_USE_CCR_V2 is set (converting WebSocket URLs to HTTPS SSE endpoints), HybridTransport when CLAUDE_CODE_POST_FOR_SESSION_INGRESS_V2 is set, or WebSocketTransport as the default for ws:/wss: URLs.",
+      "edges": [
+        {
+          "target": "WebSocketTransport",
+          "type": "depends",
+          "description": "Instantiates WebSocketTransport as the default transport for WebSocket URLs"
+        },
+        {
+          "target": "SSETransport",
+          "type": "depends",
+          "description": "Instantiates SSETransport when CCR v2 environment flag is set"
+        },
+        {
+          "target": "HybridTransport",
+          "type": "depends",
+          "description": "Instantiates HybridTransport when POST ingress v2 environment flag is set"
+        }
+      ],
+      "codeScope": [
+        "src/cli/transports/transportUtils.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TransportFactory"
+      }
+    }
+  ]
+}

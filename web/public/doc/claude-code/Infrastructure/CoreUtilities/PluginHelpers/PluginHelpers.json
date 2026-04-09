@@ -1,0 +1,206 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "9fbfa5a6-8998-4693-88e7-20a2cd121de8",
+  "description": "Plugin system utility layer (20,000+ lines) supporting plugin discovery, installation, dependency resolution, cache management, telemetry, headless installation, hint-based recommendations, install count tracking, git availability checks, agent loading from plugins, and installed plugin state management. The largest utility subdirectory by far.",
+  "codeScope": [
+    "src/utils/plugins/"
+  ],
+  "nodes": [
+    {
+      "name": "SchemasAndTypes",
+      "description": "Data contract layer defining all plugin-related Zod schemas (plugin manifest, marketplace entry, installation record, plugin options), type exports, plugin identifier parsing (name@marketplace format with scope/source mapping), org-policy plugin blocking checks, and managed plugin name resolution. The foundational type system imported by nearly every other sub-unit in the plugin system.",
+      "edges": [],
+      "codeScope": [
+        "src/utils/plugins/schemas.ts",
+        "src/utils/plugins/pluginIdentifier.ts",
+        "src/utils/plugins/pluginPolicy.ts",
+        "src/utils/plugins/managedPlugins.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SchemasAndTypes"
+      }
+    },
+    {
+      "name": "MarketplaceManagement",
+      "description": "Marketplace source lifecycle management: loading and caching known_marketplaces.json, adding/removing marketplace sources, fetching marketplace plugin listings from git repos or GCS, official Anthropic marketplace constants and auto-installation on startup with policy checks, marketplace policy validation and formatting helpers, input parsing for URLs/SSH/local paths, and reconciling settings intent with on-disk marketplace state. The central hub for all marketplace-related operations (~4,400 lines across 7 files).",
+      "edges": [
+        {
+          "target": "SchemasAndTypes",
+          "type": "depends",
+          "description": "Uses plugin schemas for marketplace entry validation and plugin identifier parsing"
+        },
+        {
+          "target": "InfraAndUtilities",
+          "type": "depends",
+          "description": "Uses plugin directory paths, git availability checks, and fetch telemetry for network operation logging"
+        }
+      ],
+      "codeScope": [
+        "src/utils/plugins/marketplaceManager.ts",
+        "src/utils/plugins/marketplaceHelpers.ts",
+        "src/utils/plugins/officialMarketplace.ts",
+        "src/utils/plugins/officialMarketplaceGcs.ts",
+        "src/utils/plugins/officialMarketplaceStartupCheck.ts",
+        "src/utils/plugins/parseMarketplaceInput.ts",
+        "src/utils/plugins/reconciler.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "MarketplaceManagement"
+      }
+    },
+    {
+      "name": "PluginDiscoveryAndValidation",
+      "description": "Core plugin discovery and loading engine. pluginLoader (3,300 lines) orchestrates discovering plugins from cached marketplaces and git repositories, caching plugin artifacts to disk, and producing fully validated plugin objects with resolved options. validatePlugin performs deep schema validation of plugin.json and marketplace.json manifests. dependencyResolver resolves plugin dependency closures with cycle detection and bare-name qualification against marketplace context.",
+      "edges": [
+        {
+          "target": "SchemasAndTypes",
+          "type": "depends",
+          "description": "Validates loaded plugins against Zod schemas and uses plugin identifier utilities for name resolution"
+        },
+        {
+          "target": "MarketplaceManagement",
+          "type": "calls",
+          "description": "Queries marketplace manager to locate and fetch plugin sources from marketplace listings"
+        },
+        {
+          "target": "InstallationLifecycle",
+          "type": "calls",
+          "description": "Reads installed plugin state from installedPluginsManager to determine which plugins to load and their versions"
+        },
+        {
+          "target": "InfraAndUtilities",
+          "type": "depends",
+          "description": "Uses plugin option storage for variable substitution in plugin configs and plugin directories for cache paths"
+        }
+      ],
+      "codeScope": [
+        "src/utils/plugins/pluginLoader.ts",
+        "src/utils/plugins/validatePlugin.ts",
+        "src/utils/plugins/dependencyResolver.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PluginDiscoveryAndValidation"
+      }
+    },
+    {
+      "name": "InstallationLifecycle",
+      "description": "Plugin installation state management and lifecycle operations. installedPluginsManager (1,268 lines) persists per-plugin installation records to installed_plugins.json with in-memory caching. Includes shared installation helpers for caching and registering plugins, headless/CCR-mode batch installation without AppState, background auto-update with marketplace refresh and version comparison, blocklist detection and removal of delisted plugins, startup checks that verify enabled plugins and trigger installations, the React-based startup check UI component, and plugin flagging state tracking for delisted plugin warnings (~3,700 lines across 8 files).",
+      "edges": [
+        {
+          "target": "SchemasAndTypes",
+          "type": "depends",
+          "description": "Uses schema types for installation records, plugin identifiers, and marketplace entry validation"
+        },
+        {
+          "target": "MarketplaceManagement",
+          "type": "calls",
+          "description": "Queries marketplaces to verify plugin availability and fetch updated metadata during install and update flows"
+        },
+        {
+          "target": "PluginDiscoveryAndValidation",
+          "type": "calls",
+          "description": "Invokes plugin loader to cache and validate plugins during installation, update, and startup check flows"
+        },
+        {
+          "target": "InfraAndUtilities",
+          "type": "depends",
+          "description": "Uses plugin directories for storage paths, zip cache for ephemeral container environments, and cache utilities for cleanup"
+        }
+      ],
+      "codeScope": [
+        "src/utils/plugins/installedPluginsManager.ts",
+        "src/utils/plugins/pluginInstallationHelpers.ts",
+        "src/utils/plugins/headlessPluginInstall.ts",
+        "src/utils/plugins/pluginAutoupdate.ts",
+        "src/utils/plugins/pluginBlocklist.ts",
+        "src/utils/plugins/pluginStartupCheck.ts",
+        "src/utils/plugins/performStartupChecks.tsx",
+        "src/utils/plugins/pluginFlagging.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "InstallationLifecycle"
+      }
+    },
+    {
+      "name": "ComponentLoading",
+      "description": "Loads plugin-provided extension points into the running application session. Extracts slash commands from plugin markdown files with frontmatter parsing (946 lines). Loads AI agent definitions from plugin markdown. Registers plugin hooks (event-driven callbacks) with settings integration. Applies output style configurations. Integrates MCP servers from plugins with connection management and mcpb protocol handler support (968 lines). Integrates LSP server configurations. Recommends LSP plugins by file extension. Includes the markdown directory walker utility shared by command/agent/output-style loaders (~4,300 lines across 9 files).",
+      "edges": [
+        {
+          "target": "SchemasAndTypes",
+          "type": "depends",
+          "description": "Uses schema types to validate and type-check loaded plugin components (commands, agents, hooks, MCP/LSP configs)"
+        },
+        {
+          "target": "PluginDiscoveryAndValidation",
+          "type": "calls",
+          "description": "Calls pluginLoader to get the list of active validated plugins before extracting their components"
+        },
+        {
+          "target": "InfraAndUtilities",
+          "type": "depends",
+          "description": "Uses plugin option storage for variable substitution in MCP/LSP configs and plugin directories for path resolution"
+        }
+      ],
+      "codeScope": [
+        "src/utils/plugins/loadPluginCommands.ts",
+        "src/utils/plugins/loadPluginAgents.ts",
+        "src/utils/plugins/loadPluginHooks.ts",
+        "src/utils/plugins/loadPluginOutputStyles.ts",
+        "src/utils/plugins/walkPluginMarkdown.ts",
+        "src/utils/plugins/mcpPluginIntegration.ts",
+        "src/utils/plugins/lspPluginIntegration.ts",
+        "src/utils/plugins/mcpbHandler.ts",
+        "src/utils/plugins/lspRecommendation.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ComponentLoading"
+      }
+    },
+    {
+      "name": "InfraAndUtilities",
+      "description": "Shared infrastructure and low-level utilities underpinning the entire plugin system. Centralized directory path resolution with cowork mode and custom cache dir support. Plugin option storage and secure variable substitution. ZIP-based plugin cache for ephemeral container environments with I/O adapters. Cache clearing and orphan version marking. Plugin versioning from manifests, git SHAs, or timestamps. Git availability detection (memoized). Fetch telemetry classification and logging. Install count statistics fetching and caching. Hint-based plugin recommendations from CLI/SDK tool tags. Orphaned version glob exclusion generation. Add-dir settings reading. The refresh orchestrator that swaps all active plugin components in a running session by clearing caches and reloading (~2,400 lines across 13 files).",
+      "edges": [
+        {
+          "target": "SchemasAndTypes",
+          "type": "depends",
+          "description": "Uses schema types for plugin records and marketplace entries in cache, storage, and recommendation operations"
+        },
+        {
+          "target": "ComponentLoading",
+          "type": "calls",
+          "description": "Refresh orchestrator clears and reloads all component caches (commands, hooks, agents, output styles, MCP, LSP)"
+        },
+        {
+          "target": "PluginDiscoveryAndValidation",
+          "type": "calls",
+          "description": "Refresh and cache utilities invoke plugin loader to reload plugins after cache invalidation"
+        }
+      ],
+      "codeScope": [
+        "src/utils/plugins/pluginDirectories.ts",
+        "src/utils/plugins/pluginOptionsStorage.ts",
+        "src/utils/plugins/pluginVersioning.ts",
+        "src/utils/plugins/gitAvailability.ts",
+        "src/utils/plugins/fetchTelemetry.ts",
+        "src/utils/plugins/cacheUtils.ts",
+        "src/utils/plugins/zipCache.ts",
+        "src/utils/plugins/zipCacheAdapters.ts",
+        "src/utils/plugins/installCounts.ts",
+        "src/utils/plugins/hintRecommendation.ts",
+        "src/utils/plugins/orphanedPluginFilter.ts",
+        "src/utils/plugins/addDirPluginSettings.ts",
+        "src/utils/plugins/refresh.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "InfraAndUtilities"
+      }
+    }
+  ]
+}

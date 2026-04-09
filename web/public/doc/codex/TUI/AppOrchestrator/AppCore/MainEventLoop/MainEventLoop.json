@@ -1,0 +1,232 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "ec8a6b50-19ea-4021-9e61-6879595a5066",
+  "description": "整体式 App 结构体及其在 app.rs 中约 11K 行的实现。包含带有所有 TUI 状态字段的结构体定义、带 select! 循环（监听 TuiEvents/AppEvents/线程事件）的 run() 异步入口点、分派约 80 个 AppEvent 变体的 handle_event()、用于键盘路由的 handle_tui_event() 和 handle_key_event()、线程生命周期管理（启动/恢复/切换/fork/关闭、通道管理、激活、快照回放、排空）、向 app-server 提交操作、配置/策略管理（重建、功能开关、审批/沙箱覆盖、推理力度、个性化设置）、Agent 选择器操作、会话摘要、UI 清除/重置、外部编辑器集成、MCP 清单/插件/反馈/速率限制 RPC 辅助方法，以及大量测试。全文 10929 行，需要进一步分解。",
+  "codeScope": [
+    "codex-rs/tui/src/app.rs"
+  ],
+  "nodes": [
+    {
+      "name": "AppStructAndTypes",
+      "description": "App 结构体定义，包含约 30 个状态字段、辅助类型（ThreadEventStore、ThreadEventChannel、ThreadEventSnapshot、ThreadBufferedEvent、SessionSummary、WindowsSandboxState、AppExitInfo、AppRunControl、ExitReason、GuardianApprovalsMode、ActiveTurnSteerRace）以及自由辅助函数（协议转换、collab_receiver_thread_ids、default_exec_approval_decisions、guardian_approvals_mode、session_summary、模型迁移辅助、配置覆盖规范化）。第 165–1070 行构成了所有其他关注点所依赖的基础类型层。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/tui/src/app.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "AppStructAndTypes"
+      }
+    },
+    {
+      "name": "RunEntryAndSelectLoop",
+      "description": "pub async fn run() 入口点（约 400 行，第 3549–3943 行），用于引导 App：创建通道、引导 app-server 会话、处理模型迁移提示、为全新/恢复/fork 会话初始化 ChatWidget、构建 App 结构体，并进入核心 tokio::select! 循环，多路复用四个事件源（AppEvent 通道、活跃线程通道、TuiEvent 流、app-server 事件）。还包含启动门控逻辑（should_wait_for_initial_session、should_handle_active_thread_events、should_stop_waiting_for_initial_session）以及循环后的清理/关闭。",
+      "edges": [
+        {
+          "target": "AppStructAndTypes",
+          "type": "depends",
+          "description": "构造 App 结构体并使用所有辅助类型"
+        },
+        {
+          "target": "AppEventDispatch",
+          "type": "calls",
+          "description": "在 select! 循环中为每个接收到的 AppEvent 调用 handle_event()"
+        },
+        {
+          "target": "TuiAndKeyboardRouting",
+          "type": "calls",
+          "description": "为来自事件流的终端事件调用 handle_tui_event()"
+        },
+        {
+          "target": "ThreadLifecycle",
+          "type": "calls",
+          "description": "在启动和循环执行期间调用 handle_active_thread_event()、enqueue_primary_thread_session()、drain_active_thread_events()"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/tui/src/app.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "RunEntryAndSelectLoop"
+      }
+    },
+    {
+      "name": "AppEventDispatch",
+      "description": "handle_event() 方法（约 1520 行，第 4007–5526 行），包含对约 80 个 AppEvent 变体的大型 match 分支。分组为：会话控制（NewSession、ClearUi、Exit、FatalExitRequest）、恢复/fork 选择器流程、操作提交（CodexOp、SubmitThreadOp）、UI 弹窗和覆盖层（审批、权限、审查、反馈、技能、插件、MCP、diff、Agent 选择器、状态栏/终端标题设置、主题、录制指示器）、配置持久化（PersistModelSelection、PersistPersonalitySelection、PersistServiceTierSelection、PersistPlanModeReasoningEffort、PersistFullAccessWarningAcknowledged 等）、策略更新（UpdateAskForApprovalPolicy、UpdateSandboxPolicy、UpdateApprovalsReviewer、UpdateFeatureFlags）、模型/协作/推理更新、Windows 沙箱设置流程、实时音频设备、历史单元格、提交动画，以及外部编辑器启动。",
+      "edges": [
+        {
+          "target": "AppStructAndTypes",
+          "type": "depends",
+          "description": "全程使用 App 字段、辅助类型和自由函数"
+        },
+        {
+          "target": "ThreadLifecycle",
+          "type": "calls",
+          "description": "将会话启动、恢复、fork、关闭、Agent 线程选择委托给线程生命周期方法"
+        },
+        {
+          "target": "ConfigAndPolicyManagement",
+          "type": "calls",
+          "description": "调用配置重建、策略覆盖、功能开关更新和配置持久化方法"
+        },
+        {
+          "target": "OpSubmissionAndRequestResolution",
+          "type": "calls",
+          "description": "通过 submit_active_thread_op 为 CodexOp 事件提交操作"
+        },
+        {
+          "target": "McpPluginFeedbackRPC",
+          "type": "calls",
+          "description": "委托给 MCP 清单、插件增删改查和反馈提交辅助方法"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/tui/src/app.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "AppEventDispatch"
+      }
+    },
+    {
+      "name": "TuiAndKeyboardRouting",
+      "description": "终端 UI 事件处理和键盘路由（约 200 行，第 3945–6002 行）。handle_tui_event() 处理 TuiEvent::Draw（渲染管线、帧调度、粘贴突发 tick、外部编辑器请求）、TuiEvent::Paste 和 TuiEvent::Key。handle_key_event() 路由按键：Agent 切换快捷键（Alt+Left/Right）、Ctrl+T（对话记录覆盖层）、Ctrl+L（清除 UI）、Ctrl+G（外部编辑器）、Esc（回溯准备）、Enter（回溯确认），以及回退到 chat_widget。还包括外部编辑器集成（launch_external_editor、request_external_editor_launch、reset_external_editor_state）、推理/个性化标签辅助方法、主题管理、refresh_status_line 和 spawn_world_writable_scan。",
+      "edges": [
+        {
+          "target": "AppStructAndTypes",
+          "type": "depends",
+          "description": "读取和修改 App 状态字段（overlay、backtrack、chat_widget 等）"
+        },
+        {
+          "target": "ThreadLifecycle",
+          "type": "calls",
+          "description": "为 Agent 切换键盘快捷键调用 adjacent_thread_id_with_backfill 和 select_agent_thread"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/tui/src/app.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TuiAndKeyboardRouting"
+      }
+    },
+    {
+      "name": "ThreadLifecycle",
+      "description": "线程生命周期管理（约 1900 行，第 1540–3548 行）。涵盖：线程通道管理（ensure_thread_channel、abort_thread_event_listener(s)）、线程激活（set_thread_active、activate_thread_channel、store_active_thread_receiver、activate_thread_for_replay、clear_active_thread）、出站操作追踪（note_thread_outbound_op、note_active_thread_outbound_op、active_turn_id_for_thread）、线程事件路由（enqueue_thread_notification/request、hydrate_collab_agent_metadata_for_notification、infer_session_for_thread_notification、enqueue_primary_thread_session/notification/request、refresh_snapshot_session_if_needed、apply_refreshed_snapshot_thread）、Agent 选择器（open_agent_picker、upsert/mark_closed/refresh agent_picker_thread、session_state_for_thread_read、attach_live_thread_for_selection、select_agent_thread、adjacent_thread_id_with_backfill、backfill_loaded_subagent_threads）、线程切换（reset_for_thread_switch、reset_thread_event_state、replace_chat_widget、replace_chat_widget_with_app_server_thread）、新会话（start_fresh_session_with_summary_hint、fresh_session_config）、快照回放（replay_thread_snapshot、drain_active_thread_events）、关闭（shutdown_current_thread、active_non_primary_shutdown_target）、handle_active_thread_event（关闭故障转移路由）以及 handle_thread_event_now/replay。",
+      "edges": [
+        {
+          "target": "AppStructAndTypes",
+          "type": "depends",
+          "description": "使用 ThreadEventChannel、ThreadEventStore、ThreadEventSnapshot 和 App 状态字段"
+        },
+        {
+          "target": "OpSubmissionAndRequestResolution",
+          "type": "calls",
+          "description": "在线程操作期间调用 refresh_pending_thread_approvals 和 submit_thread_op"
+        },
+        {
+          "target": "ConfigAndPolicyManagement",
+          "type": "calls",
+          "description": "在线程恢复/切换期间调用 rebuild_config_for_resume_or_fallback 和 apply_runtime_policy_overrides"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/tui/src/app.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ThreadLifecycle"
+      }
+    },
+    {
+      "name": "OpSubmissionAndRequestResolution",
+      "description": "向 app-server 提交操作和待处理请求解析（约 600 行，第 1825–2467 行）。submit_active_thread_op() 和 submit_thread_op() 通过以下路径处理操作路由：try_handle_local_history_op（绕过服务器的本地历史查找）、try_submit_active_thread_op_via_app_server（将 AppCommand 转换为 app-server 协议，通过 active_turn_steer_race/active_turn_not_steerable_turn_error 处理转向竞争重试，追踪出站操作以获取回放状态）、try_resolve_app_server_request（将出站操作与待处理服务器请求关联并发送响应）。refresh_pending_thread_approvals() 扫描非活跃线程通道中的待处理审批，并通过 interactive_request_for_thread_request() 以线程级交互请求的形式呈现到活跃的 chat widget 中。",
+      "edges": [
+        {
+          "target": "AppStructAndTypes",
+          "type": "depends",
+          "description": "使用 AppCommand、PendingAppServerRequests、ThreadEventStore 进行请求追踪和解析"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/tui/src/app.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "OpSubmissionAndRequestResolution"
+      }
+    },
+    {
+      "name": "ConfigAndPolicyManagement",
+      "description": "配置重建和运行时策略管理（约 200 行，第 1075–1460 行）。包括 chatwidget_init_for_forked_or_resumed_thread()、rebuild_config_for_cwd()、refresh_in_memory_config_from_disk()（及其 best_effort 变体）、rebuild_config_for_resume_or_fallback()、apply_runtime_policy_overrides()、set_approvals_reviewer_in_app_and_widget()、try_set_approval_policy_on_config()、try_set_sandbox_policy_on_config() 以及 update_feature_flags()（约 240 行 Guardian Approvals 实验逻辑，包括跨配置范围的约束执行、审批/沙箱/审查者策略对齐和配置持久化）。",
+      "edges": [
+        {
+          "target": "AppStructAndTypes",
+          "type": "depends",
+          "description": "读取和修改 App.config、运行时策略覆盖，并使用 GuardianApprovalsMode"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/tui/src/app.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ConfigAndPolicyManagement"
+      }
+    },
+    {
+      "name": "McpPluginFeedbackRPC",
+      "description": "MCP 清单、插件管理和反馈的异步 RPC 辅助方法（约 300 行，第 1883–2131 + 6010–6192 行）。包括 fetch_mcp_inventory()（分页的 MCP 服务器状态收集）、handle_mcp_inventory_result()、clear_committed_mcp_inventory_loading()、mcp_inventory_maps_from_statuses()。插件操作：fetch_plugins_list()、fetch_plugin_detail()、fetch_plugin_install()、fetch_plugin_uninstall()。反馈：submit_feedback()、handle_feedback_thread_event()、enqueue_thread_feedback_event()、handle_feedback_submitted()、build_feedback_upload_params()。还有 refresh_rate_limits() 和 fetch_account_rate_limits()。这些都是“即发即忘“的异步 spawn，通过 AppEvents 回传结果。",
+      "edges": [
+        {
+          "target": "AppStructAndTypes",
+          "type": "depends",
+          "description": "使用 App 字段（app_event_tx、chat_widget、config、feedback_audience）和辅助类型"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/tui/src/app.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "McpPluginFeedbackRPC"
+      }
+    },
+    {
+      "name": "Tests",
+      "description": "全面的测试套件（约 4775 行，第 6155–10929 行）。涵盖：辅助构造（make_test_app、make_test_app_with_channels、test_thread_session、test_turn、notification 工厂方法）、配置约束覆盖规范化、MCP 清单映射、启动等待门控行为、线程事件路由（入队、回放、快照、回滚）、Agent 选择器（排序、活跃状态刷新、终端错误检测、已加载线程附加）、功能开关切换（跨配置范围的 Guardian Approvals 启用/禁用）、非活跃线程审批冒泡、模型迁移提示、推理力度和协作模式、配置刷新、主题同步、回溯选择、会话摘要格式化、关闭意图路由、清除 UI 标题渲染等。",
+      "edges": [
+        {
+          "target": "AppStructAndTypes",
+          "type": "depends",
+          "description": "测试涉及 App 构造和辅助类型"
+        },
+        {
+          "target": "ThreadLifecycle",
+          "type": "depends",
+          "description": "测试涵盖线程事件路由、快照回放、Agent 选择器和关闭故障转移"
+        },
+        {
+          "target": "ConfigAndPolicyManagement",
+          "type": "depends",
+          "description": "测试涵盖功能开关更新、配置刷新和策略覆盖"
+        },
+        {
+          "target": "OpSubmissionAndRequestResolution",
+          "type": "depends",
+          "description": "测试涵盖非活跃线程审批冒泡和请求解析"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/tui/src/app.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Tests"
+      }
+    }
+  ]
+}

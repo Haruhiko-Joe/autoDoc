@@ -1,0 +1,111 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "67da6783-348b-412f-81f7-2093c2077d89",
+  "description": "主聊天视口组件（ChatWidget）。消费来自 Agent 会话的协议事件，构建和管理可滚动的 HistoryCells 对话记录，处理中断和键盘路由（在对话记录和 BottomPane 之间），管理实时/语音会话、插件和技能集成界面，并渲染带模型/Agent 信息的会话头部。",
+  "codeScope": [
+    "codex-rs/tui/src/chatwidget.rs",
+    "codex-rs/tui/src/chatwidget/"
+  ],
+  "nodes": [
+    {
+      "name": "ChatWidgetCore",
+      "description": "核心 ChatWidget 结构体及其主要 impl 块（约 11K 行）。拥有会话状态（历史单元格、流式缓冲区、协作模式、token/速率限制追踪、排队的用户消息），从 ChatWidgetInit 构造组件，处理来自 Agent 会话的协议事件（handle_codex_event、handle_server_notification、handle_server_request），处理键盘输入路由（handle_key_event，在对话记录和 BottomPane 之间），管理流式生命周期（StreamController、AdaptiveChunkingPolicy、commit ticks），驱动对话记录管理（add_to_history、replay_thread_turns），处理审批模态（exec/patch/引导/权限），管理模型/个性化/协作模式弹窗，控制退出/中断行为（双击快捷键、Ctrl+C 装备），并实现用于渲染聊天视口的 ratatui Widget trait。",
+      "edges": [
+        {
+          "target": "InterruptQueue",
+          "type": "composes",
+          "description": "拥有一个 InterruptManager 实例，在活跃写入周期期间延迟中断性 UI 事件（审批、exec 开始/结束），在周期完成时排空"
+        },
+        {
+          "target": "PluginSurface",
+          "type": "calls",
+          "description": "将插件市场弹窗显示、插件安装/卸载流程和插件授权同意委托给 plugins 子模块中定义的方法"
+        },
+        {
+          "target": "RealtimeSession",
+          "type": "calls",
+          "description": "管理实时语音对话生命周期——启动/停止会话、路由音频帧、处理实时协议事件——通过 realtime 子模块中的方法"
+        },
+        {
+          "target": "SkillsIntegration",
+          "type": "calls",
+          "description": "打开技能菜单、管理技能启用/禁用开关、通过 skills 子模块中的方法解析 @-mention 和 $-skill 引用"
+        },
+        {
+          "target": "StatusSurfaces",
+          "type": "calls",
+          "description": "刷新状态栏和终端标题栏内容，包括旋转动画、git 分支、模型信息和计划进度（通过 status_surfaces 子模块）"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/tui/src/chatwidget.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ChatWidgetCore"
+      }
+    },
+    {
+      "name": "InterruptQueue",
+      "description": "QueuedInterrupt 枚举和 InterruptManager 结构体（约 105 行）。提供一个 FIFO 队列，缓冲在 ChatWidget 处于写入周期中间时到达的中断性 UI 事件（exec 审批、patch 审批、引导请求、权限请求、用户输入请求、exec 开始/结束、MCP 开始/结束、patch 结束），确保在周期完成后按顺序处理。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/tui/src/chatwidget/interrupts.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "InterruptQueue"
+      }
+    },
+    {
+      "name": "PluginSurface",
+      "description": "插件市场集成界面（约 1,087 行）。作为 ChatWidget 的 impl 方法实现插件发现、浏览和管理 UI。包括带搜索过滤的策展市场列表、显示安装状态和功能的插件详情弹窗、带应用级授权同意对话框的安装/卸载流程、带微光动画的延迟加载头部，以及按工作目录键控的插件列表响应缓存。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/tui/src/chatwidget/plugins.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PluginSurface"
+      }
+    },
+    {
+      "name": "RealtimeSession",
+      "description": "实时/语音对话管理（约 480 行）。定义 RealtimeConversationPhase（Inactive→Starting→Active→Stopping）和追踪会话 ID、音频采集/播放句柄和语音计量占位符的 RealtimeConversationUiState。实现 ChatWidget 方法用于启动/停止实时会话、路由 RealtimeEvent 变体（音频帧、对话启动/关闭）、管理平台特定的语音采集和音频播放器生命周期（仅非 Linux），以及处理实时模式下带图片附件的用户消息渲染。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/tui/src/chatwidget/realtime.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "RealtimeSession"
+      }
+    },
+    {
+      "name": "SkillsIntegration",
+      "description": "技能和工具 mention 集成（约 452 行）。实现 ChatWidget 方法用于打开技能菜单和管理技能开关弹窗、处理技能启用/禁用状态变更并持久化配置、解析编辑器文本中的技能 mention（$ 前缀）和工具 mention（@ 前缀）、将协议 SkillMetadata 映射到核心技能类型，以及为 app-server 协议收集连接器/应用 mention。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/tui/src/chatwidget/skills.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SkillsIntegration"
+      }
+    },
+    {
+      "name": "StatusSurfaces",
+      "description": "状态栏、终端标题和会话头部渲染（约 678 行，跨 status_surfaces.rs 和 session_header.rs）。定义 TerminalTitleStatusKind（Working/Thinking/Undoing/WaitingForBackgroundTerminal）、用于高效逐帧渲染的 StatusSurfaceSelections 快照、避免冗余文件系统查找的 CachedProjectRootName，以及终端标题动画的盲文旋转器。实现 ChatWidget 方法用于解析配置的状态栏/终端标题项列表、使用实时数据（模型、推理力度、剩余上下文、git 分支、计划进度）渲染它们、对无效项 ID 发出警告，以及管理追踪显示模型名称的 SessionHeader 结构体。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/tui/src/chatwidget/status_surfaces.rs",
+        "codex-rs/tui/src/chatwidget/session_header.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "StatusSurfaces"
+      }
+    }
+  ]
+}

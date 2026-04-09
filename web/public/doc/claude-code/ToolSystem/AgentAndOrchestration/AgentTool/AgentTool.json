@@ -1,0 +1,113 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "5370b876-eb85-4f6f-8950-49d36d4aa915",
+  "description": "The core subagent spawning engine (~6.8k lines). Defines the Agent tool that launches specialized child agents, manages their full lifecycle from creation to completion. Includes the main tool definition, agent execution loop (query orchestration, message threading, tool pool assembly, MCP server connection), fork-subagent mode (context-inheriting child agents), agent resume flow, built-in agent type definitions (explore, plan, general-purpose, verification, statusline-setup, claude-code-guide), custom agent loading from user directories and plugins, agent memory/context injection, display/color coordination, and prompt construction.",
+  "codeScope": [
+    "src/tools/AgentTool/"
+  ],
+  "nodes": [
+    {
+      "name": "ToolDefinition",
+      "description": "The main Agent tool definition and orchestration glue (~2.1k lines). AgentTool.tsx contains the buildTool call with input schema (prompt, subagent_type, model, isolation, run_in_background), permission checking (deny rules, agent filtering), the primary call handler that routes between fork-subagent, resume, remote teleport, and standard agent spawn paths, manages foreground/background agent lifecycle (async registration, worktree creation, progress tracking, auto-backgrounding), and handles completion (result extraction, worktree cleanup, summarization). agentToolUtils.ts provides shared utilities: the agentToolResult schema, async agent lifecycle wrapper, progress emission, handoff classification, partial result extraction, and tool use analytics. constants.ts defines tool name constants and one-shot agent type sets.",
+      "edges": [
+        {
+          "target": "ExecutionEngine",
+          "type": "calls",
+          "description": "Invokes runAgent to execute the core query loop after setting up the agent context, tool pool, and system prompt"
+        },
+        {
+          "target": "AgentTypes",
+          "type": "depends",
+          "description": "Resolves the requested subagent_type against built-in and custom agent definitions to configure the agent spawn"
+        },
+        {
+          "target": "LifecycleAndContext",
+          "type": "calls",
+          "description": "Delegates to forkSubagent for context-inheriting spawns, resumeAgent for continuing previous agents, and prompt/memory modules for system prompt assembly"
+        },
+        {
+          "target": "DisplayAndUI",
+          "type": "calls",
+          "description": "Uses UI rendering functions for tool use messages, progress indicators, result display, and agent color assignment"
+        }
+      ],
+      "codeScope": [
+        "src/tools/AgentTool/AgentTool.tsx",
+        "src/tools/AgentTool/agentToolUtils.ts",
+        "src/tools/AgentTool/constants.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ToolDefinition"
+      }
+    },
+    {
+      "name": "ExecutionEngine",
+      "description": "The core agent execution loop (~970 lines). runAgent.ts orchestrates a single agent's query cycle: assembles the tool pool (filtering disallowed tools, merging MCP tools from required servers), builds the system prompt with environment details and agent-specific instructions, connects to required MCP servers, creates the subagent context with file state cache, executes the query loop (calling the Claude API with message threading, streaming events, and abort signal handling), processes tool calls within the agent's scope, manages shell task cleanup on abort, and returns the final assistant response with token usage metadata.",
+      "edges": [],
+      "codeScope": [
+        "src/tools/AgentTool/runAgent.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ExecutionEngine"
+      }
+    },
+    {
+      "name": "AgentTypes",
+      "description": "Built-in agent type definitions and custom agent loading (~1.5k lines). builtInAgents.ts provides the registry function getBuiltInAgents that assembles available built-in agents based on feature flags and environment (coordinator mode, SDK mode). The built-in/ directory contains 6 agent definitions: general-purpose (default fallback), Explore (fast codebase exploration), Plan (architecture planning), verification (evidence-based checking), statusline-setup (UI configuration), and claude-code-guide (onboarding help). loadAgentsDir.ts (~755 lines) handles the AgentDefinition type/schema, loading custom agents from user .claude/agents/ directories and plugin agents, parsing frontmatter (tools, disallowedTools, model, effort, permissions, MCP requirements, hooks), validating agent configurations, and filtering agents by MCP server availability.",
+      "edges": [],
+      "codeScope": [
+        "src/tools/AgentTool/builtInAgents.ts",
+        "src/tools/AgentTool/built-in/",
+        "src/tools/AgentTool/loadAgentsDir.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "AgentTypes"
+      }
+    },
+    {
+      "name": "LifecycleAndContext",
+      "description": "Specialized agent lifecycle flows and context injection (~1.1k lines). forkSubagent.ts (~210 lines) implements the fork-subagent mode where child agents inherit the parent's full conversation context and system prompt, building forked messages with context tags and worktree notices. resumeAgent.ts (~265 lines) handles resuming previously-running agents by reading their transcript and metadata from session storage, reconstructing tool results, filtering orphaned messages, and re-entering the query loop. prompt.ts (~287 lines) constructs the agent's system prompt section describing available agent types, their tools, and usage guidelines. agentMemory.ts (~177 lines) manages per-agent persistent memory directories (user/project/local scopes) and loads memory prompts. agentMemorySnapshot.ts (~197 lines) captures and injects memory snapshots for agent context.",
+      "edges": [
+        {
+          "target": "AgentTypes",
+          "type": "depends",
+          "description": "prompt.ts reads agent definitions to generate the agent type descriptions and tool listings shown in the system prompt"
+        },
+        {
+          "target": "ExecutionEngine",
+          "type": "calls",
+          "description": "resumeAgent invokes runAgent (via runAsyncAgentLifecycle) to re-enter the query loop with reconstructed conversation state"
+        }
+      ],
+      "codeScope": [
+        "src/tools/AgentTool/forkSubagent.ts",
+        "src/tools/AgentTool/resumeAgent.ts",
+        "src/tools/AgentTool/prompt.ts",
+        "src/tools/AgentTool/agentMemory.ts",
+        "src/tools/AgentTool/agentMemorySnapshot.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "LifecycleAndContext"
+      }
+    },
+    {
+      "name": "DisplayAndUI",
+      "description": "Agent rendering components and visual coordination (~1k lines). UI.tsx (~871 lines) provides React components for rendering agent tool use in the terminal: grouped agent displays, tool use messages with agent name/color badges, progress indicators with background hints, result messages with token usage summaries, error and rejection displays, and the userFacingName/userFacingNameBackgroundColor helpers for agent identification. agentDisplay.ts (~104 lines) coordinates display properties like agent naming and status formatting. agentColorManager.ts (~66 lines) assigns and manages unique colors from a predefined palette (AGENT_COLORS) to distinguish concurrent agents in the terminal output.",
+      "edges": [],
+      "codeScope": [
+        "src/tools/AgentTool/UI.tsx",
+        "src/tools/AgentTool/agentDisplay.ts",
+        "src/tools/AgentTool/agentColorManager.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "DisplayAndUI"
+      }
+    }
+  ]
+}

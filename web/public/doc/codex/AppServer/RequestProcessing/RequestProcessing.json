@@ -1,0 +1,98 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "a08c4adb-7bac-43d5-81b5-7d268767e0a2",
+  "description": "核心请求分发和事件处理引擎。包含将传入的 JSON-RPC 请求路由到处理器的顶层 MessageProcessor、实现所有 RPC 方法处理器的 CodexMessageProcessor（线程启动/恢复/中断、回合管理、账户/认证、模型列表、审批、插件等）、将内部 Codex 核心事件转换为客户端协议通知的定制事件处理层，以及包括回合跟踪、中断队列和线程状态监控在内的每线程状态管理。",
+  "codeScope": [
+    "codex-rs/app-server/src/message_processor.rs",
+    "codex-rs/app-server/src/message_processor/",
+    "codex-rs/app-server/src/codex_message_processor.rs",
+    "codex-rs/app-server/src/codex_message_processor/",
+    "codex-rs/app-server/src/bespoke_event_handling.rs",
+    "codex-rs/app-server/src/thread_state.rs",
+    "codex-rs/app-server/src/thread_status.rs"
+  ],
+  "nodes": [
+    {
+      "name": "MessageProcessor",
+      "description": "顶层 JSON-RPC 请求分发器。将传入的请求和通知路由到相应的处理器：将核心 Codex 操作（线程、回合、审批、插件）委托给 CodexMessageProcessor，通过专用 API 模块直接处理配置/文件系统/认证请求，管理连接会话状态（初始化、实验性 API 启用）、外部认证刷新桥接，以及协调后台任务的关闭/排空。",
+      "edges": [
+        {
+          "target": "CodexMessageProcessor",
+          "type": "calls",
+          "description": "将所有核心 Codex RPC 方法（线程/回合/模型/插件/账户操作）委托给 CodexMessageProcessor 处理"
+        },
+        {
+          "target": "ThreadStateManagement",
+          "type": "depends",
+          "description": "通过 CodexMessageProcessor 间接访问 ThreadStateManager，处理连接生命周期事件（initialized、closed）"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/app-server/src/message_processor.rs",
+        "codex-rs/app-server/src/message_processor/tracing_tests.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "MessageProcessor"
+      }
+    },
+    {
+      "name": "CodexMessageProcessor",
+      "description": "实现所有 Codex 特定 JSON-RPC 操作的综合 RPC 方法处理器。涵盖线程生命周期（启动、恢复、分叉、归档、关闭、读取、列表、取消订阅、压缩、回滚）、回合管理（启动、中断、引导）、账户和认证（登录、登出、认证状态、账户信息、速率限制）、模型列表和协作模式、插件管理（安装、卸载、列表、读取、市场、技能、应用）、审批解析（命令执行、文件变更、权限、apply-patch、MCP 引出、用户输入）、命令执行、模糊文件搜索会话、反馈上传、动态工具注册、审查工作流、实时音频线程、Windows 沙箱设置以及 MCP 服务器状态/OAuth。约 10K 行包含多个子模块，值得进一步分解。",
+      "edges": [
+        {
+          "target": "BespokeEventHandling",
+          "type": "calls",
+          "description": "调用 apply_bespoke_event_handling 将内部 Codex 核心事件转换为发送给已订阅客户端的协议通知"
+        },
+        {
+          "target": "ThreadStateManagement",
+          "type": "depends",
+          "description": "在请求处理期间读取和修改每线程状态（中断队列、回合摘要、监听器管理）和线程状态（活跃/空闲/错误跟踪、状态通知）"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/app-server/src/codex_message_processor.rs",
+        "codex-rs/app-server/src/codex_message_processor/apps_list_helpers.rs",
+        "codex-rs/app-server/src/codex_message_processor/plugin_app_helpers.rs",
+        "codex-rs/app-server/src/codex_message_processor/plugin_mcp_oauth.rs"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "CodexMessageProcessor"
+      }
+    },
+    {
+      "name": "BespokeEventHandling",
+      "description": "将内部 Codex 核心事件（EventMsg/Op 变体）转换为 app-server 协议通知发送给已连接客户端的事件转换层。处理广泛的事件类型，包括回合生命周期（已启动、已完成、已中断）、智能体消息增量、命令执行输出、文件变更审批、权限请求、MCP 工具调用、上下文压缩、实时音频事件、计划更新、钩子执行、guardian 审批审查、令牌使用、弃用通知、模型重路由和错误通知。管理每事件的副作用，如更新回合摘要、排队中断、通过 ThreadWatchManager 跟踪线程状态，以及解析待处理的服务器请求。",
+      "edges": [
+        {
+          "target": "ThreadStateManagement",
+          "type": "data-flow",
+          "description": "随着事件到达更新 ThreadState 的回合摘要和待处理中断，并通知 ThreadWatchManager 回合的启动、完成、中断以及权限/用户输入请求"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/app-server/src/bespoke_event_handling.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "BespokeEventHandling"
+      }
+    },
+    {
+      "name": "ThreadStateManagement",
+      "description": "每线程状态跟踪和线程状态监控。ThreadState/ThreadStateManager（thread_state.rs）管理每个会话的状态，包括待处理中断队列、回滚跟踪、回合历史构建、监听器生命周期（设置/清除/取消）、连接到线程的订阅映射，以及实验性原始事件标志。ThreadWatchManager（thread_status.rs）跟踪线程运行时状态（NotLoaded、Idle、Active 附带标志、SystemError），在状态转换时向客户端发出 ThreadStatusChanged 通知，为待处理的权限/用户输入请求提供 RAII 活跃守卫，并暴露运行回合计数 watch 通道用于优雅关闭协调。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/app-server/src/thread_state.rs",
+        "codex-rs/app-server/src/thread_status.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ThreadStateManagement"
+      }
+    }
+  ]
+}

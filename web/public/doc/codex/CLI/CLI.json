@@ -1,0 +1,118 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "012beafa-abdf-4ad4-803b-c9cc93d2c0f1",
+  "description": "主命令行入口——`codex` 二进制文件。解析参数和子命令，分派到 TUI 用于交互模式、分派到 codex-exec 用于非交互/无头模式，或启动 app-server、MCP 服务器和其他子命令工作流。",
+  "codeScope": [
+    "codex-rs/cli/",
+    "codex-rs/exec/",
+    "codex-rs/arg0/"
+  ],
+  "nodes": [
+    {
+      "name": "CliDispatch",
+      "description": "主 `codex` 二进制入口点（MultitoolCli）。定义了包含约 15 个子命令（exec、review、login、logout、mcp、mcp-server、app-server、app、sandbox、debug、cloud、resume、fork、features、completion 等）的顶层 clap 解析器，以及将每个子命令路由到相应处理 crate 或模块的中央分派匹配。还处理默认交互路径的 TUI 启动、配置覆盖传播、功能标志切换、远程模式选项以及退出/更新处理。",
+      "edges": [
+        {
+          "target": "NonInteractiveExec",
+          "type": "calls",
+          "description": "将 `codex exec` 和 `codex review` 子命令委托给 codex_exec::run_main 进行无头代理执行"
+        },
+        {
+          "target": "Arg0Dispatch",
+          "type": "depends",
+          "description": "在 main() 中使用 arg0_dispatch_or_else 作为最外层包装器，在 CLI 解析之前处理基于 argv[0] 的二进制多路复用"
+        },
+        {
+          "target": "McpSubcommands",
+          "type": "calls",
+          "description": "将 `codex mcp` 子命令（list/get/add/remove/login/logout）委托给 McpCli::run"
+        },
+        {
+          "target": "LoginSubcommands",
+          "type": "calls",
+          "description": "将 `codex login` 和 `codex logout` 子命令委托给 login 模块的处理器"
+        },
+        {
+          "target": "SandboxCommands",
+          "type": "calls",
+          "description": "将 `codex sandbox` 子命令（macos/linux/windows）委托给 debug_sandbox 模块，用于在操作系统沙箱下运行命令"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/cli/src/main.rs",
+        "codex-rs/cli/src/lib.rs",
+        "codex-rs/cli/src/exit_status.rs",
+        "codex-rs/cli/src/wsl_paths.rs",
+        "codex-rs/cli/src/app_cmd.rs",
+        "codex-rs/cli/src/desktop_app/",
+        "codex-rs/cli/Cargo.toml"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "CliDispatch"
+      }
+    },
+    {
+      "name": "NonInteractiveExec",
+      "description": "`codex-exec` crate——以非交互/无头模式运行 Codex。包括 exec CLI 参数解析器（model、sandbox、prompt、images、会话恢复/审查、JSON/彩色输出模式）、连接到进程内 app-server 并管理会话生命周期（start/resume/review）的 run_main 编排、stdin 提示词读取处理以及流式事件处理。提供两种输出格式化器：人类可读的彩色终端输出和结构化 JSONL 事件流。定义了 JSONL 输出模式使用的 ThreadEvent schema。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/exec/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "NonInteractiveExec"
+      }
+    },
+    {
+      "name": "Arg0Dispatch",
+      "description": "argv[0] 二进制多路复用机制（codex-arg0 crate）。在进程启动时检查可执行文件名，分派到嵌入的子工具（codex-linux-sandbox、apply_patch、codex-execve-wrapper），无需发布单独的二进制文件。创建带有符号链接/脚本的临时目录并添加到 PATH 前缀，使子进程可以重新调用这些工具。还处理从 ~/.codex/.env 加载 .env、Tokio 运行时构建以及过期临时目录清理。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/arg0/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Arg0Dispatch"
+      }
+    },
+    {
+      "name": "McpSubcommands",
+      "description": "`codex mcp` 子命令组，用于管理外部 MCP 服务器配置。提供对 ~/.codex/config.toml 中全局 MCP 服务器注册表的 list、get、add、remove、login（OAuth）和 logout 操作。处理 OAuth 发现、作用域解析、登录重试逻辑，以及服务器状态和认证状态的格式化表格/JSON 输出。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/cli/src/mcp_cmd.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "McpSubcommands"
+      }
+    },
+    {
+      "name": "LoginSubcommands",
+      "description": "`codex login`/`codex logout` CLI 命令。支持多种认证流程：ChatGPT 基于浏览器的 OAuth 登录、通过 stdin 管道的 API key 登录、OAuth 设备码流程（用于无头/远程机器），以及设备码与浏览器回退。管理登录状态显示、登出和用于登录诊断的基于文件的追踪。强制执行配置中的强制登录方法限制。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/cli/src/login.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "LoginSubcommands"
+      }
+    },
+    {
+      "name": "SandboxCommands",
+      "description": "`codex sandbox` 子命令组，用于在 Codex 的操作系统级沙箱中运行任意命令。支持 macOS Seatbelt、Linux Landlock/seccomp（通过 codex-linux-sandbox）和 Windows 受限令牌。从配置文件加载沙箱配置，构建沙箱特定的命令参数，管理网络代理生命周期，并在 macOS 上提供沙箱拒绝日志用于调试。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/cli/src/debug_sandbox.rs",
+        "codex-rs/cli/src/debug_sandbox/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SandboxCommands"
+      }
+    }
+  ]
+}

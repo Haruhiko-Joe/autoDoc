@@ -1,0 +1,178 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "8978a4bd-97b1-4e36-a259-3a1075e3d462",
+  "description": "聊天 UI 的交互式底部区域。包含 ChatComposer（带历史记录、粘贴处理和 mention 支持的可编辑提示输入框），以及一个分层的瞬态视图栈：工具调用审批覆盖层、文件搜索弹窗、斜杠命令菜单、MCP 服务器引导表单、技能/插件开关、反馈提交、模型/主题选择弹窗、状态栏配置和其他模态对话框。在活跃视图和编辑器之间处理本地输入路由。",
+  "codeScope": [
+    "codex-rs/tui/src/bottom_pane/"
+  ],
+  "nodes": [
+    {
+      "name": "Orchestration",
+      "description": "BottomPane 容器结构体及其视图栈状态机。拥有 ChatComposer 和一个 Vec<Box<dyn BottomPaneView>> 瞬态模态/弹窗视图栈。执行分层输入路由：将键盘事件转发给最顶层的活跃视图，或回退到编辑器；处理 Ctrl-C/Esc 取消分派、粘贴路由和基于时间的提示定时重绘。还定义了 BottomPaneView trait（每个覆盖层/模态必须实现的接口）、共享常量（退出超时、弹窗尺寸）和滚动状态辅助工具。",
+      "edges": [
+        {
+          "target": "ChatComposer",
+          "type": "composes",
+          "description": "在视图切换过程中持有并保留 ChatComposer 实例；在无模态活跃时将键盘事件和粘贴输入委托给它"
+        },
+        {
+          "target": "FooterRendering",
+          "type": "composes",
+          "description": "在绘制期间渲染编辑器下方的页脚行（状态指示器、待处理输入预览、执行摘要）"
+        },
+        {
+          "target": "ApprovalOverlay",
+          "type": "calls",
+          "description": "当工具调用审批请求到达时，将 ApprovalOverlay 推入视图栈"
+        },
+        {
+          "target": "AgentElicitation",
+          "type": "calls",
+          "description": "将 MCP 引导、请求用户输入和应用链接覆盖层推入视图栈"
+        },
+        {
+          "target": "SettingsViews",
+          "type": "calls",
+          "description": "将设置/配置视图（状态栏设置、技能开关、反馈等）推入视图栈"
+        },
+        {
+          "target": "SelectionFramework",
+          "type": "depends",
+          "description": "为通用选择弹窗（模型选择器、主题选择器等）创建 ListSelectionView 实例"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/tui/src/bottom_pane/mod.rs",
+        "codex-rs/tui/src/bottom_pane/bottom_pane_view.rs",
+        "codex-rs/tui/src/bottom_pane/popup_consts.rs",
+        "codex-rs/tui/src/bottom_pane/scroll_state.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Orchestration"
+      }
+    },
+    {
+      "name": "ChatComposer",
+      "description": "主要的文本输入状态机。管理可编辑的提示缓冲区（TextArea 组件）、历史导航（跨会话持久化 + 会话内本地）、非括号粘贴突发检测、斜杠命令/文件搜索/技能内联弹窗路由、图片附件处理（本地和远程）、mention 的文本元素追踪，以及带提示扩展的提交/排队逻辑。是 BottomPane 中最大的子系统（约 12.8K 行）。",
+      "edges": [
+        {
+          "target": "SelectionFramework",
+          "type": "depends",
+          "description": "内联弹窗（命令、文件搜索、技能/mention）使用 selection_popup_common 渲染原语进行行显示"
+        },
+        {
+          "target": "FooterRendering",
+          "type": "depends",
+          "description": "选择当前的 FooterMode 和提示标志，供页脚渲染器使用"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/tui/src/bottom_pane/chat_composer.rs",
+        "codex-rs/tui/src/bottom_pane/chat_composer_history.rs",
+        "codex-rs/tui/src/bottom_pane/textarea.rs",
+        "codex-rs/tui/src/bottom_pane/paste_burst.rs",
+        "codex-rs/tui/src/bottom_pane/prompt_args.rs",
+        "codex-rs/tui/src/bottom_pane/slash_commands.rs",
+        "codex-rs/tui/src/bottom_pane/command_popup.rs",
+        "codex-rs/tui/src/bottom_pane/file_search_popup.rs",
+        "codex-rs/tui/src/bottom_pane/skill_popup.rs"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "ChatComposer"
+      }
+    },
+    {
+      "name": "FooterRendering",
+      "description": "编辑器下方页脚区域的纯渲染层。将 FooterProps 格式化为带有基于宽度折叠规则的 ratatui Lines，用于瞬态提示（退出确认、队列指示器、快捷键帮助）、可配置的状态栏（模型、git 分支、上下文用量）、协作模式指示器、活跃 Agent 标签、待处理输入预览（编辑器上方的排队转向和草稿）、待处理线程审批徽章，以及统一的执行会话摘要行。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/tui/src/bottom_pane/footer.rs",
+        "codex-rs/tui/src/bottom_pane/pending_input_preview.rs",
+        "codex-rs/tui/src/bottom_pane/pending_thread_approvals.rs",
+        "codex-rs/tui/src/bottom_pane/unified_exec_footer.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "FooterRendering"
+      }
+    },
+    {
+      "name": "ApprovalOverlay",
+      "description": "工具调用审批对话框。显示来自 Agent 的命令执行请求、权限提示、网络访问请求和文件变更审查。以并排或堆叠布局渲染语法高亮的命令预览和 diff 摘要，并通过 AppEvents 将用户决策（批准、拒绝、始终允许、编辑）路由回协议层。",
+      "edges": [
+        {
+          "target": "SelectionFramework",
+          "type": "depends",
+          "description": "为批准/拒绝/始终允许的操作选项包装了一个 ListSelectionView"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/tui/src/bottom_pane/approval_overlay.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ApprovalOverlay"
+      }
+    },
+    {
+      "name": "AgentElicitation",
+      "description": "Agent 到用户的结构化输入请求的模态覆盖层。三个独立的视图实现：MCP 服务器引导（带 JSON Schema 驱动字段渲染的 OAuth/凭证表单）、通用请求用户输入覆盖层（带布局引擎的多字段表单，用于 Agent 发起的问题）、应用链接视图（带推理展示的安装/启用建议）。每个都实现了 BottomPaneView 并管理自己的表单状态、验证和提交。",
+      "edges": [
+        {
+          "target": "SelectionFramework",
+          "type": "depends",
+          "description": "三个覆盖层都使用 selection_popup_common 渲染原语（菜单表面、行布局、文本换行）"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/tui/src/bottom_pane/mcp_server_elicitation.rs",
+        "codex-rs/tui/src/bottom_pane/request_user_input/",
+        "codex-rs/tui/src/bottom_pane/app_link_view.rs"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "AgentElicitation"
+      }
+    },
+    {
+      "name": "SelectionFramework",
+      "description": "共享的弹窗渲染基础设施和可复用的选择组件。selection_popup_common 提供基础原语：菜单表面样式、行测量/渲染、列宽计算、文本换行和 GenericDisplayRow——被底部面板中几乎所有弹窗和覆盖层使用。ListSelectionView 是功能完整的可滚动列表组件（带键盘导航、搜索过滤、侧边内容、副标题、脚注），用于模型/主题选择器、审批选项和其他模态选择。MultiSelectPicker 扩展了该模式，用于切换式多选（用于状态栏和标题设置）。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/tui/src/bottom_pane/selection_popup_common.rs",
+        "codex-rs/tui/src/bottom_pane/list_selection_view.rs",
+        "codex-rs/tui/src/bottom_pane/multi_select_picker.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SelectionFramework"
+      }
+    },
+    {
+      "name": "SettingsViews",
+      "description": "推入 BottomPane 视图栈的配置和设置模态视图。包括：StatusLineSetupView（配置页脚状态栏中显示的项目）、TerminalTitleSetupView（配置终端标题模板）、ExperimentalFeaturesView（切换实验性功能开关）、CustomPromptView（编辑自定义系统提示）、SkillsToggleView（启用/禁用单个技能和插件）以及 FeedbackView（提交带分类、可选备注和上传同意的反馈）。每个都是独立的 BottomPaneView 实现。",
+      "edges": [
+        {
+          "target": "SelectionFramework",
+          "type": "depends",
+          "description": "使用 MultiSelectPicker（状态栏/标题设置）和 selection_popup_common 渲染（技能开关、实验性功能、反馈）"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/tui/src/bottom_pane/status_line_setup.rs",
+        "codex-rs/tui/src/bottom_pane/title_setup.rs",
+        "codex-rs/tui/src/bottom_pane/experimental_features_view.rs",
+        "codex-rs/tui/src/bottom_pane/custom_prompt_view.rs",
+        "codex-rs/tui/src/bottom_pane/skills_toggle_view.rs",
+        "codex-rs/tui/src/bottom_pane/feedback_view.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SettingsViews"
+      }
+    }
+  ]
+}

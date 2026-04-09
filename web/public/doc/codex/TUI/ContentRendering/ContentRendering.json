@@ -1,0 +1,186 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "109fd0c6-82a1-4f50-a71b-7e484815f88f",
+  "description": "内容渲染管线。将 Markdown 解析为带内联代码样式的 ratatui Lines，渲染语法高亮的 diff（统一和并排格式），管理流式对话记录管线（换行门控的 Markdown 收集、自适应排空分块、commit ticks），并提供表示已完成和进行中对话记录条目的 HistoryCell 和 ExecCell 数据模型。还处理文本换行、行截断和用于灵活布局的 Renderable 抽象。",
+  "codeScope": [
+    "codex-rs/tui/src/markdown.rs",
+    "codex-rs/tui/src/markdown_render.rs",
+    "codex-rs/tui/src/markdown_render_tests.rs",
+    "codex-rs/tui/src/markdown_stream.rs",
+    "codex-rs/tui/src/diff_render.rs",
+    "codex-rs/tui/src/render/",
+    "codex-rs/tui/src/history_cell.rs",
+    "codex-rs/tui/src/exec_cell/",
+    "codex-rs/tui/src/streaming/",
+    "codex-rs/tui/src/live_wrap.rs",
+    "codex-rs/tui/src/wrapping.rs",
+    "codex-rs/tui/src/line_truncation.rs",
+    "codex-rs/tui/src/text_formatting.rs"
+  ],
+  "nodes": [
+    {
+      "name": "MarkdownRendering",
+      "description": "基于 pulldown-cmark 的 Markdown 解析器，将 Markdown 源文本转换为带样式的 ratatui Lines。处理标题、内联代码、强调、粗体、删除线、有序/无序列表、引用块、链接（带特殊的本地文件路径显示逻辑，可规范化和相对化路径），以及围栏/缩进代码块（将语法高亮委托给高亮引擎）。薄 markdown.rs 外观层提供整个 TUI 使用的 append_markdown 公共入口点。",
+      "edges": [
+        {
+          "target": "SyntaxHighlighting",
+          "type": "calls",
+          "description": "将围栏代码块内容委托给 highlight_code_to_lines 进行语言感知的语法着色"
+        },
+        {
+          "target": "TextLayout",
+          "type": "calls",
+          "description": "使用 adaptive_wrap_line 进行 URL 感知的单词换行，使用 line_utils 进行拥有行转换"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/tui/src/markdown.rs",
+        "codex-rs/tui/src/markdown_render.rs",
+        "codex-rs/tui/src/markdown_render_tests.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "MarkdownRendering"
+      }
+    },
+    {
+      "name": "DiffRendering",
+      "description": "渲染带行号、沟槽符号（+/-/空格）和可选逐语言语法高亮的统一和并排文件 diff。根据终端亮度（暗/亮主题）在真彩色、256 色和 16 色调色板之间自适应 diff 背景颜色，并支持语法主题作用域背景。将每个 hunk 作为连接块高亮显示以保持解析器跨连续行的状态。还提供 HistoryCell 使用的 diff 摘要生成和路径显示辅助方法。",
+      "edges": [
+        {
+          "target": "SyntaxHighlighting",
+          "type": "calls",
+          "description": "使用高亮引擎按文件扩展名对 diff 内容行进行语法着色"
+        },
+        {
+          "target": "TextLayout",
+          "type": "calls",
+          "description": "使用 Insets 进行布局内边距，在列边界处硬换行长行"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/tui/src/diff_render.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "DiffRendering"
+      }
+    },
+    {
+      "name": "StreamingPipeline",
+      "description": "管理从原始 LLM 增量到已提交渲染行的流式对话记录管线。MarkdownStreamCollector 累积文本增量，使用换行门控仅发出完全完成的 Markdown 行。StreamState 拥有带到达时间戳的已提交行 FIFO 队列。StreamController 驱动 Markdown 收集器，将排空的行转换为消息和计划流的 HistoryCell 发射。AdaptiveChunkingPolicy 实现带滞后的双档系统（Smooth/CatchUp），在显示节奏和队列积压之间取得平衡。CommitTick 编排跨控制器的逐 tick 排空。",
+      "edges": [
+        {
+          "target": "MarkdownRendering",
+          "type": "calls",
+          "description": "MarkdownStreamCollector 委托 append_markdown 进行增量 Markdown 到 Lines 转换"
+        },
+        {
+          "target": "HistoryCell",
+          "type": "data-flow",
+          "description": "控制器从排空的流行中发射 Box<dyn HistoryCell> 实例，用于对话记录插入"
+        },
+        {
+          "target": "TextLayout",
+          "type": "calls",
+          "description": "使用 line_utils（is_blank_line_spaces_only、prefix_lines）进行行处理"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/tui/src/markdown_stream.rs",
+        "codex-rs/tui/src/streaming/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "StreamingPipeline"
+      }
+    },
+    {
+      "name": "HistoryCell",
+      "description": "定义 HistoryCell trait 及其众多实现，代表对话 UI 中每种类型的对话记录条目：用户消息、助手消息、工具调用结果、文件变更 diff、计划步骤、MCP 调用、网络搜索、图片、会话头部、推理摘要等。每个变体实现 render() 以产生 Renderable 输出和 desired_height() 用于布局。处理微光效果的动画 tick、活跃单元格缓存键，以及对话记录覆盖层（Ctrl+T）的尾部缓存。是内容渲染范围中最大的单个文件。",
+      "edges": [
+        {
+          "target": "MarkdownRendering",
+          "type": "calls",
+          "description": "通过 append_markdown 渲染助手消息和工具结果中的 Markdown 内容"
+        },
+        {
+          "target": "DiffRendering",
+          "type": "calls",
+          "description": "使用 create_diff_summary 和 display_path_for 在工具调用单元格中渲染文件变更 diff"
+        },
+        {
+          "target": "ExecCell",
+          "type": "calls",
+          "description": "将命令执行单元格渲染委托给 output_lines、spinner 和 ExecCell 模型类型"
+        },
+        {
+          "target": "TextLayout",
+          "type": "calls",
+          "description": "全程使用 Renderable trait、adaptive_wrap_lines、line_utils、text_formatting 和 line_truncation"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/tui/src/history_cell.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "HistoryCell"
+      }
+    },
+    {
+      "name": "ExecCell",
+      "description": "对话记录中命令执行单元格的数据模型和渲染逻辑。ExecCall 捕获单个工具调用（调用 ID、命令、解析形式、输出、计时）。ExecCell 将相关的 exec 调用分组（例如，一批“探索“用的 read/search 命令）。渲染模块产生带 bash 语法高亮、命令前缀、时长徽章、进行中调用的微光旋转器、输出截断和交互预览的样式化输出行。",
+      "edges": [
+        {
+          "target": "SyntaxHighlighting",
+          "type": "calls",
+          "description": "使用 highlight_bash_to_lines 对对话记录中的 shell 命令进行语法着色"
+        },
+        {
+          "target": "TextLayout",
+          "type": "calls",
+          "description": "使用 adaptive_wrap_line/lines 进行命令文本换行，使用 prefix_lines 进行缩进"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/tui/src/exec_cell/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ExecCell"
+      }
+    },
+    {
+      "name": "SyntaxHighlighting",
+      "description": "基于 syntect 的语法高亮引擎，包装了 two_face 语法和主题包（约 250 种语言，32 个主题）。管理四个进程全局单例（SYNTAX_SET、THEME、THEME_OVERRIDE、CODEX_HOME）用于语法数据库、活跃主题、用户偏好和自定义 .tmTheme 发现。提供 highlight_code_to_lines 和 highlight_bash_to_lines 入口点。将 syntect 样式转换为 ratatui 样式，处理 ANSI 调色板语义（索引颜色、终端默认值）。应用防护措施（512KB / 10K 行限制）以防止病态输入。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/tui/src/render/highlight.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SyntaxHighlighting"
+      }
+    },
+    {
+      "name": "TextLayout",
+      "description": "跨渲染管线共享的基础文本布局原语。包括：用于灵活组件组合的 Renderable trait 和 RenderableItem 枚举（带 desired_height/cursor_pos）；用于布局内边距的 Insets 和 RectExt；URL 感知的自适应单词换行（通过切换单词分隔策略保持可点击 URL）；用于增量流式文本换行的 RowBuilder；带省略号支持的行截断；line_utils 辅助方法（拥有行克隆、空行检测、前缀插入）；以及 text_formatting 实用工具（JSON 紧凑格式化、字素感知截断、capitalize_first）。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/tui/src/render/mod.rs",
+        "codex-rs/tui/src/render/renderable.rs",
+        "codex-rs/tui/src/render/line_utils.rs",
+        "codex-rs/tui/src/wrapping.rs",
+        "codex-rs/tui/src/live_wrap.rs",
+        "codex-rs/tui/src/line_truncation.rs",
+        "codex-rs/tui/src/text_formatting.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TextLayout"
+      }
+    }
+  ]
+}

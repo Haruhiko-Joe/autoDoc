@@ -1,0 +1,85 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "18a47896-fafc-4fce-bdb8-5aa011f1f47e",
+  "description": "Multi-agent spawning and task orchestration tools. AgentTool (~4.5k lines) manages subagent lifecycle: forking subagent processes, built-in agent types (explore, plan, general-purpose, verification, statusline-setup, claude-code-guide), custom agent loading from directories, agent memory/context management, agent display/color coordination, and the resume flow for continuing agents. Task tools (Create/Get/Update/List/Stop/Output, ~1.3k lines combined) provide structured task management. Team tools and SendMessage enable coordinator-mode multi-agent collaboration.",
+  "codeScope": [
+    "src/tools/AgentTool/",
+    "src/tools/TaskCreateTool/",
+    "src/tools/TaskGetTool/",
+    "src/tools/TaskUpdateTool/",
+    "src/tools/TaskListTool/",
+    "src/tools/TaskStopTool/",
+    "src/tools/TaskOutputTool/",
+    "src/tools/TeamCreateTool/",
+    "src/tools/TeamDeleteTool/",
+    "src/tools/SendMessageTool/"
+  ],
+  "nodes": [
+    {
+      "name": "AgentTool",
+      "description": "The core subagent spawning engine (~6.8k lines). Defines the Agent tool that launches specialized child agents, manages their full lifecycle from creation to completion. Includes the main tool definition, agent execution loop (query orchestration, message threading, tool pool assembly, MCP server connection), fork-subagent mode (context-inheriting child agents), agent resume flow, built-in agent type definitions (explore, plan, general-purpose, verification, statusline-setup, claude-code-guide), custom agent loading from user directories and plugins, agent memory/context injection, display/color coordination, and prompt construction.",
+      "edges": [
+        {
+          "target": "TaskTools",
+          "type": "calls",
+          "description": "Subagents use task tools to track async agent work via LocalAgentTask registration and progress updates"
+        },
+        {
+          "target": "TeamAndMessaging",
+          "type": "calls",
+          "description": "In coordinator mode, AgentTool spawns teammates that use team and messaging tools for collaboration"
+        }
+      ],
+      "codeScope": [
+        "src/tools/AgentTool/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "AgentTool"
+      }
+    },
+    {
+      "name": "TaskTools",
+      "description": "Structured task management CRUD tools (~1.3k lines combined across 6 tools). TaskCreateTool creates tasks with subject, description, and metadata. TaskGetTool retrieves task details by ID. TaskUpdateTool modifies task status (pending/in_progress/completed), ownership, and description. TaskListTool lists tasks with optional filtering. TaskStopTool terminates running agent tasks. TaskOutputTool reads output from completed or running agent tasks. All tools follow a uniform buildTool pattern and delegate to shared task utilities.",
+      "edges": [],
+      "codeScope": [
+        "src/tools/TaskCreateTool/",
+        "src/tools/TaskGetTool/",
+        "src/tools/TaskUpdateTool/",
+        "src/tools/TaskListTool/",
+        "src/tools/TaskStopTool/",
+        "src/tools/TaskOutputTool/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TaskTools"
+      }
+    },
+    {
+      "name": "TeamAndMessaging",
+      "description": "Coordinator-mode multi-agent collaboration tools (~1.4k lines). TeamCreateTool sets up a new team with a task list, registers the team for session cleanup, and assigns teammate colors. TeamDeleteTool tears down teams and cleans up resources. SendMessageTool (~917 lines) enables inter-agent communication: sending structured messages (text, shutdown requests/approvals) between teammates via mailbox or bridge relay, resuming background agents to deliver messages, and handling team lead vs teammate routing with multiple backend types (local, remote, bridge).",
+      "edges": [
+        {
+          "target": "AgentTool",
+          "type": "calls",
+          "description": "SendMessageTool imports resumeAgentBackground from AgentTool to wake sleeping agents for message delivery"
+        },
+        {
+          "target": "TaskTools",
+          "type": "depends",
+          "description": "TeamCreateTool initializes the task list directory that TaskTools operate on; team prompts reference Task tools for workflow coordination"
+        }
+      ],
+      "codeScope": [
+        "src/tools/TeamCreateTool/",
+        "src/tools/TeamDeleteTool/",
+        "src/tools/SendMessageTool/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TeamAndMessaging"
+      }
+    }
+  ]
+}

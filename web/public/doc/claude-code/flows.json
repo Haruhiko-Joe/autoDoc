@@ -1,0 +1,598 @@
+{
+  "flows": [
+    {
+      "title": "User Sends a Natural Language Prompt in the Interactive REPL",
+      "description": "The most fundamental flow: a developer types a natural language prompt in the terminal, and the system parses it, sends it to Claude, streams the response with tool calls, and renders the result — the core conversation loop that drives all interactive usage.",
+      "participants": [
+        {
+          "name": "Screens",
+          "description": "REPL screen that captures user input and orchestrates the conversation UI",
+          "docPath": "TerminalUI/Screens"
+        },
+        {
+          "name": "QueryEngine",
+          "description": "Core AI conversation loop managing the full query lifecycle",
+          "docPath": "QueryEngine"
+        },
+        {
+          "name": "QueryLoop",
+          "description": "The streaming query generator that sends messages to Claude and processes responses",
+          "docPath": "QueryEngine/QueryLoop"
+        },
+        {
+          "name": "APIClient",
+          "description": "Claude API client handling streaming communication with the Anthropic API",
+          "docPath": "Services/APIClient"
+        },
+        {
+          "name": "ToolExecution",
+          "description": "Tool orchestration runtime that dispatches and executes tool calls in parallel",
+          "docPath": "Services/ToolExecution"
+        },
+        {
+          "name": "ToolSystem",
+          "description": "Tool registry providing 40+ built-in tools (file ops, bash, web, etc.)",
+          "docPath": "ToolSystem"
+        },
+        {
+          "name": "Components",
+          "description": "React components rendering assistant messages, tool results, and diffs",
+          "docPath": "TerminalUI/Components"
+        }
+      ],
+      "steps": [
+        {
+          "from": "Screens",
+          "to": "QueryEngine",
+          "action": "Submit user prompt",
+          "detail": "The REPL screen captures the user's text input and calls QueryEngine.submitMessage() to begin a new conversation turn",
+          "edgeType": "calls",
+          "codeRef": "src/screens/REPL.tsx"
+        },
+        {
+          "from": "QueryEngine",
+          "to": "QueryLoop",
+          "action": "Start streaming query loop",
+          "detail": "submitMessage() builds the system prompt (injecting CLAUDE.md, git status, memory context), assembles the message array, and invokes the query() async generator",
+          "edgeType": "calls",
+          "codeRef": "src/QueryEngine.ts"
+        },
+        {
+          "from": "QueryLoop",
+          "to": "APIClient",
+          "action": "Send messages to Claude API",
+          "detail": "The query loop sends the full message array to the Anthropic streaming API, receiving incremental text and tool_use blocks",
+          "edgeType": "calls",
+          "codeRef": "src/query.ts"
+        },
+        {
+          "from": "QueryLoop",
+          "to": "ToolExecution",
+          "action": "Dispatch tool calls from Claude's response",
+          "detail": "When Claude's response contains tool_use blocks, the query loop passes them to runTools() for parallel execution with permission checks",
+          "edgeType": "calls",
+          "codeRef": "src/services/tools/toolOrchestration.ts"
+        },
+        {
+          "from": "ToolExecution",
+          "to": "ToolSystem",
+          "action": "Execute individual tools",
+          "detail": "The orchestrator invokes each tool's call() method (e.g., FileReadTool, BashTool, GrepTool), collecting results and streaming progress",
+          "edgeType": "calls",
+          "codeRef": "src/Tool.ts"
+        },
+        {
+          "from": "QueryLoop",
+          "to": "Components",
+          "action": "Stream response to UI",
+          "detail": "Assistant text tokens, tool results, and status updates are yielded from the query generator and flow to the React component tree for real-time rendering",
+          "edgeType": "data-flow",
+          "codeRef": "src/query.ts"
+        },
+        {
+          "from": "QueryLoop",
+          "to": "APIClient",
+          "action": "Continue agentic loop",
+          "detail": "If tool results need further processing, the query loop appends tool results to messages and sends another API request, iterating until Claude emits end_turn",
+          "edgeType": "calls",
+          "codeRef": "src/query.ts"
+        }
+      ]
+    },
+    {
+      "title": "CLI Startup and Initialization to REPL Launch",
+      "description": "When a user runs `claude` in the terminal, the application bootstraps through multiple phases — argument parsing, environment validation, auth, telemetry, migrations, MCP connections, and plugin loading — before launching the interactive REPL session.",
+      "participants": [
+        {
+          "name": "Entrypoints",
+          "description": "The outermost CLI entrypoint that dispatches to the correct execution path",
+          "docPath": "Bootstrap/Entrypoints"
+        },
+        {
+          "name": "Initialization",
+          "description": "The init() function bootstrapping environment, networking, and telemetry",
+          "docPath": "Bootstrap/Initialization"
+        },
+        {
+          "name": "CLIOrchestrator",
+          "description": "main.tsx: Commander.js program with argument parsing and full startup sequence",
+          "docPath": "Bootstrap/CLIOrchestrator"
+        },
+        {
+          "name": "EnvironmentSetup",
+          "description": "setup() configuring cwd, git root, worktrees, session state",
+          "docPath": "Bootstrap/EnvironmentSetup"
+        },
+        {
+          "name": "Infrastructure",
+          "description": "Auth, config, settings, and permission system",
+          "docPath": "Infrastructure"
+        },
+        {
+          "name": "MCPClient",
+          "description": "MCP server connections and tool discovery",
+          "docPath": "Services/MCPClient"
+        },
+        {
+          "name": "TerminalUI",
+          "description": "Ink-based REPL interface rendering",
+          "docPath": "TerminalUI"
+        }
+      ],
+      "steps": [
+        {
+          "from": "Entrypoints",
+          "to": "Initialization",
+          "action": "Bootstrap environment",
+          "detail": "cli.tsx detects this is not a fast-path (--version, --daemon) and dynamically imports init() to set up configs, telemetry, proxy agents, and OAuth",
+          "edgeType": "calls",
+          "codeRef": "src/entrypoints/cli.tsx"
+        },
+        {
+          "from": "Entrypoints",
+          "to": "CLIOrchestrator",
+          "action": "Launch CLI program",
+          "detail": "After init(), cli.tsx dynamically imports main.tsx which defines the Commander.js program and parses CLI arguments",
+          "edgeType": "calls",
+          "codeRef": "src/entrypoints/cli.tsx"
+        },
+        {
+          "from": "CLIOrchestrator",
+          "to": "Infrastructure",
+          "action": "Validate auth and load config",
+          "detail": "main.tsx validates authentication credentials (API key, OAuth token, or AWS), loads GrowthBook feature flags, shows the trust dialog, and runs migrations",
+          "edgeType": "depends",
+          "codeRef": "src/main.tsx"
+        },
+        {
+          "from": "CLIOrchestrator",
+          "to": "EnvironmentSetup",
+          "action": "Configure runtime environment",
+          "detail": "Calls setup() to detect git root, set project directory, initialize session memory, start file watchers, and configure hooks",
+          "edgeType": "calls",
+          "codeRef": "src/main.tsx"
+        },
+        {
+          "from": "CLIOrchestrator",
+          "to": "MCPClient",
+          "action": "Connect to MCP servers",
+          "detail": "Assembles MCP server configurations from settings, connects to each server, discovers available tools, and merges them into the tool pool",
+          "edgeType": "calls",
+          "codeRef": "src/services/mcp/client.ts"
+        },
+        {
+          "from": "CLIOrchestrator",
+          "to": "TerminalUI",
+          "action": "Launch interactive REPL",
+          "detail": "After all initialization completes, calls launchRepl() which mounts the Ink React app and renders the REPL screen, ready for user input",
+          "edgeType": "calls",
+          "codeRef": "src/replLauncher.tsx"
+        }
+      ]
+    },
+    {
+      "title": "Automatic Context Compaction During Long Conversations",
+      "description": "When a conversation grows too large for the context window, the system automatically detects the overflow, summarizes older messages via an LLM call, extracts session memories, and replaces the history with a compact summary — allowing the conversation to continue seamlessly.",
+      "participants": [
+        {
+          "name": "QueryLoop",
+          "description": "Core query loop that monitors token usage and triggers compaction",
+          "docPath": "QueryEngine/QueryLoop"
+        },
+        {
+          "name": "CostTracker",
+          "description": "Tracks token usage across the session",
+          "docPath": "QueryEngine/CostTracker"
+        },
+        {
+          "name": "Compaction",
+          "description": "Context compaction engine with multiple strategies (auto, micro, reactive)",
+          "docPath": "Services/Compaction"
+        },
+        {
+          "name": "APIClient",
+          "description": "Sends compaction summarization requests to Claude",
+          "docPath": "Services/APIClient"
+        },
+        {
+          "name": "SessionMemory",
+          "description": "Extracts and persists key information before messages are discarded",
+          "docPath": "MemorySystem/SessionMemory"
+        },
+        {
+          "name": "Components",
+          "description": "UI components showing compaction warnings and progress",
+          "docPath": "TerminalUI/Components"
+        }
+      ],
+      "steps": [
+        {
+          "from": "QueryLoop",
+          "to": "CostTracker",
+          "action": "Check token budget",
+          "detail": "After each API response, the query loop checks accumulated token usage against the model's context window limits via autoCompactTracking state",
+          "edgeType": "data-flow",
+          "codeRef": "src/query.ts"
+        },
+        {
+          "from": "QueryLoop",
+          "to": "Components",
+          "action": "Show compaction warning",
+          "detail": "When tokens approach the threshold, a warning is surfaced in the UI informing the user that auto-compaction will occur",
+          "edgeType": "data-flow",
+          "codeRef": "src/services/compact/compactWarningHook.ts"
+        },
+        {
+          "from": "QueryLoop",
+          "to": "Compaction",
+          "action": "Trigger auto-compact",
+          "detail": "When the token budget is exceeded, the query loop invokes the compaction engine which groups older messages into compactable segments",
+          "edgeType": "calls",
+          "codeRef": "src/services/compact/autoCompact.ts"
+        },
+        {
+          "from": "Compaction",
+          "to": "SessionMemory",
+          "action": "Extract session memories",
+          "detail": "Before discarding old messages, the compaction engine triggers session memory extraction to persist important context (task state, decisions, file references) to disk",
+          "edgeType": "calls",
+          "codeRef": "src/services/compact/sessionMemoryCompact.ts"
+        },
+        {
+          "from": "Compaction",
+          "to": "APIClient",
+          "action": "Summarize conversation history",
+          "detail": "Sends the grouped old messages to Claude with a compaction prompt, receiving a condensed summary that preserves key technical details",
+          "edgeType": "calls",
+          "codeRef": "src/services/compact/compact.ts"
+        },
+        {
+          "from": "Compaction",
+          "to": "QueryLoop",
+          "action": "Replace messages with summary",
+          "detail": "The compacted summary replaces the old messages in the conversation array, and post-compact cleanup removes stale tool results, freeing token budget for continued conversation",
+          "edgeType": "data-flow",
+          "codeRef": "src/services/compact/postCompactCleanup.ts"
+        }
+      ]
+    },
+    {
+      "title": "Subagent Spawning for Parallel Task Execution",
+      "description": "When Claude decides a task benefits from parallel exploration (e.g., searching a codebase while editing another file), it spawns subagents — forked processes with their own query loops that execute independently and return results to the parent conversation.",
+      "participants": [
+        {
+          "name": "QueryLoop",
+          "description": "Parent query loop processing Claude's response with Agent tool calls",
+          "docPath": "QueryEngine/QueryLoop"
+        },
+        {
+          "name": "AgentAndOrchestration",
+          "description": "AgentTool managing subagent lifecycle, forking, and built-in agent types",
+          "docPath": "ToolSystem/AgentAndOrchestration"
+        },
+        {
+          "name": "ToolExecution",
+          "description": "Tool orchestration dispatching the AgentTool call",
+          "docPath": "Services/ToolExecution"
+        },
+        {
+          "name": "Infrastructure",
+          "description": "Permission system gating agent tool access",
+          "docPath": "Infrastructure"
+        },
+        {
+          "name": "APIClient",
+          "description": "Claude API client used by the subagent's own query loop",
+          "docPath": "Services/APIClient"
+        },
+        {
+          "name": "Components",
+          "description": "Agent progress display and color-coded output in the terminal",
+          "docPath": "TerminalUI/Components"
+        }
+      ],
+      "steps": [
+        {
+          "from": "QueryLoop",
+          "to": "ToolExecution",
+          "action": "Dispatch Agent tool call",
+          "detail": "Claude's response contains a tool_use block for the Agent tool with a prompt and agent type (e.g., 'Explore', 'Plan'). The query loop passes it to runTools()",
+          "edgeType": "calls",
+          "codeRef": "src/query.ts"
+        },
+        {
+          "from": "ToolExecution",
+          "to": "AgentAndOrchestration",
+          "action": "Invoke AgentTool",
+          "detail": "The tool orchestrator calls AgentTool.call() which selects the agent type, prepares the prompt with agent-specific system instructions, and configures the execution context",
+          "edgeType": "calls",
+          "codeRef": "src/tools/AgentTool/AgentTool.tsx"
+        },
+        {
+          "from": "AgentAndOrchestration",
+          "to": "Infrastructure",
+          "action": "Check agent permissions",
+          "detail": "The agent tool verifies permission to spawn subagents, resolves worktree isolation if requested, and applies tool deny rules for the agent's restricted tool set",
+          "edgeType": "depends",
+          "codeRef": "src/tools/AgentTool/AgentTool.tsx"
+        },
+        {
+          "from": "AgentAndOrchestration",
+          "to": "APIClient",
+          "action": "Fork and run subagent query loop",
+          "detail": "A forked subagent process starts its own query loop, sending the agent prompt to Claude via a separate API stream. The subagent has its own tool set (e.g., Explore agents get read-only tools)",
+          "edgeType": "calls",
+          "codeRef": "src/tools/AgentTool/forkSubagent.ts"
+        },
+        {
+          "from": "AgentAndOrchestration",
+          "to": "Components",
+          "action": "Stream agent progress to UI",
+          "detail": "The subagent's activity (tool calls, intermediate results) is displayed in the terminal with color-coded labels distinguishing it from the parent conversation",
+          "edgeType": "data-flow",
+          "codeRef": "src/tools/AgentTool/agentDisplay.ts"
+        },
+        {
+          "from": "AgentAndOrchestration",
+          "to": "QueryLoop",
+          "action": "Return agent result to parent",
+          "detail": "When the subagent completes, its final result is returned as a tool_result to the parent query loop, which incorporates it into the ongoing conversation",
+          "edgeType": "data-flow",
+          "codeRef": "src/tools/AgentTool/runAgent.ts"
+        }
+      ]
+    },
+    {
+      "title": "claude.ai Bridge: Remote-Controlled Session via WebSocket",
+      "description": "A user on claude.ai initiates a Claude Code session that connects to a local or cloud-hosted CLI instance via WebSocket. Messages flow from the web UI through the bridge to the local query engine, with tool permissions relayed back for approval.",
+      "participants": [
+        {
+          "name": "Bridge",
+          "description": "WebSocket bridge connecting claude.ai to local Claude Code",
+          "docPath": "RemoteAndBridge/Bridge"
+        },
+        {
+          "name": "CLIIOLayer",
+          "description": "Headless query runner (print.ts) for non-interactive execution",
+          "docPath": "Bootstrap/CLIIOLayer"
+        },
+        {
+          "name": "QueryEngine",
+          "description": "Core query engine processing the remote user's prompts",
+          "docPath": "QueryEngine"
+        },
+        {
+          "name": "ToolSystem",
+          "description": "Tool registry and execution for the remote session",
+          "docPath": "ToolSystem"
+        },
+        {
+          "name": "Infrastructure",
+          "description": "Auth (JWT verification) and permission system for remote sessions",
+          "docPath": "Infrastructure"
+        }
+      ],
+      "steps": [
+        {
+          "from": "Bridge",
+          "to": "Infrastructure",
+          "action": "Authenticate remote session",
+          "detail": "The bridge receives a session initiation from claude.ai, verifies JWT tokens, establishes WebSocket/SSE transport, and creates a session with work-dispatch polling",
+          "edgeType": "depends",
+          "codeRef": "src/bridge/replBridge.ts"
+        },
+        {
+          "from": "Bridge",
+          "to": "CLIIOLayer",
+          "action": "Relay user message to headless runner",
+          "detail": "When a user message arrives via WebSocket, the bridge passes it to the headless query runner (print.ts runHeadless) which drives the conversation without a terminal UI",
+          "edgeType": "calls",
+          "codeRef": "src/cli/print.ts"
+        },
+        {
+          "from": "CLIIOLayer",
+          "to": "QueryEngine",
+          "action": "Execute query loop",
+          "detail": "The headless runner calls into the query engine to process the message through the same API→tools→response cycle as interactive mode",
+          "edgeType": "calls",
+          "codeRef": "src/QueryEngine.ts"
+        },
+        {
+          "from": "QueryEngine",
+          "to": "ToolSystem",
+          "action": "Execute tools with remote permissions",
+          "detail": "Tool calls are executed locally, but permission prompts are relayed back through the bridge to the remote user for approval via permission callbacks",
+          "edgeType": "calls",
+          "codeRef": "src/tools.ts"
+        },
+        {
+          "from": "CLIIOLayer",
+          "to": "Bridge",
+          "action": "Stream results back to claude.ai",
+          "detail": "The headless runner serializes assistant responses, tool results, and status updates as NDJSON messages which the bridge relays over WebSocket back to the web UI",
+          "edgeType": "data-flow",
+          "codeRef": "src/cli/structuredIO.ts"
+        }
+      ]
+    },
+    {
+      "title": "MCP Tool Discovery and Invocation",
+      "description": "When Claude Code starts, it connects to configured MCP (Model Context Protocol) servers, discovers their available tools, and merges them into the tool pool. During conversation, Claude can invoke these external tools just like built-in ones.",
+      "participants": [
+        {
+          "name": "CLIOrchestrator",
+          "description": "main.tsx startup sequence that initiates MCP connections",
+          "docPath": "Bootstrap/CLIOrchestrator"
+        },
+        {
+          "name": "MCPClient",
+          "description": "MCP protocol client managing server connections and tool discovery",
+          "docPath": "Services/MCPClient"
+        },
+        {
+          "name": "ToolInterfaceAndRegistry",
+          "description": "Tool registry that assembles built-in and MCP tools into one pool",
+          "docPath": "ToolSystem/ToolInterfaceAndRegistry"
+        },
+        {
+          "name": "MCPAndIntegrations",
+          "description": "MCPTool proxy that delegates calls to MCP server connections",
+          "docPath": "ToolSystem/MCPAndIntegrations"
+        },
+        {
+          "name": "QueryLoop",
+          "description": "Query loop that sends MCP tools to Claude and dispatches tool calls",
+          "docPath": "QueryEngine/QueryLoop"
+        },
+        {
+          "name": "Infrastructure",
+          "description": "Settings defining MCP server configurations and approval state",
+          "docPath": "Infrastructure"
+        }
+      ],
+      "steps": [
+        {
+          "from": "CLIOrchestrator",
+          "to": "Infrastructure",
+          "action": "Load MCP server configs",
+          "detail": "During startup, main.tsx reads MCP server definitions from project settings, user settings, and the official registry configuration",
+          "edgeType": "depends",
+          "codeRef": "src/main.tsx"
+        },
+        {
+          "from": "CLIOrchestrator",
+          "to": "MCPClient",
+          "action": "Connect to MCP servers",
+          "detail": "For each configured server, the MCP client establishes a connection (stdio, SSE, or HTTP transport), performs initialization handshake, and queries available tools/resources",
+          "edgeType": "calls",
+          "codeRef": "src/services/mcp/client.ts"
+        },
+        {
+          "from": "MCPClient",
+          "to": "ToolInterfaceAndRegistry",
+          "action": "Register discovered tools",
+          "detail": "Discovered MCP tools are wrapped as MCPTool proxy instances and merged into the tool pool via assembleToolPool(), becoming available to Claude alongside built-in tools",
+          "edgeType": "data-flow",
+          "codeRef": "src/tools.ts"
+        },
+        {
+          "from": "QueryLoop",
+          "to": "MCPAndIntegrations",
+          "action": "Claude invokes an MCP tool",
+          "detail": "When Claude's response includes a tool_use for an MCP-provided tool, the query loop dispatches it to the MCPTool proxy which translates the call to MCP protocol format",
+          "edgeType": "calls",
+          "codeRef": "src/tools/MCPTool/MCPTool.ts"
+        },
+        {
+          "from": "MCPAndIntegrations",
+          "to": "MCPClient",
+          "action": "Forward call to MCP server",
+          "detail": "The MCPTool proxy sends the tool invocation over the MCP transport to the external server, awaits the result, and applies result collapsing classification before returning",
+          "edgeType": "calls",
+          "codeRef": "src/services/mcp/client.ts"
+        },
+        {
+          "from": "MCPAndIntegrations",
+          "to": "QueryLoop",
+          "action": "Return tool result to conversation",
+          "detail": "The MCP tool result is formatted as a standard ToolResult and fed back into the query loop's message array for Claude to process in the next turn",
+          "edgeType": "data-flow",
+          "codeRef": "src/services/tools/toolOrchestration.ts"
+        }
+      ]
+    },
+    {
+      "title": "End-of-Turn Memory Extraction and Persistence",
+      "description": "After Claude finishes responding to a user prompt, the system runs background stop hooks that automatically extract durable memories (user preferences, project context, feedback) from the conversation and persist them to the structured memory store for use in future sessions.",
+      "participants": [
+        {
+          "name": "StopHooks",
+          "description": "End-of-turn lifecycle handler running post-response hooks",
+          "docPath": "QueryEngine/StopHooks"
+        },
+        {
+          "name": "ExtractMemories",
+          "description": "Background agent that identifies and saves durable memories from conversation",
+          "docPath": "MemorySystem/ExtractMemories"
+        },
+        {
+          "name": "MemoryRetrieval",
+          "description": "Scans existing memories to avoid duplicates",
+          "docPath": "MemorySystem/MemoryRetrieval"
+        },
+        {
+          "name": "MemdirCore",
+          "description": "Memory directory infrastructure managing typed memory files",
+          "docPath": "MemorySystem/MemdirCore"
+        },
+        {
+          "name": "SystemContext",
+          "description": "System prompt builder that injects memory context into future conversations",
+          "docPath": "QueryEngine/SystemContext"
+        }
+      ],
+      "steps": [
+        {
+          "from": "StopHooks",
+          "to": "ExtractMemories",
+          "action": "Trigger memory extraction",
+          "detail": "When the model emits end_turn, handleStopHooks() fires executeExtractMemories() as a background task, passing the recent conversation transcript",
+          "edgeType": "calls",
+          "codeRef": "src/query/stopHooks.ts"
+        },
+        {
+          "from": "ExtractMemories",
+          "to": "MemoryRetrieval",
+          "action": "Scan existing memories",
+          "detail": "The extraction agent scans the memory directory for existing memory files and their frontmatter to build a manifest, ensuring it won't create duplicate entries",
+          "edgeType": "calls",
+          "codeRef": "src/services/extractMemories/extractMemories.ts"
+        },
+        {
+          "from": "ExtractMemories",
+          "to": "MemdirCore",
+          "action": "Write new memory files",
+          "detail": "The extraction agent identifies durable facts (user role, feedback, project context) from the conversation and writes them as individual markdown files with typed frontmatter to the memory directory",
+          "edgeType": "calls",
+          "codeRef": "src/memdir/memdir.ts"
+        },
+        {
+          "from": "ExtractMemories",
+          "to": "MemdirCore",
+          "action": "Update MEMORY.md index",
+          "detail": "After writing memory files, the agent updates the MEMORY.md index file with pointers to the new entries, keeping the index concise for future prompt injection",
+          "edgeType": "calls",
+          "codeRef": "src/memdir/memdir.ts"
+        },
+        {
+          "from": "MemdirCore",
+          "to": "SystemContext",
+          "action": "Inject memories into future prompts",
+          "detail": "In subsequent conversations, the system prompt builder reads MEMORY.md and relevant memory files, injecting them into Claude's context so it has awareness of the user's preferences and project state",
+          "edgeType": "data-flow",
+          "codeRef": "src/context.ts"
+        }
+      ]
+    }
+  ]
+}

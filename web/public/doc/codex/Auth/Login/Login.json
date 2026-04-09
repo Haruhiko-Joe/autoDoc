@@ -1,0 +1,175 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "df4a78f7-98d4-4c66-bd52-5cf2baa74a47",
+  "description": "核心认证库（codex-login crate）。实现了通过本地回调服务器的基于浏览器的 OAuth 登录、设备码授权流程、编排令牌生命周期（加载、刷新、持久化）的 AuthManager、可插拔的凭据存储后端（文件、密钥环、自动回退、临时存储）、JWT 令牌解析，以及用于模型 API 请求的提供商范围认证桥接。",
+  "codeScope": [
+    "codex-rs/login/"
+  ],
+  "nodes": [
+    {
+      "name": "AuthManager",
+      "description": "核心认证编排器。定义了表示当前认证机制的 CodexAuth 枚举（ApiKey、Chatgpt、ChatgptAuthTokens）以及管理完整令牌生命周期的 AuthManager 结构体：从存储或环境加载凭据、刷新 OAuth 令牌、持久化更新状态、与外部认证提供商协调，以及在 API 调用返回 401 时驱动 UnauthorizedRecovery 多步骤流程。",
+      "edges": [
+        {
+          "target": "CredentialStorage",
+          "type": "depends",
+          "description": "使用 AuthStorageBackend trait 跨存储模式加载、保存和删除持久化的认证凭据"
+        },
+        {
+          "target": "TokenData",
+          "type": "data-flow",
+          "description": "在加载、刷新和检查 JWT 令牌时读写 TokenData/IdTokenInfo"
+        },
+        {
+          "target": "ExternalBearerAuth",
+          "type": "calls",
+          "description": "通过 external_bearer_only() 创建并委托给 BearerTokenRefresher，用于基于提供商命令的认证流程"
+        },
+        {
+          "target": "HttpClient",
+          "type": "depends",
+          "description": "使用 create_client() 构建用于令牌刷新请求的 HTTP 客户端"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/login/src/auth/manager.rs",
+        "codex-rs/login/src/auth/mod.rs",
+        "codex-rs/login/src/auth/error.rs",
+        "codex-rs/login/src/auth/util.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "AuthManager"
+      }
+    },
+    {
+      "name": "OAuthBrowserLogin",
+      "description": "通过本地回调服务器实现的基于浏览器的 OAuth 登录。启动一个短生命周期的 tiny_http 服务器监听本地端口，生成 PKCE 码，构造 OpenAI 授权 URL，打开用户浏览器，处理带有授权码交换的 OAuth 回调，验证返回 ID 令牌上的工作区限制，并持久化生成的令牌。包含成功和错误页面的 HTML 模板。",
+      "edges": [
+        {
+          "target": "CredentialStorage",
+          "type": "calls",
+          "description": "在成功的浏览器回调后调用 save_auth() 持久化交换得到的 OAuth 令牌"
+        },
+        {
+          "target": "TokenData",
+          "type": "calls",
+          "description": "调用 parse_chatgpt_jwt_claims() 从返回的 ID 令牌中提取身份声明"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/login/src/server.rs",
+        "codex-rs/login/src/pkce.rs",
+        "codex-rs/login/src/assets/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "OAuthBrowserLogin"
+      }
+    },
+    {
+      "name": "DeviceCodeLogin",
+      "description": "用于无头/纯终端环境的设备码授权流程。从服务器请求用户码，显示用户码和验证 URL 供用户在浏览器中输入，轮询令牌端点直到授权完成或超时（15 分钟），然后通过与浏览器流程相同的 PKCE/令牌交换将获得的授权码交换为令牌。",
+      "edges": [
+        {
+          "target": "OAuthBrowserLogin",
+          "type": "calls",
+          "description": "复用 server 模块中的 exchange_code_for_tokens()、ensure_workspace_allowed() 和 persist_tokens_async() 用于令牌交换和持久化"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/login/src/device_code_auth.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "DeviceCodeLogin"
+      }
+    },
+    {
+      "name": "CredentialStorage",
+      "description": "基于 AuthStorageBackend trait 的可插拔凭据存储后端。提供四种实现：FileAuthStorage（auth.json 文件，Unix 0600 权限）、KeyringAuthStorage（通过 KeyringStore trait 使用操作系统密钥环，带 SHA256 哈希键）、AutoAuthStorage（密钥环优先，文件回退）和 EphemeralAuthStorage（进程级内存 HashMap 会话）。定义了 AuthCredentialsStoreMode 枚举和 AuthDotJson 数据模型。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/login/src/auth/storage.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "CredentialStorage"
+      }
+    },
+    {
+      "name": "TokenData",
+      "description": "JWT 令牌解析和身份数据结构。定义了 TokenData（access_token、refresh_token、id_token、account_id）和 IdTokenInfo（email、套餐类型、用户/账户 ID）。实现了不验证签名的 base64url JWT 载荷解码，从自定义 JWT 命名空间提取 OpenAI 特定声明，并解析令牌过期时间戳。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/login/src/token_data.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TokenData"
+      }
+    },
+    {
+      "name": "ExternalBearerAuth",
+      "description": "用于自定义模型提供商的外部 bearer 令牌认证。通过 BearerTokenRefresher 实现 ExternalAuth trait，执行用户配置的 shell 命令获取访问令牌，使用可配置的刷新间隔进行缓存，并在令牌过期或被拒绝时按需刷新。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/login/src/auth/external_bearer.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ExternalBearerAuth"
+      }
+    },
+    {
+      "name": "ProviderAuthBridge",
+      "description": "用于模型 API 请求的提供商范围认证桥接。auth_provider_from_auth() 将正确的令牌（提供商 API key、实验性 bearer 或 CodexAuth 令牌）解析为 CoreAuthProvider。auth_manager_for_provider() 和 required_auth_manager_for_provider() 根据提供商是否配置了自定义命令认证返回相应的 AuthManager 实例。",
+      "edges": [
+        {
+          "target": "AuthManager",
+          "type": "depends",
+          "description": "接受并返回 AuthManager 实例，对配置了自定义认证的提供商委托给 external_bearer_only()"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/login/src/api_bridge.rs",
+        "codex-rs/login/src/provider_auth.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ProviderAuthBridge"
+      }
+    },
+    {
+      "name": "HttpClient",
+      "description": "login crate 中共享的默认 HTTP 客户端构建和配置。构建带有 Codex user-agent 字符串（版本、操作系统、originator 后缀）、默认请求头（originator、数据驻留）、自定义 CA 证书支持和沙箱感知代理设置的 reqwest 客户端。提供全局 originator 管理和第一方 originator 检测。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/login/src/auth/default_client.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "HttpClient"
+      }
+    },
+    {
+      "name": "AuthEnvTelemetry",
+      "description": "认证环境状态的遥测收集。检查环境变量（OPENAI_API_KEY、CODEX_API_KEY、提供商特定密钥、refresh token URL 覆盖）并生成 AuthEnvTelemetry 结构体，该结构体转换为 OpenTelemetry 元数据，用于跨会话的认证配置可观测性。",
+      "edges": [
+        {
+          "target": "AuthManager",
+          "type": "depends",
+          "description": "引用 auth manager 中定义的 CODEX_API_KEY_ENV_VAR、OPENAI_API_KEY_ENV_VAR 和 REFRESH_TOKEN_URL_OVERRIDE_ENV_VAR 常量"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/login/src/auth_env_telemetry.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "AuthEnvTelemetry"
+      }
+    }
+  ]
+}

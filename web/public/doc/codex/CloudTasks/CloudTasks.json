@@ -1,0 +1,79 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "a4c0995f-fbb6-48c2-825a-f25705005441",
+  "description": "Codex Web 的远程云代理任务管理。提供用于创建、监控和审查在 OpenAI 基础设施上运行的云端代理任务的 TUI，具备 diff 审查和环境检测功能。",
+  "codeScope": [
+    "codex-rs/cloud-tasks/",
+    "codex-rs/cloud-tasks-client/",
+    "codex-rs/cloud-tasks-mock-client/",
+    "codex-rs/cloud-requirements/"
+  ],
+  "nodes": [
+    {
+      "name": "TasksTUI",
+      "description": "cloud-tasks TUI 主应用 crate。包含 CLI 入口点、后端初始化和认证、异步 TUI 事件循环（键盘处理、后台任务分派、加载动画）、应用状态管理（任务列表、diff 覆盖层、模态框）、基于 ratatui 的 UI 渲染（任务列表、diff 查看器、环境选择器、应用对话框、新任务编辑器）、通过 GitHub 远程源进行的环境自动检测，以及可滚动的 diff/文本显示组件。",
+      "edges": [
+        {
+          "target": "TasksClient",
+          "type": "depends",
+          "description": "使用 CloudBackend trait 和 HttpClient 与 Codex Cloud 后端 API 通信，用于列出、创建、检查和应用任务"
+        },
+        {
+          "target": "TasksMockClient",
+          "type": "depends",
+          "description": "在调试构建中，当 CODEX_CLOUD_TASKS_MODE=mock 时，可选择用 MockClient 替代真实 HTTP 后端"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/cloud-tasks/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "TasksTUI"
+      }
+    },
+    {
+      "name": "TasksClient",
+      "description": "云任务 API 客户端库。定义了 CloudBackend 异步 trait（列出/获取/创建/应用任务、兄弟尝试）、数据模型类型（TaskId、TaskSummary、TaskStatus、DiffSummary、ApplyOutcome、TurnAttempt、TaskText）、错误类型，以及委托给 codex-backend-client 进行 HTTP 传输和 codex-git-utils 进行本地补丁应用的 HttpClient 实现。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/cloud-tasks-client/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TasksClient"
+      }
+    },
+    {
+      "name": "TasksMockClient",
+      "description": "用于开发和测试的 CloudBackend trait 模拟实现。返回预设的任务列表、diff 和消息，支持环境感知变化，使 TUI 能够在没有真实后端连接的情况下运行。",
+      "edges": [
+        {
+          "target": "TasksClient",
+          "type": "depends",
+          "description": "实现 CloudBackend trait 并使用客户端 crate 中定义的所有数据模型类型"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/cloud-tasks-mock-client/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TasksMockClient"
+      }
+    },
+    {
+      "name": "CloudRequirements",
+      "description": "面向 Business 和 Enterprise ChatGPT 客户的云端配置需求加载器。从后端 API 获取 requirements.toml（带重试逻辑），实现带有 TTL 过期机制的 HMAC-SHA256 签名本地缓存，支持后台缓存刷新，并在无法加载云需求时对符合条件的账户采取关闭失败策略。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/cloud-requirements/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "CloudRequirements"
+      }
+    }
+  ]
+}

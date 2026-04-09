@@ -1,0 +1,155 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "3c0855b7-4298-42d3-be81-60415113acb1",
+  "description": "多阶段提升权限的设置流程，为 Windows 系统准备沙箱化执行环境。创建专用沙箱用户账户（离线/在线）、配置 Windows 防火墙规则以按用户 SID 阻止/允许网络流量、使用 DPAPI 加密管理凭据、将辅助二进制文件物化到 sandbox-bin 目录、应用带有敏感目录排除的只读根 ACL、写入版本戳记的设置标记，并提供运行时凭据加载的身份验证。",
+  "codeScope": [
+    "codex-rs/windows-sandbox-rs/src/setup_orchestrator.rs",
+    "codex-rs/windows-sandbox-rs/src/setup_main_win.rs",
+    "codex-rs/windows-sandbox-rs/src/setup_error.rs",
+    "codex-rs/windows-sandbox-rs/src/identity.rs",
+    "codex-rs/windows-sandbox-rs/src/sandbox_users.rs",
+    "codex-rs/windows-sandbox-rs/src/firewall.rs",
+    "codex-rs/windows-sandbox-rs/src/hide_users.rs",
+    "codex-rs/windows-sandbox-rs/src/helper_materialization.rs",
+    "codex-rs/windows-sandbox-rs/src/bin/setup_main.rs"
+  ],
+  "nodes": [
+    {
+      "name": "Orchestrator",
+      "description": "CLI 侧的设置编排，运行在非提升权限的父进程中。检查提升权限状态、收集读/写根路径（带有敏感目录过滤和用户配置文件排除）、构建 base64 编码的 ElevationPayload、通过 ShellExecuteExW（带 UAC）或直接 spawn 启动设置辅助程序、处理 ACL 更新的设置刷新而无需重新提升权限、从环境变量计算离线代理设置，并管理 SetupMarker 版本匹配和不匹配检测逻辑。",
+      "edges": [
+        {
+          "target": "ElevatedSetupHelper",
+          "type": "calls",
+          "description": "通过 ShellExecuteExW 或 Command::spawn 以 base64 编码的 payload 启动提升权限的辅助二进制文件（codex-windows-sandbox-setup.exe）"
+        },
+        {
+          "target": "SetupErrors",
+          "type": "depends",
+          "description": "使用 SetupErrorCode 变体和 failure() 辅助函数为编排器级别的故障生成结构化错误报告"
+        },
+        {
+          "target": "HelperMaterialization",
+          "type": "depends",
+          "description": "使用 helper_bin_dir() 将 sandbox-bin 目录包含在读根中，以便沙箱用户可以执行物化的辅助程序"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/windows-sandbox-rs/src/setup_orchestrator.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Orchestrator"
+      }
+    },
+    {
+      "name": "ElevatedSetupHelper",
+      "description": "提升权限的辅助二进制文件入口点和主要设置逻辑。解码 base64 payload，运行完整设置或仅读 ACL 模式，应用读 ACL（带有组/Everyone/Authenticated Users 检查）和写 ACL（通过作用域线程多线程执行）到文件系统根目录，使用显式 DACL 锁定沙箱目录，使用拒绝 ACE 保护工作区 .codex 和 .agents 目录，启动后台读 ACL 辅助进程，并在失败时写入结构化错误报告。",
+      "edges": [
+        {
+          "target": "UserProvisioning",
+          "type": "calls",
+          "description": "调用 provision_sandbox_users() 创建离线/在线用户账户、CodexSandboxUsers 组，并写入 DPAPI 加密的凭据"
+        },
+        {
+          "target": "FirewallRules",
+          "type": "calls",
+          "description": "调用 ensure_offline_proxy_allowlist() 和 ensure_offline_outbound_block() 配置按 SID 的防火墙规则"
+        },
+        {
+          "target": "SetupErrors",
+          "type": "depends",
+          "description": "使用 SetupErrorCode 和 SetupFailure 为每种辅助程序故障模式生成结构化错误"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/windows-sandbox-rs/src/setup_main_win.rs",
+        "codex-rs/windows-sandbox-rs/src/bin/setup_main.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ElevatedSetupHelper"
+      }
+    },
+    {
+      "name": "UserProvisioning",
+      "description": "沙箱用户账户生命周期管理。创建 CodexSandboxUsers 本地组，通过 Net* API（NetUserAdd/NetUserSetInfo）配置离线和在线用户账户，生成随机 24 字符密码，使用 DPAPI 加密密码，将 sandbox_users.json 写入密钥目录并将 setup_marker.json 写入沙箱目录，通过 LookupAccountNameW 解析 SID（带有已知 SID 快速路径），并通过 Winlogon 注册表键和 HIDDEN|SYSTEM 文件属性从 Windows 登录屏幕隐藏沙箱账户。",
+      "edges": [
+        {
+          "target": "SetupErrors",
+          "type": "depends",
+          "description": "使用 SetupErrorCode 变体（HelperUserCreateOrUpdateFailed、HelperUsersGroupCreateFailed、HelperDpapiProtectFailed 等）进行结构化错误报告"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/windows-sandbox-rs/src/sandbox_users.rs",
+        "codex-rs/windows-sandbox-rs/src/hide_users.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "UserProvisioning"
+      }
+    },
+    {
+      "name": "FirewallRules",
+      "description": "通过 COM（INetFwPolicy2/INetFwRule3）管理 Windows 防火墙规则。为离线沙箱用户配置按 SID 的出站阻止规则：非环回全协议阻止、环回 TCP/UDP 阻止，以及以补集端口范围计算的代理端口例外。支持幂等的规则创建/更新、旧版规则清理、LocalUserAuthorizedList 的回读验证，以及移除粒度环回规则的本地绑定模式。",
+      "edges": [
+        {
+          "target": "SetupErrors",
+          "type": "depends",
+          "description": "使用 SetupErrorCode 变体（HelperFirewallComInitFailed、HelperFirewallPolicyAccessFailed、HelperFirewallRuleCreateOrAddFailed、HelperFirewallRuleVerifyFailed）进行结构化错误报告"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/windows-sandbox-rs/src/firewall.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "FirewallRules"
+      }
+    },
+    {
+      "name": "IdentityAndCredentials",
+      "description": "沙箱执行路径的运行时身份验证和凭据加载。通过验证 setup_marker.json 和 sandbox_users.json 版本戳记检查设置完整性，根据沙箱策略和代理执行选择离线或在线身份，通过 base64 解码和 dpapi::unprotect 解密 DPAPI 保护的密码，在标记丢失或防火墙设置偏移时触发提升权限的设置，并在凭据加载后始终运行非提升权限的 ACL 刷新。",
+      "edges": [
+        {
+          "target": "Orchestrator",
+          "type": "depends",
+          "description": "从编排器模块导入 SetupMarker、SandboxUsersFile、SandboxNetworkIdentity 以及设置函数（run_elevated_setup、run_setup_refresh、gather_read_roots、gather_write_roots）"
+        }
+      ],
+      "codeScope": [
+        "codex-rs/windows-sandbox-rs/src/identity.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "IdentityAndCredentials"
+      }
+    },
+    {
+      "name": "SetupErrors",
+      "description": "设置管道的共享错误基础设施。定义包含约 20 个变体的 SetupErrorCode 枚举，涵盖编排器和辅助程序的故障模式，SetupFailure 错误类型带有 Display/Error 实现，SetupErrorReport 用于 JSON 序列化到 setup_error.json，辅助函数用于写入/读取/清除错误报告，以及使用用户名编辑的指标安全消息清理以防止遥测中的 PII 泄露。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/windows-sandbox-rs/src/setup_error.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SetupErrors"
+      }
+    },
+    {
+      "name": "HelperMaterialization",
+      "description": "将辅助二进制文件（command-runner、setup exe）从安装目录复制到 sandbox-bin 目录，以便它们继承该目录的 ACL 而非源文件的 ACL。使用大小+修改时间的新鲜度检查跳过不必要的复制、通过临时文件再重命名的原子写入、内存中的 OnceLock 缓存以避免会话内重复的文件系统检查，以及在物化失败时的旧版回退路径。",
+      "edges": [],
+      "codeScope": [
+        "codex-rs/windows-sandbox-rs/src/helper_materialization.rs"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "HelperMaterialization"
+      }
+    }
+  ]
+}
