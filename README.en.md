@@ -37,7 +37,6 @@ Unlike DeepWiki, Google Code Wiki, and similar tools that generate docs in a sin
 | Crash recovery | **Session ID + pending staging** | No | No |
 | Code Agent integration | **doc-drill Skill** | No | No |
 | Hybrid AI backends | **Per-role Claude/Codex selection** | No | No |
-| Open source & self-hosted | **Yes** | No | No |
 
 ## Demo
 

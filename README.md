@@ -37,7 +37,6 @@
 | 崩溃恢复 | **✅ Session ID + pending 暂存** | ❌ | ❌ |
 | Code Agent 集成 | **✅ doc-drill Skill** | ❌ | ❌ |
 | 混合 AI 后端 | **✅ 每角色可选 Claude/Codex** | ❌ | ❌ |
-| 开源自托管 | **✅** | ❌ | ❌ |
 
 ## Demo
 
