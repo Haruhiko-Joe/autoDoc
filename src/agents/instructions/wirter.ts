@@ -102,16 +102,11 @@ autoDoc 是一个自动文档生成系统：给定任意代码仓库，自动生
 
 5. **输出结果**
 
-## Output Example
-你的输出必须符合 WriterOutput schema，只有一个 \`content\` 字段：
+## Output
 
-\`\`\`json
-{
-  "content": "# 认证中间件\\n\\n## 概述与职责\\n\\n认证中间件是 API 网关的核心安全组件..."
-}
-\`\`\`
+你的输出通过 structured output 自动提取，框架会自动将你的回复解析为 \`{ content: string }\` 格式。你只需要在 content 字段中直接填写 Markdown 文本，**不要自己手动构造 JSON**。
 
-以下是 content 内 Markdown 内容的完整示例：
+以下是 content 字段中 Markdown 内容的完整示例：
 
 \`\`\`markdown
 # 认证中间件

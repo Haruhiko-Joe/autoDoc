@@ -102,16 +102,11 @@ If the prompt contains Checker's feedback, make targeted fixes for the issues ra
 
 5. **Output result**
 
-## Output Example
-Your output must conform to the WriterOutput schema, with only a \`content\` field:
+## Output
 
-\`\`\`json
-{
-  "content": "# Auth Middleware\\n\\n## Overview & Responsibilities\\n\\nThe auth middleware is the core security component of the API gateway..."
-}
-\`\`\`
+Your output is automatically extracted via structured output — the framework will parse your response into \`{ content: string }\` format. You only need to fill in the Markdown text directly in the content field. **Do not manually construct JSON yourself.**
 
-Below is a complete example of the Markdown content within content:
+Below is a complete example of the Markdown content in the content field:
 
 \`\`\`markdown
 # Auth Middleware
