@@ -1,0 +1,148 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "5795c1a3-502b-4754-914f-b791913c154c",
+  "description": "配置、设置与环境管理系统。settings/ 实现多层级设置加载（用户/项目/MDM/企业），支持变更检测和缓存；env*.ts 管理环境变量验证和动态注入；src/constants/ 定义全局常量（API 限制、提示词、工具限制等）；src/bootstrap/ 管理启动状态；src/migrations/ 包含 11 个配置迁移脚本（模型切换、设置结构升级等）。",
+  "codeScope": [
+    "src/utils/config.ts",
+    "src/utils/configConstants.ts",
+    "src/utils/settings/",
+    "src/utils/env.ts",
+    "src/utils/envDynamic.ts",
+    "src/utils/envUtils.ts",
+    "src/utils/envValidation.ts",
+    "src/utils/cliArgs.ts",
+    "src/constants/",
+    "src/bootstrap/",
+    "src/migrations/"
+  ],
+  "nodes": [
+    {
+      "name": "SettingsSystem",
+      "description": "多层级设置加载与管理系统。settings.ts 实现从用户、项目、MDM、企业等多个来源加载和合并设置；mdm/ 子目录封装 MDM/企业策略读取；changeDetector.ts 通过 chokidar 监听设置文件变更并触发 Hook；settingsCache.ts 管理会话级缓存；validation.ts 和 permissionValidation.ts 校验设置合法性；types.ts 定义 SettingsJson 的完整 Zod Schema（~1150 行）。共 19 个文件，~4500 行，内部有明确的子系统划分。",
+      "edges": [
+        {
+          "target": "BootstrapState",
+          "type": "depends",
+          "description": "settings.ts 从 bootstrap/state 获取 originalCwd、flagSettingsPath 等启动状态"
+        },
+        {
+          "target": "EnvironmentAndCLI",
+          "type": "depends",
+          "description": "使用 envUtils 中的 getClaudeConfigHomeDir、isEnvTruthy 等环境工具函数"
+        }
+      ],
+      "codeScope": [
+        "src/utils/settings/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "SettingsSystem"
+      }
+    },
+    {
+      "name": "GlobalConfig",
+      "description": "全局和项目级配置文件管理。config.ts（~1800 行）负责读写 ~/.claude/.config.json 全局配置和项目级 .claude/config.json，管理 ProjectConfig（允许的工具、MCP 服务器、会话指标等）和全局配置（认证令牌、用户偏好、计费信息等）。支持文件锁、配置文件监听和防重入保护。configConstants.ts 定义与配置相关的枚举常量（通知渠道、编辑器模式等）。",
+      "edges": [
+        {
+          "target": "BootstrapState",
+          "type": "depends",
+          "description": "通过 getOriginalCwd、getSessionTrustAccepted 获取启动上下文"
+        },
+        {
+          "target": "EnvironmentAndCLI",
+          "type": "depends",
+          "description": "使用 getGlobalClaudeFile（来自 env.ts）和 getClaudeConfigHomeDir 定位配置文件路径"
+        },
+        {
+          "target": "SettingsSystem",
+          "type": "depends",
+          "description": "通过 getManagedFilePath 获取受管设置路径"
+        }
+      ],
+      "codeScope": [
+        "src/utils/config.ts",
+        "src/utils/configConstants.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "GlobalConfig"
+      }
+    },
+    {
+      "name": "EnvironmentAndCLI",
+      "description": "环境检测、变量管理和 CLI 参数早期解析。env.ts 检测运行时环境（操作系统、IDE、包管理器、Docker 等）并导出环境信息对象；envDynamic.ts 提供需要异步检测的环境信息（Docker、musl、沙箱）；envUtils.ts 提供基础环境工具（配置目录路径、环境变量布尔判断、bare 模式检测）；envValidation.ts 校验带上下限的环境变量值；cliArgs.ts 在 Commander.js 之前早期解析关键 CLI 标志（如 --settings）。",
+      "edges": [
+        {
+          "target": "Constants",
+          "type": "depends",
+          "description": "env.ts 引用 constants/oauth 中的 fileSuffixForOauthConfig 构建配置文件名"
+        }
+      ],
+      "codeScope": [
+        "src/utils/env.ts",
+        "src/utils/envDynamic.ts",
+        "src/utils/envUtils.ts",
+        "src/utils/envValidation.ts",
+        "src/utils/cliArgs.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "EnvironmentAndCLI"
+      }
+    },
+    {
+      "name": "Constants",
+      "description": "全局常量定义集合（21 个文件，~2650 行）。涵盖 API 限制（apiLimits）、工具限制（toolLimits）、系统提示词片段（prompts、systemPromptSections）、产品信息（product）、OAuth 配置（oauth）、输出样式（outputStyles）、Beta 特性标识（betas）、文件路径常量（files）、XML 标签（xml）、加载动画文案（spinnerVerbs）等。所有文件均为纯数据导出，无业务逻辑。",
+      "edges": [],
+      "codeScope": [
+        "src/constants/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Constants"
+      }
+    },
+    {
+      "name": "BootstrapState",
+      "description": "应用启动全局状态管理（单文件 ~1760 行）。定义并管理 State 类型——包含 50+ 个全局状态字段（当前工作目录、模型配置、费用统计、会话 ID、OpenTelemetry 计量器、Hook 注册表、功能开关等）。通过 getter/setter 函数提供受控访问，支持 signal 机制通知状态变更。是整个应用的全局状态中枢，被几乎所有模块依赖。",
+      "edges": [
+        {
+          "target": "SettingsSystem",
+          "type": "depends",
+          "description": "导入 resetSettingsCache 用于状态重置，使用 settings 类型定义"
+        }
+      ],
+      "codeScope": [
+        "src/bootstrap/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "BootstrapState"
+      }
+    },
+    {
+      "name": "Migrations",
+      "description": "配置迁移脚本集合（11 个文件，~600 行）。每个脚本负责一种配置数据的版本迁移：模型名称升级（Fennec→Opus、Opus→Opus1m、Sonnet1m→Sonnet4.5→Sonnet4.6 等）、设置结构迁移（bypassPermissions→settings、autoUpdates→settings、enableAllProjectMcpServers→settings）、默认值重置（resetProToOpusDefault、resetAutoModeOptIn）。所有迁移幂等执行，读写 globalConfig 和 userSettings。",
+      "edges": [
+        {
+          "target": "GlobalConfig",
+          "type": "calls",
+          "description": "通过 getGlobalConfig/saveGlobalConfig 读写全局配置完成迁移"
+        },
+        {
+          "target": "SettingsSystem",
+          "type": "calls",
+          "description": "通过 getSettingsForSource/updateSettingsForSource 迁移设置数据"
+        }
+      ],
+      "codeScope": [
+        "src/migrations/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Migrations"
+      }
+    }
+  ]
+}

@@ -1,0 +1,492 @@
+{
+  "flows": [
+    {
+      "title": "用户发送消息的完整处理流程",
+      "description": "用户在终端输入一条自然语言消息，系统从 CLI 入口启动，经过查询引擎编排、Claude API 调用、模型流式响应解析，到最终在终端渲染结果的端到端交互。这是 Claude Code 最核心的业务场景。",
+      "participants": [
+        {
+          "name": "CLIBootstrap",
+          "description": "CLI 引导入口，解析命令行参数并分发到对应模式",
+          "docPath": "Entrypoints/CLIBootstrap"
+        },
+        {
+          "name": "MainProgram",
+          "description": "完整 CLI 程序定义，初始化权限、MCP、Agent 等",
+          "docPath": "Entrypoints/MainProgram"
+        },
+        {
+          "name": "Screens",
+          "description": "REPL 主屏幕，组装消息列表、输入框、权限弹窗",
+          "docPath": "TerminalUI/Screens"
+        },
+        {
+          "name": "QueryEngine",
+          "description": "会话级查询引擎，管理多轮对话生命周期",
+          "docPath": "CoreEngine/QueryEngine"
+        },
+        {
+          "name": "QueryLoop",
+          "description": "单轮查询主循环，模型交互和工具编排的状态机",
+          "docPath": "CoreEngine/QueryLoop"
+        },
+        {
+          "name": "ApiClient",
+          "description": "Anthropic Claude API 通信层，处理流式调用",
+          "docPath": "Services/ApiClient"
+        },
+        {
+          "name": "CostTracking",
+          "description": "Token 用量和费用追踪",
+          "docPath": "CoreEngine/CostTracking"
+        }
+      ],
+      "steps": [
+        {
+          "from": "CLIBootstrap",
+          "to": "MainProgram",
+          "action": "动态加载完整 CLI 程序",
+          "detail": "cli.tsx 解析 process.argv，无快速路径匹配时动态 import('../main.js') 加载完整 CLI",
+          "edgeType": "calls",
+          "codeRef": "src/entrypoints/cli.tsx"
+        },
+        {
+          "from": "MainProgram",
+          "to": "Screens",
+          "action": "启动 REPL 交互界面",
+          "detail": "main.tsx 完成初始化（权限模式、MCP 客户端、Agent 定义加载）后，挂载 Ink App 和 REPL 屏幕",
+          "edgeType": "calls",
+          "codeRef": "src/main.tsx"
+        },
+        {
+          "from": "Screens",
+          "to": "QueryEngine",
+          "action": "提交用户消息",
+          "detail": "用户在 PromptInput 输入消息后，REPL 屏幕调用 QueryEngine.submitMessage() 启动查询",
+          "edgeType": "calls",
+          "codeRef": "src/QueryEngine.ts"
+        },
+        {
+          "from": "QueryEngine",
+          "to": "QueryLoop",
+          "action": "进入查询主循环",
+          "detail": "submitMessage 内部调用 query() 函数，执行消息规范化、Token 预算检查，进入模型交互状态机",
+          "edgeType": "calls",
+          "codeRef": "src/query.ts"
+        },
+        {
+          "from": "QueryLoop",
+          "to": "ApiClient",
+          "action": "流式调用 Claude API",
+          "detail": "查询循环构建完整消息数组（含系统提示词），通过 API 客户端发起流式请求，接收模型响应 delta",
+          "edgeType": "calls",
+          "codeRef": "src/services/api/"
+        },
+        {
+          "from": "ApiClient",
+          "to": "CostTracking",
+          "action": "累计 Token 用量",
+          "detail": "API 响应中携带的 usage 信息（输入/输出/缓存 token）通过 addToTotalSessionCost 累计到全局费用追踪器",
+          "edgeType": "data-flow",
+          "codeRef": "src/cost-tracker.ts"
+        },
+        {
+          "from": "QueryLoop",
+          "to": "Screens",
+          "action": "推送流式响应到 UI",
+          "detail": "模型的流式文本 delta 和工具调用结果通过消息队列实时推送到 REPL 屏幕，Ink 渲染引擎增量更新终端输出",
+          "edgeType": "data-flow"
+        }
+      ]
+    },
+    {
+      "title": "模型调用工具执行操作",
+      "description": "Claude 模型在响应中决定使用某个工具（如 Bash、文件编辑、Grep 等），系统解析工具调用请求、执行权限检查、请求用户授权、执行工具、收集结果并送回模型继续推理。",
+      "participants": [
+        {
+          "name": "QueryLoop",
+          "description": "查询主循环，解析模型响应中的 tool_use 块",
+          "docPath": "CoreEngine/QueryLoop"
+        },
+        {
+          "name": "ToolRegistry",
+          "description": "工具中央注册表，管理 40+ 内置工具",
+          "docPath": "ToolSystem/ToolRegistry"
+        },
+        {
+          "name": "ToolOrchestration",
+          "description": "工具执行编排服务，管理并发和生命周期",
+          "docPath": "Services/ToolOrchestration"
+        },
+        {
+          "name": "UIComponents",
+          "description": "权限确认弹窗等 UI 组件",
+          "docPath": "TerminalUI/UIComponents"
+        },
+        {
+          "name": "ShellTools",
+          "description": "Bash/PowerShell 命令执行工具",
+          "docPath": "ToolSystem/ShellTools"
+        },
+        {
+          "name": "FileIOTools",
+          "description": "文件读写、搜索等工具集",
+          "docPath": "ToolSystem/FileIOTools"
+        }
+      ],
+      "steps": [
+        {
+          "from": "QueryLoop",
+          "to": "ToolRegistry",
+          "action": "解析工具调用请求",
+          "detail": "查询循环从模型流式响应中提取 tool_use content block，通过工具注册表查找对应的 Tool 实现",
+          "edgeType": "calls",
+          "codeRef": "src/tools.ts"
+        },
+        {
+          "from": "ToolRegistry",
+          "to": "UIComponents",
+          "action": "触发权限检查",
+          "detail": "工具的 checkPermissions 方法判断是否需要用户授权，若需要则通过 PermissionRequest 组件弹出确认对话框",
+          "edgeType": "calls",
+          "codeRef": "src/Tool.ts"
+        },
+        {
+          "from": "UIComponents",
+          "to": "ToolOrchestration",
+          "action": "用户授权后执行工具",
+          "detail": "用户批准权限请求后，工具编排服务接管执行——支持流式并行执行多个工具调用",
+          "edgeType": "calls",
+          "codeRef": "src/services/tools/"
+        },
+        {
+          "from": "ToolOrchestration",
+          "to": "ShellTools",
+          "action": "执行 Bash 命令",
+          "detail": "BashTool 进行命令语义分析和安全校验（沙箱检测、破坏性命令警告），然后 spawn 子进程执行命令",
+          "edgeType": "calls",
+          "codeRef": "src/tools/BashTool/"
+        },
+        {
+          "from": "ToolOrchestration",
+          "to": "FileIOTools",
+          "action": "执行文件操作",
+          "detail": "FileEditTool 执行精确字符串替换，FileReadTool 读取文件内容，GrepTool 基于 ripgrep 搜索——每种操作独立完成并返回结果",
+          "edgeType": "calls",
+          "codeRef": "src/tools/FileEditTool/"
+        },
+        {
+          "from": "ShellTools",
+          "to": "QueryLoop",
+          "action": "返回工具执行结果",
+          "detail": "工具执行完成后，ToolResult（包含输出文本、错误信息、状态码）被组装为 tool_result 消息送回查询循环，触发下一轮模型调用",
+          "edgeType": "data-flow",
+          "codeRef": "src/query.ts"
+        }
+      ]
+    },
+    {
+      "title": "子 Agent 并行任务执行",
+      "description": "主 Agent 决定将复杂任务分解为子任务，通过 AgentTool 启动子 Agent。子 Agent 在独立上下文中运行自己的查询循环，支持 worktree 隔离和后台执行，完成后将结果汇报给主 Agent。",
+      "participants": [
+        {
+          "name": "QueryLoop",
+          "description": "主 Agent 的查询主循环",
+          "docPath": "CoreEngine/QueryLoop"
+        },
+        {
+          "name": "AgentTool",
+          "description": "子 Agent 生成与管理工具",
+          "docPath": "ToolSystem/AgentTool"
+        },
+        {
+          "name": "LocalAgentTask",
+          "description": "本地 Agent 子任务运行时",
+          "docPath": "TaskSystem/LocalAgentTask"
+        },
+        {
+          "name": "QueryEngine",
+          "description": "子 Agent 复用的查询引擎实例",
+          "docPath": "CoreEngine/QueryEngine"
+        },
+        {
+          "name": "ApiClient",
+          "description": "Claude API 通信层",
+          "docPath": "Services/ApiClient"
+        },
+        {
+          "name": "UIComponents",
+          "description": "Agent 状态面板和进度显示",
+          "docPath": "TerminalUI/UIComponents"
+        }
+      ],
+      "steps": [
+        {
+          "from": "QueryLoop",
+          "to": "AgentTool",
+          "action": "模型请求创建子 Agent",
+          "detail": "主 Agent 的模型响应包含 Agent tool_use，指定子 Agent 类型（general-purpose、Explore、Plan 等）和任务描述",
+          "edgeType": "calls",
+          "codeRef": "src/tools/AgentTool/AgentTool.tsx"
+        },
+        {
+          "from": "AgentTool",
+          "to": "LocalAgentTask",
+          "action": "创建子 Agent 任务",
+          "detail": "AgentTool 创建 LocalAgentTask，设置独立 AbortController，支持 worktree 隔离（git worktree add）和后台运行模式",
+          "edgeType": "calls",
+          "codeRef": "src/tasks/LocalAgentTask/"
+        },
+        {
+          "from": "LocalAgentTask",
+          "to": "QueryEngine",
+          "action": "启动子 Agent 查询循环",
+          "detail": "runAgent() 函数构建子 Agent 的系统提示词和工具集（可能受限），调用 query() 进入独立的查询主循环",
+          "edgeType": "calls",
+          "codeRef": "src/tools/AgentTool/runAgent.ts"
+        },
+        {
+          "from": "QueryEngine",
+          "to": "ApiClient",
+          "action": "子 Agent 独立调用 Claude API",
+          "detail": "子 Agent 使用 prompt-cache 共享机制（forkSubagent）复用父 Agent 的缓存前缀，减少 Token 消耗",
+          "edgeType": "calls",
+          "codeRef": "src/tools/AgentTool/forkSubagent.ts"
+        },
+        {
+          "from": "LocalAgentTask",
+          "to": "UIComponents",
+          "action": "推送进度更新",
+          "detail": "ProgressTracker 跟踪子 Agent 的工具调用次数和 token 用量，通过任务状态面板实时显示进度",
+          "edgeType": "data-flow"
+        },
+        {
+          "from": "AgentTool",
+          "to": "QueryLoop",
+          "action": "汇报子 Agent 结果",
+          "detail": "子 Agent 完成后，生成带 worktree 信息的 XML 结果通知，作为 tool_result 返回主 Agent 继续推理",
+          "edgeType": "data-flow",
+          "codeRef": "src/tools/AgentTool/runAgent.ts"
+        }
+      ]
+    },
+    {
+      "title": "上下文窗口自动压缩",
+      "description": "当对话历史的 Token 数量接近上下文窗口上限时，系统自动触发压缩流程——将历史消息摘要化，保留关键信息同时释放 Token 预算，确保对话能持续进行。",
+      "participants": [
+        {
+          "name": "QueryLoop",
+          "description": "查询主循环，监控 Token 预算",
+          "docPath": "CoreEngine/QueryLoop"
+        },
+        {
+          "name": "Compact",
+          "description": "上下文窗口压缩服务",
+          "docPath": "Services/Compact"
+        },
+        {
+          "name": "ApiClient",
+          "description": "调用 Claude API 生成摘要",
+          "docPath": "Services/ApiClient"
+        },
+        {
+          "name": "MemoryServices",
+          "description": "会话记忆提取和保存",
+          "docPath": "Services/MemoryServices"
+        },
+        {
+          "name": "UIComponents",
+          "description": "压缩状态提示 UI",
+          "docPath": "TerminalUI/UIComponents"
+        }
+      ],
+      "steps": [
+        {
+          "from": "QueryLoop",
+          "to": "Compact",
+          "action": "Token 预算触发自动压缩",
+          "detail": "query.ts 中的 autoCompactTracking 检测到消息总 token 超过预算阈值，触发 autoCompact 或 reactiveCompact 流程",
+          "edgeType": "calls",
+          "codeRef": "src/services/compact/autoCompact.ts"
+        },
+        {
+          "from": "Compact",
+          "to": "MemoryServices",
+          "action": "提取会话记忆",
+          "detail": "压缩前调用 sessionMemoryCompact 从即将被压缩的消息中提取重要的会话记忆，避免信息丢失",
+          "edgeType": "calls",
+          "codeRef": "src/services/compact/sessionMemoryCompact.ts"
+        },
+        {
+          "from": "Compact",
+          "to": "ApiClient",
+          "action": "调用 Claude 生成摘要",
+          "detail": "将历史消息分组后发送给 Claude API，请求生成结构化摘要（保留关键决策、代码变更、未完成任务等）",
+          "edgeType": "calls",
+          "codeRef": "src/services/compact/compact.ts"
+        },
+        {
+          "from": "Compact",
+          "to": "UIComponents",
+          "action": "显示压缩状态",
+          "detail": "compactWarningHook 在 UI 中显示压缩进行中的提示，完成后显示释放的 Token 数量",
+          "edgeType": "data-flow",
+          "codeRef": "src/services/compact/compactWarningHook.ts"
+        },
+        {
+          "from": "Compact",
+          "to": "QueryLoop",
+          "action": "用摘要替换原始消息",
+          "detail": "压缩完成后，原始消息被摘要替换，postCompactCleanup 清理残留引用，查询循环以更小的上下文继续运行",
+          "edgeType": "data-flow",
+          "codeRef": "src/services/compact/postCompactCleanup.ts"
+        }
+      ]
+    },
+    {
+      "title": "MCP Server 模式暴露工具给外部客户端",
+      "description": "Claude Code 以 MCP Server 模式启动，通过 Model Context Protocol 将内置工具（Bash、文件操作、搜索等）暴露给外部 AI 客户端调用，实现工具能力的跨系统共享。",
+      "participants": [
+        {
+          "name": "CLIBootstrap",
+          "description": "CLI 入口，识别 MCP Server 子命令",
+          "docPath": "Entrypoints/CLIBootstrap"
+        },
+        {
+          "name": "MCPServer",
+          "description": "MCP 服务器入口，注册工具和处理请求",
+          "docPath": "Entrypoints/MCPServer"
+        },
+        {
+          "name": "ToolRegistry",
+          "description": "工具中央注册表，提供工具列表",
+          "docPath": "ToolSystem/ToolRegistry"
+        },
+        {
+          "name": "ShellTools",
+          "description": "Bash 命令执行工具",
+          "docPath": "ToolSystem/ShellTools"
+        },
+        {
+          "name": "FileIOTools",
+          "description": "文件读写和搜索工具",
+          "docPath": "ToolSystem/FileIOTools"
+        }
+      ],
+      "steps": [
+        {
+          "from": "CLIBootstrap",
+          "to": "MCPServer",
+          "action": "启动 MCP Server 模式",
+          "detail": "cli.tsx 检测到 mcp 子命令，动态导入 mcp.ts 启动 MCP 服务器，绑定 StdioServerTransport 进行 JSON-RPC 通信",
+          "edgeType": "calls",
+          "codeRef": "src/entrypoints/mcp.ts"
+        },
+        {
+          "from": "MCPServer",
+          "to": "ToolRegistry",
+          "action": "注册 ListTools 处理器",
+          "detail": "MCP Server 注册 ListTools 请求处理器，调用 getAllBaseTools() 获取所有可用工具的名称、描述和参数 Schema",
+          "edgeType": "calls",
+          "codeRef": "src/tools.ts"
+        },
+        {
+          "from": "MCPServer",
+          "to": "ShellTools",
+          "action": "外部客户端调用 Bash 工具",
+          "detail": "外部客户端发送 CallTool 请求，MCPServer 构建 ToolUseContext 并直接调用 BashTool.call()，绕过权限检查",
+          "edgeType": "calls",
+          "codeRef": "src/entrypoints/mcp.ts"
+        },
+        {
+          "from": "MCPServer",
+          "to": "FileIOTools",
+          "action": "外部客户端调用文件工具",
+          "detail": "外部客户端可调用 FileRead/FileEdit/Glob/Grep 等工具，MCP Server 统一通过 ToolUseContext 执行并返回结果",
+          "edgeType": "calls",
+          "codeRef": "src/entrypoints/mcp.ts"
+        },
+        {
+          "from": "FileIOTools",
+          "to": "MCPServer",
+          "action": "返回工具执行结果",
+          "detail": "工具执行结果（文件内容、搜索结果、编辑确认等）通过 StdioServerTransport 以 JSON-RPC 响应格式返回给外部客户端",
+          "edgeType": "data-flow",
+          "codeRef": "src/entrypoints/mcp.ts"
+        }
+      ]
+    },
+    {
+      "title": "技能调用执行领域操作（如 /commit）",
+      "description": "用户通过斜杠命令或模型自主判断触发技能（Skill），系统加载技能定义、注入专用提示词和工具集，执行领域特定的多步骤操作（如 git commit、PR review），是 Claude Code 扩展领域能力的核心机制。",
+      "participants": [
+        {
+          "name": "QueryLoop",
+          "description": "查询主循环，解析模型的 Skill 工具调用",
+          "docPath": "CoreEngine/QueryLoop"
+        },
+        {
+          "name": "InteractionTools",
+          "description": "SkillTool 调用技能系统",
+          "docPath": "ToolSystem/InteractionTools"
+        },
+        {
+          "name": "SkillLoader",
+          "description": "技能文件加载器，解析 Markdown 技能定义",
+          "docPath": "SkillsAndPlugins/SkillLoader"
+        },
+        {
+          "name": "BundledSkills",
+          "description": "17+ 内置技能实现",
+          "docPath": "SkillsAndPlugins/BundledSkills"
+        },
+        {
+          "name": "CommandSystem",
+          "description": "斜杠命令注册系统",
+          "docPath": "CoreEngine/CommandSystem"
+        }
+      ],
+      "steps": [
+        {
+          "from": "QueryLoop",
+          "to": "InteractionTools",
+          "action": "模型触发 Skill 工具调用",
+          "detail": "模型响应中包含 SkillTool 的 tool_use，指定技能名称（如 'commit'）和可选参数",
+          "edgeType": "calls",
+          "codeRef": "src/tools/SkillTool/SkillTool.ts"
+        },
+        {
+          "from": "InteractionTools",
+          "to": "BundledSkills",
+          "action": "查找内置技能定义",
+          "detail": "SkillTool 在 bundledSkills 注册表中查找匹配的技能，获取其提示词模板和允许的工具列表",
+          "edgeType": "calls",
+          "codeRef": "src/skills/bundled/"
+        },
+        {
+          "from": "InteractionTools",
+          "to": "SkillLoader",
+          "action": "加载目录级技能",
+          "detail": "若非内置技能，SkillLoader 扫描 .claude/skills/ 目录，解析 Markdown frontmatter 获取技能配置",
+          "edgeType": "calls",
+          "codeRef": "src/skills/loadSkillsDir.ts"
+        },
+        {
+          "from": "BundledSkills",
+          "to": "CommandSystem",
+          "action": "注册为斜杠命令",
+          "detail": "每个技能通过 registerBundledSkill() 注册为 Command 对象，用户也可通过 /commit 等斜杠命令直接触发",
+          "edgeType": "depends",
+          "codeRef": "src/skills/bundledSkills.ts"
+        },
+        {
+          "from": "InteractionTools",
+          "to": "QueryLoop",
+          "action": "注入技能提示词并继续执行",
+          "detail": "技能的提示词模板（含专用指令和约束）被注入为系统消息，查询循环在技能定义的工具子集下继续执行多步操作",
+          "edgeType": "data-flow",
+          "codeRef": "src/tools/SkillTool/SkillTool.ts"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,223 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "cef9a0c6-681f-49be-aaf5-38263bbbb502",
+  "description": "工具注册与执行框架。Tool.ts 定义工具接口和权限模型，tools.ts 是中央注册表（40+ 内置工具），tools/ 目录包含每个工具的具体实现（Bash、文件读写、Glob、Grep、Agent、MCP 调用等）。支持特性门控按需加载工具。",
+  "codeScope": [
+    "src/Tool.ts",
+    "src/tools.ts",
+    "src/tools/"
+  ],
+  "nodes": [
+    {
+      "name": "ToolInterface",
+      "description": "工具核心类型与接口定义。Tool.ts 定义了 Tool 泛型接口（包含 call、checkPermissions、prompt、renderToolUseMessage 等 40+ 方法签名）、ToolUseContext 执行上下文、ToolPermissionContext 权限模型、ValidationResult 校验结果、ToolResult 返回类型，以及 buildTool 工厂函数（提供 isEnabled/isReadOnly/checkPermissions 等默认实现）。是整个工具系统的类型基石。",
+      "edges": [],
+      "codeScope": [
+        "src/Tool.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ToolInterface"
+      }
+    },
+    {
+      "name": "ToolRegistry",
+      "description": "工具中央注册表与组装逻辑。tools.ts 实现 getAllBaseTools()（枚举所有内置工具，通过 feature() 和环境变量进行特性门控按需加载）、getTools()（按权限上下文过滤工具集）、assembleToolPool()（合并内置工具与 MCP 工具，去重排序以保持 prompt cache 稳定性）、filterToolsByDenyRules()（根据 deny 规则剔除工具）。支持 REPL 模式、Simple 模式、Coordinator 模式等多种工具集配置。",
+      "edges": [
+        {
+          "target": "ToolInterface",
+          "type": "depends",
+          "description": "使用 Tool、Tools、ToolPermissionContext 等核心类型"
+        },
+        {
+          "target": "AgentTool",
+          "type": "composes",
+          "description": "注册 AgentTool 到工具池"
+        },
+        {
+          "target": "ShellTools",
+          "type": "composes",
+          "description": "注册 BashTool、PowerShellTool 到工具池"
+        },
+        {
+          "target": "FileIOTools",
+          "type": "composes",
+          "description": "注册文件读写、搜索工具到工具池"
+        },
+        {
+          "target": "ExternalIntegrationTools",
+          "type": "composes",
+          "description": "注册 MCP、LSP、Web 相关工具到工具池"
+        },
+        {
+          "target": "TaskAndPlanTools",
+          "type": "composes",
+          "description": "注册任务管理和计划模式工具到工具池"
+        },
+        {
+          "target": "InteractionTools",
+          "type": "composes",
+          "description": "注册技能调用、协作、配置等交互工具到工具池"
+        }
+      ],
+      "codeScope": [
+        "src/tools.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ToolRegistry"
+      }
+    },
+    {
+      "name": "AgentTool",
+      "description": "子 Agent 生成与管理工具，是工具系统中最复杂的单一工具（20 文件，2200+ 行）。核心功能包括：runAgent 启动子 Agent 对话循环、forkSubagent 实现 prompt-cache 共享的分叉子 Agent、loadAgentsDir 从 .claude/agents/ 加载自定义 Agent 定义。内置 6 种 Agent 类型（general-purpose、Explore、Plan、statusline-setup、verification、claude-code-guide），支持 worktree 隔离、后台运行、记忆快照传递。",
+      "edges": [
+        {
+          "target": "ToolInterface",
+          "type": "depends",
+          "description": "实现 Tool 接口，使用 ToolUseContext 管理执行上下文"
+        }
+      ],
+      "codeScope": [
+        "src/tools/AgentTool/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "AgentTool"
+      }
+    },
+    {
+      "name": "ShellTools",
+      "description": "Shell 命令执行工具集。BashTool（18 文件，1500+ 行）是最常用的工具之一，包含命令语义分析（commandSemantics）、安全校验（bashSecurity、destructiveCommandWarning）、权限检查（bashPermissions、modeValidation）、沙箱执行（shouldUseSandbox）、sed 编辑解析（sedEditParser/sedValidation）、路径校验（pathValidation）等子模块。PowerShellTool（14 文件，1100+ 行）提供 Windows PowerShell 支持，结构与 BashTool 类似。",
+      "edges": [
+        {
+          "target": "ToolInterface",
+          "type": "depends",
+          "description": "实现 Tool 接口"
+        }
+      ],
+      "codeScope": [
+        "src/tools/BashTool/",
+        "src/tools/PowerShellTool/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "ShellTools"
+      }
+    },
+    {
+      "name": "FileIOTools",
+      "description": "文件系统操作工具集。FileReadTool 读取文件内容（支持图片、PDF、Jupyter Notebook），FileEditTool 执行精确字符串替换编辑，FileWriteTool 创建或覆写文件，GlobTool 按模式匹配搜索文件路径，GrepTool 基于 ripgrep 搜索文件内容，NotebookEditTool 编辑 Jupyter Notebook 单元格。所有工具均为小型独立实现（总计约 1200 行）。",
+      "edges": [
+        {
+          "target": "ToolInterface",
+          "type": "depends",
+          "description": "实现 Tool 接口"
+        }
+      ],
+      "codeScope": [
+        "src/tools/FileReadTool/",
+        "src/tools/FileEditTool/",
+        "src/tools/FileWriteTool/",
+        "src/tools/GlobTool/",
+        "src/tools/GrepTool/",
+        "src/tools/NotebookEditTool/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "FileIOTools"
+      }
+    },
+    {
+      "name": "ExternalIntegrationTools",
+      "description": "外部服务集成工具集。MCPTool（400 行）将 MCP 服务器工具包装为内部 Tool 接口并处理调用/崩溃恢复；ToolSearchTool 支持延迟加载工具的关键词搜索；ListMcpResourcesTool/ReadMcpResourceTool 访问 MCP 资源；LSPTool 调用语言服务器协议；WebFetchTool 获取网页内容；WebSearchTool 执行网络搜索。",
+      "edges": [
+        {
+          "target": "ToolInterface",
+          "type": "depends",
+          "description": "实现 Tool 接口"
+        }
+      ],
+      "codeScope": [
+        "src/tools/MCPTool/",
+        "src/tools/ToolSearchTool/",
+        "src/tools/ListMcpResourcesTool/",
+        "src/tools/ReadMcpResourceTool/",
+        "src/tools/McpAuthTool/",
+        "src/tools/LSPTool/",
+        "src/tools/WebFetchTool/",
+        "src/tools/WebSearchTool/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ExternalIntegrationTools"
+      }
+    },
+    {
+      "name": "TaskAndPlanTools",
+      "description": "任务管理与计划模式工具集。TaskOutputTool（580+ 行，最大的任务工具）读取后台任务输出；TaskStopTool 终止运行中的任务；TaskCreate/Get/Update/ListTool 提供 v2 任务 CRUD；TodoWriteTool 管理待办事项面板；EnterPlanModeTool/ExitPlanModeTool 切换计划模式（限制为只读操作）；EnterWorktreeTool/ExitWorktreeTool 管理 git worktree 隔离环境。",
+      "edges": [
+        {
+          "target": "ToolInterface",
+          "type": "depends",
+          "description": "实现 Tool 接口"
+        }
+      ],
+      "codeScope": [
+        "src/tools/TaskOutputTool/",
+        "src/tools/TaskStopTool/",
+        "src/tools/TaskCreateTool/",
+        "src/tools/TaskGetTool/",
+        "src/tools/TaskUpdateTool/",
+        "src/tools/TaskListTool/",
+        "src/tools/TodoWriteTool/",
+        "src/tools/EnterPlanModeTool/",
+        "src/tools/ExitPlanModeTool/",
+        "src/tools/EnterWorktreeTool/",
+        "src/tools/ExitWorktreeTool/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TaskAndPlanTools"
+      }
+    },
+    {
+      "name": "InteractionTools",
+      "description": "用户交互与协作工具集。SkillTool 调用技能系统执行领域操作（commit、review-pr 等）；AskUserQuestionTool 向用户提问并等待回答；SendMessageTool 在多 Agent 间发送消息；TeamCreateTool/TeamDeleteTool 管理 Agent Swarm 团队；ConfigTool 修改运行时配置；BriefTool 控制输出详细程度；RemoteTriggerTool 和 ScheduleCronTool 管理远程触发器和定时任务；以及 REPLTool、SleepTool 等特性门控工具。还包含 shared/ 目录（gitOperationTracking、spawnMultiAgent）、testing/ 目录和 utils.ts 公共工具函数。",
+      "edges": [
+        {
+          "target": "ToolInterface",
+          "type": "depends",
+          "description": "实现 Tool 接口"
+        },
+        {
+          "target": "AgentTool",
+          "type": "depends",
+          "description": "SendMessageTool 和 TeamTools 与 AgentTool 的多 Agent 机制协作"
+        }
+      ],
+      "codeScope": [
+        "src/tools/SkillTool/",
+        "src/tools/AskUserQuestionTool/",
+        "src/tools/SendMessageTool/",
+        "src/tools/TeamCreateTool/",
+        "src/tools/TeamDeleteTool/",
+        "src/tools/ConfigTool/",
+        "src/tools/BriefTool/",
+        "src/tools/RemoteTriggerTool/",
+        "src/tools/ScheduleCronTool/",
+        "src/tools/SleepTool/",
+        "src/tools/REPLTool/",
+        "src/tools/SyntheticOutputTool/",
+        "src/tools/shared/",
+        "src/tools/testing/",
+        "src/tools/utils.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "InteractionTools"
+      }
+    }
+  ]
+}

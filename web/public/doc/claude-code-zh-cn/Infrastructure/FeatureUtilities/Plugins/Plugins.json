@@ -1,0 +1,199 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "46d12c31-026e-4324-af14-da43c67003b7",
+  "description": "插件生命周期管理与市场集成系统。包含插件发现与加载（pluginLoader、pluginDirectories）、市场管理（marketplaceManager、officialMarketplace）、安装与版本控制（pluginInstallationHelpers、pluginVersioning、pluginAutoupdate）、启动检查与策略（pluginStartupCheck、pluginPolicy、pluginBlocklist）、以及 Hooks/Commands/Agents/LSP/MCP 等插件资产的加载整合。44 个文件，约 2 万行",
+  "codeScope": [
+    "src/utils/plugins/",
+    "src/utils/dxt/"
+  ],
+  "nodes": [
+    {
+      "name": "PluginDiscovery",
+      "description": "插件发现与加载核心管线。pluginLoader.ts（3300 行）是核心引擎，负责从市场、Git 仓库、种子目录等多种来源发现并加载插件，支持 memoized 缓存和版本化路径。pluginDirectories 管理插件目录路径配置（含 --cowork 模式和只读种子目录），pluginIdentifier 解析 name@marketplace 格式标识符并处理作用域映射，dependencyResolver 提供纯函数式依赖解析（DFS 遍历、循环检测），pluginVersioning 计算插件版本（manifest/git SHA/时间戳）",
+      "edges": [
+        {
+          "target": "Marketplace",
+          "type": "calls",
+          "description": "pluginLoader 调用 marketplaceManager 获取市场数据和插件清单"
+        },
+        {
+          "target": "SchemasAndStorage",
+          "type": "depends",
+          "description": "依赖 schemas 中的 PluginManifest 等类型定义，使用 zipCache 进行 ZIP 缓存读写"
+        }
+      ],
+      "codeScope": [
+        "src/utils/plugins/pluginLoader.ts",
+        "src/utils/plugins/pluginDirectories.ts",
+        "src/utils/plugins/pluginIdentifier.ts",
+        "src/utils/plugins/dependencyResolver.ts",
+        "src/utils/plugins/pluginVersioning.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PluginDiscovery"
+      }
+    },
+    {
+      "name": "Marketplace",
+      "description": "市场管理与官方市场集成。marketplaceManager.ts（2600 行）是编排核心，管理 known_marketplaces.json 配置、市场缓存、安装/刷新流程，支持 URL/GitHub/Git/目录等多种来源。officialMarketplace 定义 Anthropic 官方市场常量，officialMarketplaceGcs 从 GCS 镜像快速拉取官方市场（ZIP 下载+原子替换），officialMarketplaceStartupCheck 处理首次启动自动安装（含指数退避重试）。marketplaceHelpers 提供策略执行（允许/阻止名单）和格式化工具，parseMarketplaceInput 解析用户输入的多种市场地址格式，installCounts 从 GitHub 统计仓库获取并缓存插件安装量（24h TTL）",
+      "edges": [
+        {
+          "target": "PluginDiscovery",
+          "type": "depends",
+          "description": "依赖 pluginIdentifier 解析插件标识符，依赖 pluginDirectories 获取缓存路径"
+        },
+        {
+          "target": "SchemasAndStorage",
+          "type": "depends",
+          "description": "使用 schemas 中的 MarketplaceSource 等类型和市场命名策略校验"
+        },
+        {
+          "target": "PolicyAndStartup",
+          "type": "depends",
+          "description": "marketplaceHelpers 调用 gitAvailability 检查 Git 可用性，受策略允许/阻止名单约束"
+        }
+      ],
+      "codeScope": [
+        "src/utils/plugins/marketplaceManager.ts",
+        "src/utils/plugins/officialMarketplace.ts",
+        "src/utils/plugins/officialMarketplaceGcs.ts",
+        "src/utils/plugins/officialMarketplaceStartupCheck.ts",
+        "src/utils/plugins/marketplaceHelpers.ts",
+        "src/utils/plugins/parseMarketplaceInput.ts",
+        "src/utils/plugins/installCounts.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Marketplace"
+      }
+    },
+    {
+      "name": "InstallationLifecycle",
+      "description": "插件安装、更新与生命周期管理。installedPluginsManager（1270 行）管理 installed_plugins.json 元数据（V1→V2 迁移），分离全局安装状态与仓库级启用/禁用状态。pluginInstallationHelpers 提供共享安装工具（路径校验、依赖闭包、遥测构建）。reconciler 实现三层刷新模型的第二层——将声明式意图与已物化状态对齐。refresh 实现第三层——在运行时会话中热替换活跃插件组件。cacheUtils 集中管理缓存清理和 7 天孤儿版本 GC。pluginAutoupdate 编排后台自动更新。pluginBlocklist 检测并自动卸载已下架插件，pluginFlagging 追踪下架插件的 UI 通知状态（48h 自动过期）。headlessPluginInstall 为无头/CCR 环境提供非交互式安装",
+      "edges": [
+        {
+          "target": "Marketplace",
+          "type": "calls",
+          "description": "reconciler 和 autoupdate 调用 marketplaceManager 获取/刷新市场数据"
+        },
+        {
+          "target": "PluginDiscovery",
+          "type": "calls",
+          "description": "refresh 和 headlessInstall 调用 pluginLoader 重新加载插件，使用 pluginDirectories 获取路径"
+        },
+        {
+          "target": "AssetIntegration",
+          "type": "calls",
+          "description": "refresh.ts 调用所有 AssetLoader（Commands/Agents/Hooks/MCP/LSP）重建活跃组件"
+        },
+        {
+          "target": "SchemasAndStorage",
+          "type": "depends",
+          "description": "使用 zipCache 同步 ZIP 缓存，依赖 schemas 类型定义"
+        }
+      ],
+      "codeScope": [
+        "src/utils/plugins/installedPluginsManager.ts",
+        "src/utils/plugins/pluginInstallationHelpers.ts",
+        "src/utils/plugins/reconciler.ts",
+        "src/utils/plugins/refresh.ts",
+        "src/utils/plugins/cacheUtils.ts",
+        "src/utils/plugins/pluginAutoupdate.ts",
+        "src/utils/plugins/pluginBlocklist.ts",
+        "src/utils/plugins/pluginFlagging.ts",
+        "src/utils/plugins/headlessPluginInstall.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "InstallationLifecycle"
+      }
+    },
+    {
+      "name": "AssetIntegration",
+      "description": "插件资产加载与集成层。将插件声明的各类资产注册到应用运行时：loadPluginHooks 将插件 Hook 注册到全局 Hook 框架（支持热重载）；loadPluginCommands（946 行）加载斜杠命令和技能；loadPluginAgents 加载 Agent 定义；loadPluginOutputStyles 加载自定义输出样式。lspPluginIntegration 从插件加载 LSP 服务器配置，mcpPluginIntegration 集成 MCP 服务器，mcpbHandler（968 行）处理 MCPB/DXT 文件的下载、缓存、提取和用户配置。pluginOptionsStorage 管理插件用户配置（拆分敏感/非敏感存储），walkPluginMarkdown 递归遍历插件目录中的 Markdown 文件",
+      "edges": [
+        {
+          "target": "PluginDiscovery",
+          "type": "calls",
+          "description": "所有 loader 调用 pluginLoader.loadAllPluginsCacheOnly() 获取已启用插件列表"
+        },
+        {
+          "target": "SchemasAndStorage",
+          "type": "depends",
+          "description": "依赖 schemas 类型定义，mcpbHandler 使用 dxt/helpers 解析 DXT manifest"
+        }
+      ],
+      "codeScope": [
+        "src/utils/plugins/loadPluginHooks.ts",
+        "src/utils/plugins/loadPluginCommands.ts",
+        "src/utils/plugins/loadPluginAgents.ts",
+        "src/utils/plugins/loadPluginOutputStyles.ts",
+        "src/utils/plugins/lspPluginIntegration.ts",
+        "src/utils/plugins/mcpPluginIntegration.ts",
+        "src/utils/plugins/mcpbHandler.ts",
+        "src/utils/plugins/pluginOptionsStorage.ts",
+        "src/utils/plugins/walkPluginMarkdown.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "AssetIntegration"
+      }
+    },
+    {
+      "name": "PolicyAndStartup",
+      "description": "插件策略执行、启动检查与辅助工具。pluginPolicy 检查组织策略是否强制禁用插件，pluginStartupCheck 和 performStartupChecks 编排启动时的市场注册和后台安装。managedPlugins 提取策略锁定的插件列表，addDirPluginSettings 从 --add-dir 目录读取插件设置。hintRecommendation 处理 CLI 工具发出的 <claude-code-hint/> 插件推荐标签，lspRecommendation 通过 LSP 诊断推荐插件。fetchTelemetry 记录插件/市场网络请求遥测（带主机名允许列表和错误分类），gitAvailability 提供 memoized 的 Git 命令可用性检查",
+      "edges": [
+        {
+          "target": "Marketplace",
+          "type": "calls",
+          "description": "performStartupChecks 调用 marketplaceManager 注册种子市场并触发后台安装"
+        },
+        {
+          "target": "PluginDiscovery",
+          "type": "calls",
+          "description": "启动检查后调用 pluginLoader 清除并重建插件缓存"
+        },
+        {
+          "target": "InstallationLifecycle",
+          "type": "depends",
+          "description": "hintRecommendation 查询 installedPluginsManager 确认插件安装状态"
+        }
+      ],
+      "codeScope": [
+        "src/utils/plugins/pluginPolicy.ts",
+        "src/utils/plugins/pluginStartupCheck.ts",
+        "src/utils/plugins/performStartupChecks.tsx",
+        "src/utils/plugins/managedPlugins.ts",
+        "src/utils/plugins/addDirPluginSettings.ts",
+        "src/utils/plugins/hintRecommendation.ts",
+        "src/utils/plugins/lspRecommendation.ts",
+        "src/utils/plugins/fetchTelemetry.ts",
+        "src/utils/plugins/gitAvailability.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PolicyAndStartup"
+      }
+    },
+    {
+      "name": "SchemasAndStorage",
+      "description": "Schema 定义、验证与存储基础设施。schemas.ts（1680 行）定义插件和市场的核心类型（PluginManifest、MarketplaceSource、LoadedPlugin 等），包含市场命名策略（反仿冒检测、同形字攻击防御）和自动更新默认值。validatePlugin（903 行）实现 manifest 文件校验（类型检测、schema 验证、市场专属字段警告）。zipCache 管理 ZIP 归档格式的插件存储（Filestore 持久目录，会话本地临时提取），zipCacheAdapters 处理元数据的 ZIP 缓存读写和跨容器同步。orphanedPluginFilter 生成 ripgrep 排除模式避免搜索孤儿版本。dxt/ 目录提供 DXT/MCPB manifest 解析验证和 ZIP 文件安全提取（路径遍历防护、大小限制）",
+      "edges": [],
+      "codeScope": [
+        "src/utils/plugins/schemas.ts",
+        "src/utils/plugins/validatePlugin.ts",
+        "src/utils/plugins/zipCache.ts",
+        "src/utils/plugins/zipCacheAdapters.ts",
+        "src/utils/plugins/orphanedPluginFilter.ts",
+        "src/utils/dxt/helpers.ts",
+        "src/utils/dxt/zip.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SchemasAndStorage"
+      }
+    }
+  ]
+}

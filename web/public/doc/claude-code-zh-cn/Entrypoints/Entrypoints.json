@@ -1,0 +1,98 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "34070046-5edd-465a-803c-3ec4b44d82cd",
+  "description": "应用入口层，定义 CLI、MCP Server、SDK 三种启动模式。cli.tsx 处理命令行参数和快速路径分发，mcp.ts 将 Claude Code 作为 MCP 服务器暴露给外部客户端，sdk/ 目录提供编程式接入的类型定义和控制协议 Schema。",
+  "codeScope": [
+    "src/entrypoints/",
+    "src/main.tsx",
+    "src/setup.ts"
+  ],
+  "nodes": [
+    {
+      "name": "CLIBootstrap",
+      "description": "CLI 引导入口（cli.tsx），解析 process.argv 进行快速路径分发。对 --version 实现零导入快速返回，对 remote-control、daemon、background sessions 等子命令提前拦截并动态导入对应模块，避免加载完整 CLI 栈。仅在无匹配快速路径时才加载 main.tsx 进入完整 CLI 流程。",
+      "edges": [
+        {
+          "target": "MainProgram",
+          "type": "calls",
+          "description": "无快速路径匹配时，动态 import('../main.js') 加载完整 CLI 程序"
+        }
+      ],
+      "codeScope": [
+        "src/entrypoints/cli.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "CLIBootstrap"
+      }
+    },
+    {
+      "name": "Init",
+      "description": "进程级初始化逻辑（init.ts），包含配置系统启用（enableConfigs）、TLS 证书与代理配置、OpenTelemetry 遥测初始化、OAuth 账户信息预取、MDM 设置加载、策略限制与远程托管设置的加载、LSP 服务器管理器初始化、以及优雅关闭处理注册。通过 memoize 确保只执行一次。",
+      "edges": [],
+      "codeScope": [
+        "src/entrypoints/init.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Init"
+      }
+    },
+    {
+      "name": "MainProgram",
+      "description": "基于 Commander.js 的完整 CLI 程序定义（main.tsx）和会话级设置（setup.ts）。main.tsx 定义所有命令行选项（--model、--resume、--permission-mode 等 50+ 参数）、子命令注册、权限模式初始化、MCP 客户端连接、Agent 定义加载、以及交互式/非交互式两种运行路径。setup.ts 处理 worktree 创建、终端备份恢复、钩子快照、会话记忆初始化和后台预取任务。",
+      "edges": [
+        {
+          "target": "Init",
+          "type": "calls",
+          "description": "启动时调用 init() 完成进程级初始化，调用 initializeTelemetryAfterTrust 完成信任确认后的遥测设置"
+        },
+        {
+          "target": "MCPServer",
+          "type": "depends",
+          "description": "MCP server 模式通过 CLI handler 调用 startMCPServer（实际调用路径经由 cli/handlers/mcp.tsx）"
+        },
+        {
+          "target": "SDKTypes",
+          "type": "depends",
+          "description": "SDK 模式使用 SDK 类型定义构建编程式接口的请求/响应协议"
+        }
+      ],
+      "codeScope": [
+        "src/main.tsx",
+        "src/setup.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "MainProgram"
+      }
+    },
+    {
+      "name": "MCPServer",
+      "description": "MCP 服务器入口（mcp.ts），将 Claude Code 的内置工具通过 Model Context Protocol 暴露给外部客户端。创建 @modelcontextprotocol/sdk Server 实例，注册 ListTools 和 CallTool 请求处理器，通过 StdioServerTransport 进行 JSON-RPC 通信。工具调用时构建 ToolUseContext 并直接执行工具，绕过权限检查。",
+      "edges": [],
+      "codeScope": [
+        "src/entrypoints/mcp.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "MCPServer"
+      }
+    },
+    {
+      "name": "SDKTypes",
+      "description": "SDK 编程式接入的类型系统和协议 Schema。coreSchemas.ts（1889 行）定义核心数据类型的 Zod Schema（消息、配置、使用量、权限、MCP 等），controlSchemas.ts 定义 SDK 与 CLI 之间的控制协议（初始化、用户消息、会话管理、钩子回调等），coreTypes.ts 重新导出从 Schema 生成的 TypeScript 类型。agentSdkTypes.ts 是 Agent SDK 的公共 API 入口，聚合并重新导出核心类型、运行时类型和工具类型。sandboxTypes.ts 定义沙盒配置的 Zod Schema（网络、文件系统、忽略规则）。",
+      "edges": [],
+      "codeScope": [
+        "src/entrypoints/sdk/",
+        "src/entrypoints/agentSdkTypes.ts",
+        "src/entrypoints/sandboxTypes.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SDKTypes"
+      }
+    }
+  ]
+}

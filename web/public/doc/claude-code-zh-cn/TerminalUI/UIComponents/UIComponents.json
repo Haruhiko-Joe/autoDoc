@@ -1,0 +1,337 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "8d636dea-a905-4530-a286-a9a68c07c686",
+  "description": "144 个业务 UI 组件库。涵盖对话框系统（权限确认、MCP 审批、设置、导出等）、消息渲染（用户/助手/系统/工具消息 30+ 种类型）、权限请求 UI（Bash、文件编辑、Notebook 等分场景审批）、设计系统（主题、Dialog、Pane、ProgressBar 等基础组件）、PromptInput 输入框、Spinner 动画、StructuredDiff 差异展示、任务/Agent/团队状态面板等。",
+  "codeScope": [
+    "src/components/"
+  ],
+  "nodes": [
+    {
+      "name": "MessageRendering",
+      "description": "消息渲染系统。Message.tsx 是核心路由组件，按消息类型分发到 messages/ 下 30+ 种具体渲染器（用户文本/图片/命令、助手文本/思考/工具调用、系统错误/速率限制、工具结果成功/拒绝/取消等）。Messages.tsx 负责消息列表编排（分组、折叠、压缩边界、搜索高亮），VirtualMessageList 实现虚拟化滚动，MessageRow 处理单条消息布局（时间戳、模型标签、操作菜单），shell/ 提供 Shell 输出的专用渲染。还包含工具加载指示器和各类工具执行反馈消息组件。",
+      "edges": [
+        {
+          "target": "DesignSystem",
+          "type": "depends",
+          "description": "使用 Markdown、HighlightedCode、StructuredDiff 等渲染组件展示消息内容"
+        },
+        {
+          "target": "PromptInput",
+          "type": "composes",
+          "description": "Messages 组件与 PromptInput 共同构成 REPL 主界面的上下两部分"
+        }
+      ],
+      "codeScope": [
+        "src/components/messages/",
+        "src/components/shell/",
+        "src/components/Message.tsx",
+        "src/components/Messages.tsx",
+        "src/components/VirtualMessageList.tsx",
+        "src/components/MessageRow.tsx",
+        "src/components/MessageResponse.tsx",
+        "src/components/MessageSelector.tsx",
+        "src/components/MessageTimestamp.tsx",
+        "src/components/MessageModel.tsx",
+        "src/components/messageActions.tsx",
+        "src/components/CompactSummary.tsx",
+        "src/components/FallbackToolUseErrorMessage.tsx",
+        "src/components/FallbackToolUseRejectedMessage.tsx",
+        "src/components/FileEditToolUpdatedMessage.tsx",
+        "src/components/FileEditToolUseRejectedMessage.tsx",
+        "src/components/NotebookEditToolUseRejectedMessage.tsx",
+        "src/components/InterruptedByUser.tsx",
+        "src/components/ToolUseLoader.tsx"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "MessageRendering"
+      }
+    },
+    {
+      "name": "PermissionUI",
+      "description": "权限请求 UI 系统。PermissionRequest.tsx 是总路由，根据工具类型分发到 12+ 种专用权限审批组件（Bash 命令执行、文件编辑/写入/读取、Notebook 编辑、PowerShell、WebFetch、Skill、Plan 模式切换、用户提问等）。每种权限请求有独立的预览展示和操作选项。还包含权限规则管理 UI（rules/ 子目录：规则列表、添加/删除工作区目录、拒绝历史）、通用权限对话框（PermissionDialog）、权限决策调试信息、Worker 徽章和待审批显示。",
+      "edges": [
+        {
+          "target": "DesignSystem",
+          "type": "depends",
+          "description": "使用 Dialog、Pane、ThemedText 等设计系统组件构建权限审批界面"
+        },
+        {
+          "target": "DialogCollection",
+          "type": "depends",
+          "description": "部分权限请求以对话框形式弹出"
+        }
+      ],
+      "codeScope": [
+        "src/components/permissions/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "PermissionUI"
+      }
+    },
+    {
+      "name": "DesignSystem",
+      "description": "设计系统与展示原语层。design-system/ 提供主题系统（ThemeProvider、color、ThemedText/ThemedBox）、通用 UI 组件（Dialog、Pane、ProgressBar、Tabs、Divider、ListItem、StatusIcon、Byline、FuzzyPicker、KeyboardShortcutHint 等）。CustomSelect/ 实现自定义单选/多选控件，wizard/ 提供向导框架，ui/ 包含 TreeSelect 和有序列表。Spinner/ 实现多种加载动画（闪烁、微光、teammate 树形 spinner）。StructuredDiff/ 和 diff/ 提供差异对比展示，HighlightedCode 提供语法高亮，Markdown 渲染 Markdown 内容。还包含文本输入原语（BaseTextInput/TextInput/VimTextInput）、布局组件（FullscreenLayout）、搜索框、文件路径链接等通用 UI 构件。",
+      "edges": [],
+      "codeScope": [
+        "src/components/design-system/",
+        "src/components/CustomSelect/",
+        "src/components/ui/",
+        "src/components/wizard/",
+        "src/components/Spinner/",
+        "src/components/Spinner.tsx",
+        "src/components/StructuredDiff/",
+        "src/components/StructuredDiff.tsx",
+        "src/components/StructuredDiffList.tsx",
+        "src/components/diff/",
+        "src/components/HighlightedCode/",
+        "src/components/HighlightedCode.tsx",
+        "src/components/Markdown.tsx",
+        "src/components/MarkdownTable.tsx",
+        "src/components/BaseTextInput.tsx",
+        "src/components/TextInput.tsx",
+        "src/components/VimTextInput.tsx",
+        "src/components/SearchBox.tsx",
+        "src/components/FullscreenLayout.tsx",
+        "src/components/OffscreenFreeze.tsx",
+        "src/components/ScrollKeybindingHandler.tsx",
+        "src/components/TagTabs.tsx",
+        "src/components/FilePathLink.tsx",
+        "src/components/ClickableImageRef.tsx",
+        "src/components/ConfigurableShortcutHint.tsx",
+        "src/components/PressEnterToContinue.tsx",
+        "src/components/CtrlOToExpand.tsx",
+        "src/components/ValidationErrorsList.tsx",
+        "src/components/FileEditToolDiff.tsx",
+        "src/components/SandboxViolationExpandedView.tsx"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "DesignSystem"
+      }
+    },
+    {
+      "name": "PromptInput",
+      "description": "用户输入区域组件。PromptInput.tsx 是核心（2300+ 行），整合文本编辑、Vim 模式、粘贴处理、历史搜索、语音指示器、输入截断、快捷键等。底部栏（PromptInputFooter）显示模式指示器、上下文建议、排队命令、帮助菜单、Issue 标记、沙盒提示和 Swarm 横幅。ShimmeredInput 提供微光输入效果。ContextSuggestions 和 ContextVisualization 展示上下文感知的补全建议。",
+      "edges": [
+        {
+          "target": "DesignSystem",
+          "type": "depends",
+          "description": "使用 TextInput、SearchBox 等文本输入原语和设计系统组件"
+        }
+      ],
+      "codeScope": [
+        "src/components/PromptInput/",
+        "src/components/ContextSuggestions.tsx",
+        "src/components/ContextVisualization.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PromptInput"
+      }
+    },
+    {
+      "name": "DialogCollection",
+      "description": "独立对话框集合，涵盖 25+ 个业务场景。包括：自动模式确认（AutoModeOptIn）、权限绕过确认（BypassPermissionsMode）、成本阈值提醒（CostThreshold）、Bridge 远程连接（BridgeDialog）、CLAUDE.md 外部包含确认、频道降级/开发频道选择、导出对话（ExportDialog）、全局搜索（GlobalSearch）、历史搜索、IDE 自动连接/引导、闲置回归、配置/设置校验错误、快速打开、远程环境、Teleport 仓库不匹配、工作流多选、Worktree 退出、Trust 信任确认、API Key 审批、OAuth 控制台登录、托管安全设置等。大多数对话框基于 design-system/Dialog 构建。",
+      "edges": [
+        {
+          "target": "DesignSystem",
+          "type": "depends",
+          "description": "所有对话框基于 Dialog 组件和设计令牌构建"
+        }
+      ],
+      "codeScope": [
+        "src/components/AutoModeOptInDialog.tsx",
+        "src/components/BridgeDialog.tsx",
+        "src/components/BypassPermissionsModeDialog.tsx",
+        "src/components/ChannelDowngradeDialog.tsx",
+        "src/components/ClaudeMdExternalIncludesDialog.tsx",
+        "src/components/CostThresholdDialog.tsx",
+        "src/components/DevChannelsDialog.tsx",
+        "src/components/ExportDialog.tsx",
+        "src/components/GlobalSearchDialog.tsx",
+        "src/components/HistorySearchDialog.tsx",
+        "src/components/IdeAutoConnectDialog.tsx",
+        "src/components/IdeOnboardingDialog.tsx",
+        "src/components/IdleReturnDialog.tsx",
+        "src/components/InvalidConfigDialog.tsx",
+        "src/components/InvalidSettingsDialog.tsx",
+        "src/components/QuickOpenDialog.tsx",
+        "src/components/RemoteEnvironmentDialog.tsx",
+        "src/components/TeleportRepoMismatchDialog.tsx",
+        "src/components/WorkflowMultiselectDialog.tsx",
+        "src/components/WorktreeExitDialog.tsx",
+        "src/components/TrustDialog/",
+        "src/components/ManagedSettingsSecurityDialog/",
+        "src/components/ApproveApiKey.tsx",
+        "src/components/ConsoleOAuthFlow.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "DialogCollection"
+      }
+    },
+    {
+      "name": "AgentAndMCPUI",
+      "description": "Agent 管理和 MCP 服务器管理 UI。agents/ 提供完整的 Agent 生命周期管理：AgentsList 列表展示、AgentDetail 详情查看、AgentEditor 编辑器、CreateAgentWizard 创建向导（12 步：类型、描述、提示词、工具、模型、颜色、记忆、位置、方法、生成、确认等），以及 Agent 验证和文件工具。mcp/ 提供 MCP 服务器管理：MCPSettings 总设置面板、MCPListPanel 服务器列表、Stdio/Remote/Agent 三种服务器类型菜单、MCPToolListView/DetailView 工具浏览、MCPReconnect 重连、ElicitationDialog 信息采集、CapabilitiesSection 能力展示。skills/ 提供技能菜单。grove/ 提供 Grove 组件。",
+      "edges": [
+        {
+          "target": "DesignSystem",
+          "type": "depends",
+          "description": "使用 wizard 框架、FuzzyPicker、ListItem 等组件构建管理界面"
+        },
+        {
+          "target": "SettingsAndConfig",
+          "type": "depends",
+          "description": "Agent 和 MCP 配置集成到 Settings 面板中"
+        }
+      ],
+      "codeScope": [
+        "src/components/agents/",
+        "src/components/mcp/",
+        "src/components/skills/",
+        "src/components/grove/",
+        "src/components/MCPServerApprovalDialog.tsx",
+        "src/components/MCPServerDesktopImportDialog.tsx",
+        "src/components/MCPServerDialogCopy.tsx",
+        "src/components/MCPServerMultiselectDialog.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "AgentAndMCPUI"
+      }
+    },
+    {
+      "name": "SettingsAndConfig",
+      "description": "设置与配置管理 UI。Settings/ 提供设置面板（Settings.tsx 主组件、Config 配置页、Usage 用量统计、Status 状态页）。sandbox/ 提供沙盒配置管理（配置标签页、依赖、覆盖、Doctor 诊断）。hooks/ 提供 Hooks 配置菜单（事件选择、Hook 选择、匹配器、查看模式、提示对话框）。HelpV2/ 提供帮助面板（通用帮助、命令列表）。还包含各类选择器：ThemePicker 主题、ModelPicker 模型、LanguagePicker 语言、OutputStylePicker 输出样式、LogSelector 日志选择，以及 KeybindingWarnings 快捷键冲突警告。",
+      "edges": [
+        {
+          "target": "DesignSystem",
+          "type": "depends",
+          "description": "使用 Tabs、Pane、FuzzyPicker 等组件构建设置界面"
+        },
+        {
+          "target": "DialogCollection",
+          "type": "depends",
+          "description": "部分设置项通过对话框形式展示（如 InvalidSettingsDialog）"
+        }
+      ],
+      "codeScope": [
+        "src/components/Settings/",
+        "src/components/sandbox/",
+        "src/components/hooks/",
+        "src/components/HelpV2/",
+        "src/components/ThemePicker.tsx",
+        "src/components/ModelPicker.tsx",
+        "src/components/LanguagePicker.tsx",
+        "src/components/OutputStylePicker.tsx",
+        "src/components/LogSelector.tsx",
+        "src/components/KeybindingWarnings.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SettingsAndConfig"
+      }
+    },
+    {
+      "name": "TaskAndTeamPanels",
+      "description": "任务与团队状态面板。tasks/ 提供后台任务管理：BackgroundTasksDialog 任务列表对话框、BackgroundTask/BackgroundTaskStatus 单任务状态显示、ShellProgress/ShellDetailDialog Shell 任务详情、RemoteSessionProgress/RemoteSessionDetailDialog 远程会话详情、AsyncAgentDetailDialog 异步 Agent 详情、DreamDetailDialog Dream 任务详情、InProcessTeammateDetailDialog 进程内队友详情、renderToolActivity 工具活动渲染、taskStatusUtils 状态工具。teams/ 提供 TeamsDialog 团队对话框和 TeamStatus 团队状态。顶层还有 TaskListV2 任务列表、CoordinatorAgentStatus 协调器状态、AgentProgressLine Agent 进度、TeammateViewHeader 队友视图头。",
+      "edges": [
+        {
+          "target": "MessageRendering",
+          "type": "depends",
+          "description": "任务详情对话框中展示消息内容和工具活动"
+        },
+        {
+          "target": "DesignSystem",
+          "type": "depends",
+          "description": "使用 Dialog、ProgressBar、StatusIcon 等组件构建状态面板"
+        }
+      ],
+      "codeScope": [
+        "src/components/tasks/",
+        "src/components/teams/",
+        "src/components/TaskListV2.tsx",
+        "src/components/ResumeTask.tsx",
+        "src/components/CoordinatorAgentStatus.tsx",
+        "src/components/AgentProgressLine.tsx",
+        "src/components/TeammateViewHeader.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TaskAndTeamPanels"
+      }
+    },
+    {
+      "name": "AppChrome",
+      "description": "应用外壳与杂项组件。LogoV2/ 实现欢迎界面（WelcomeV2、AnimatedClawd/Asterisk 动画、Feed 信息流、CondensedLogo、各类通知/Upsell 提示）。生命周期管理包含 App.tsx 根组件、AutoUpdater 系列（Native/PackageManager 两种更新方式）、ExitFlow 退出流程。状态指示器包含 StatusLine 状态栏、StatusNotices 通知栏、Stats 统计、DevBar 开发者工具栏、各种 Indicator（EffortIndicator、IdeStatusIndicator、FastIcon、BashModeProgress、TokenWarning、PrBadge、MemoryUsageIndicator）。引导与反馈包含 Onboarding 系列、FeedbackSurvey 反馈调查、DesktopUpsell 桌面版推广、ClaudeCodeHint 插件提示。远程相关包含 Teleport 系列（Stash/Error/Progress/Resume）、RemoteCallout、SessionBackgroundHint/Preview。其他包含 SentryErrorBoundary 错误边界、DiagnosticsDisplay 诊断、memory/ 记忆 UI、LspRecommendation LSP 推荐、Passes 通行证、ShowInIDEPrompt IDE 打开提示。",
+      "edges": [
+        {
+          "target": "DesignSystem",
+          "type": "depends",
+          "description": "使用 ThemedText、ProgressBar、Pane 等设计系统组件"
+        },
+        {
+          "target": "PromptInput",
+          "type": "composes",
+          "description": "StatusLine 和 Notifications 与 PromptInput 输入区域紧密集成"
+        },
+        {
+          "target": "MessageRendering",
+          "type": "composes",
+          "description": "App.tsx 组装消息列表和其他顶层 UI 组件"
+        }
+      ],
+      "codeScope": [
+        "src/components/LogoV2/",
+        "src/components/App.tsx",
+        "src/components/AutoUpdater.tsx",
+        "src/components/AutoUpdaterWrapper.tsx",
+        "src/components/NativeAutoUpdater.tsx",
+        "src/components/PackageManagerAutoUpdater.tsx",
+        "src/components/Onboarding.tsx",
+        "src/components/ClaudeInChromeOnboarding.tsx",
+        "src/components/DesktopHandoff.tsx",
+        "src/components/DesktopUpsell/",
+        "src/components/Feedback.tsx",
+        "src/components/FeedbackSurvey/",
+        "src/components/SkillImprovementSurvey.tsx",
+        "src/components/StatusLine.tsx",
+        "src/components/StatusNotices.tsx",
+        "src/components/Stats.tsx",
+        "src/components/DevBar.tsx",
+        "src/components/EffortCallout.tsx",
+        "src/components/EffortIndicator.ts",
+        "src/components/FastIcon.tsx",
+        "src/components/IdeStatusIndicator.tsx",
+        "src/components/BashModeProgress.tsx",
+        "src/components/TokenWarning.tsx",
+        "src/components/PrBadge.tsx",
+        "src/components/MemoryUsageIndicator.tsx",
+        "src/components/AwsAuthStatusBox.tsx",
+        "src/components/RemoteCallout.tsx",
+        "src/components/SessionBackgroundHint.tsx",
+        "src/components/SessionPreview.tsx",
+        "src/components/ShowInIDEPrompt.tsx",
+        "src/components/SentryErrorBoundary.ts",
+        "src/components/ExitFlow.tsx",
+        "src/components/ThinkingToggle.tsx",
+        "src/components/TeleportError.tsx",
+        "src/components/TeleportProgress.tsx",
+        "src/components/TeleportResumeWrapper.tsx",
+        "src/components/TeleportStash.tsx",
+        "src/components/DiagnosticsDisplay.tsx",
+        "src/components/ClaudeCodeHint/",
+        "src/components/LspRecommendation/",
+        "src/components/Passes/",
+        "src/components/memory/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "AppChrome"
+      }
+    }
+  ]
+}

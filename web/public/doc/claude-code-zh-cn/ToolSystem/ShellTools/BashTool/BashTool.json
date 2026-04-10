@@ -1,0 +1,122 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "f4397c2b-b405-4046-a815-d4c4e3356ff9",
+  "description": "Bash/Shell 命令执行工具，是 Claude Code 最常用的工具之一。BashTool.tsx 是核心入口（1143 行），编排命令解析、安全校验、权限检查、沙箱执行、输出处理等完整流程。内含多个独立子模块：bashSecurity（2592 行，命令注入防御与危险模式检测）、bashPermissions（2621 行，基于 AST 的权限规则匹配与分类器集成）、readOnlyValidation（1990 行，只读命令白名单校验）、pathValidation（1303 行，路径安全校验与目录访问控制）、sedEditParser/sedValidation（1006 行，sed 编辑命令解析与校验）等。还提供 shouldUseSandbox、modeValidation、destructiveCommandWarning、commandSemantics 等辅助模块，以及 UI 渲染组件。",
+  "codeScope": [
+    "src/tools/BashTool/"
+  ],
+  "nodes": [
+    {
+      "name": "CoreEntry",
+      "description": "BashTool 核心入口与编排器。BashTool.tsx（1143 行）实现 Tool 接口，编排命令解析、安全校验、权限检查、沙箱执行、输出处理的完整流程，包括超时管理、后台任务转换、进度显示、文件变更追踪等。prompt.ts（369 行）生成工具的系统提示词（包含沙箱配置、Git 操作指南、命令使用规范等）。toolName.ts 和 commentLabel.ts 提供工具名称常量和命令注释标签提取。",
+      "edges": [
+        {
+          "target": "SecurityGuard",
+          "type": "calls",
+          "description": "调用 bashSecurity 进行命令注入检测和危险模式校验"
+        },
+        {
+          "target": "PermissionEngine",
+          "type": "calls",
+          "description": "调用 bashPermissions 进行基于 AST 的权限规则匹配，决定是否需要用户授权"
+        },
+        {
+          "target": "CommandValidation",
+          "type": "calls",
+          "description": "调用 readOnlyValidation 校验只读约束，调用 sedValidation 校验 sed 命令安全性"
+        },
+        {
+          "target": "SandboxAndOutput",
+          "type": "calls",
+          "description": "调用 shouldUseSandbox 决定是否启用沙箱，使用 commandSemantics 解释退出码，调用 UI 组件渲染结果"
+        }
+      ],
+      "codeScope": [
+        "src/tools/BashTool/BashTool.tsx",
+        "src/tools/BashTool/prompt.ts",
+        "src/tools/BashTool/toolName.ts",
+        "src/tools/BashTool/commentLabel.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "CoreEntry"
+      }
+    },
+    {
+      "name": "SecurityGuard",
+      "description": "命令安全校验层。bashSecurity.ts（2592 行）是核心安全模块，实现命令注入防御——检测 $() 命令替换、反引号、进程替换、Zsh 危险命令（zmodload/emulate 等）、heredoc 注入、恶意 token 模式等。支持同步和异步两种校验路径（bashCommandIsSafe_DEPRECATED 和 bashCommandIsSafeAsync_DEPRECATED）。bashCommandHelpers.ts（265 行）提供 AST 级命令解析辅助函数。destructiveCommandWarning.ts（102 行）检测破坏性命令模式（git reset --hard、rm -rf、DROP TABLE 等）并生成用户警告信息。",
+      "edges": [],
+      "codeScope": [
+        "src/tools/BashTool/bashSecurity.ts",
+        "src/tools/BashTool/bashCommandHelpers.ts",
+        "src/tools/BashTool/destructiveCommandWarning.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SecurityGuard"
+      }
+    },
+    {
+      "name": "PermissionEngine",
+      "description": "权限规则匹配引擎。bashPermissions.ts（2621 行）是最大的单文件模块，实现基于 AST 的多层权限判定：解析权限规则（精确匹配、前缀匹配、通配符匹配）、分割复合命令、识别 env 变量前缀和安全包装器（timeout/nice/xargs 等）、集成 bashClassifier 分类器进行语义级权限判定、生成权限请求消息和规则建议。支持 allow/deny/ask 三种权限行为。modeValidation.ts（115 行）处理特定权限模式（如 acceptEdits 模式下自动允许 mkdir/cp/sed 等文件操作命令）。",
+      "edges": [
+        {
+          "target": "SecurityGuard",
+          "type": "calls",
+          "description": "权限判定过程中调用 bashSecurity 的异步安全校验作为前置检查"
+        },
+        {
+          "target": "CommandValidation",
+          "type": "depends",
+          "description": "复用 pathValidation 的路径提取器和 readOnlyValidation 的只读命令判定"
+        }
+      ],
+      "codeScope": [
+        "src/tools/BashTool/bashPermissions.ts",
+        "src/tools/BashTool/modeValidation.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PermissionEngine"
+      }
+    },
+    {
+      "name": "CommandValidation",
+      "description": "命令约束校验集合。readOnlyValidation.ts（1990 行）实现只读命令白名单校验——维护庞大的安全标志配置表（涵盖 git、docker、gh、rg、fd、pyright 等数十种命令），通过标志解析判断命令是否为只读操作。pathValidation.ts（1303 行）实现路径安全校验——提取命令中的文件路径参数，校验是否在允许的工作目录内，检测危险删除路径（如 /、$HOME），处理 cd/git/sed 等特殊命令的路径语义。sedValidation.ts（684 行）实现 sed 命令的细粒度安全校验——解析 sed 表达式语法，区分只读操作（打印/查询）和修改操作（替换/删除/插入），校验 in-place 编辑的目标路径。",
+      "edges": [],
+      "codeScope": [
+        "src/tools/BashTool/readOnlyValidation.ts",
+        "src/tools/BashTool/pathValidation.ts",
+        "src/tools/BashTool/sedValidation.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "CommandValidation"
+      }
+    },
+    {
+      "name": "SandboxAndOutput",
+      "description": "沙箱决策、输出处理与 UI 渲染。shouldUseSandbox.ts（153 行）决定是否启用命令沙箱——检查沙箱全局开关、用户显式禁用标志、排除命令列表（支持前缀/精确/通配符匹配）。commandSemantics.ts（140 行）定义命令退出码的语义解释规则（如 grep 返回 1 表示无匹配而非错误）。sedEditParser.ts（322 行）解析 sed -i 替换命令，提取文件路径和替换模式，用于 UI 层的 file-edit 风格渲染。utils.ts（223 行）提供输出格式化、图片检测与缩放、工作目录重置等工具函数。UI.tsx（184 行）和 BashToolResultMessage.tsx（190 行）是 React/Ink 渲染组件，负责命令执行的进度显示、结果展示（支持折叠、sed 编辑预览、沙箱违规提示等）和后台任务提示。",
+      "edges": [
+        {
+          "target": "PermissionEngine",
+          "type": "depends",
+          "description": "shouldUseSandbox 复用 bashPermissions 的规则匹配函数和环境变量剥离逻辑"
+        }
+      ],
+      "codeScope": [
+        "src/tools/BashTool/shouldUseSandbox.ts",
+        "src/tools/BashTool/commandSemantics.ts",
+        "src/tools/BashTool/sedEditParser.ts",
+        "src/tools/BashTool/utils.ts",
+        "src/tools/BashTool/UI.tsx",
+        "src/tools/BashTool/BashToolResultMessage.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SandboxAndOutput"
+      }
+    }
+  ]
+}

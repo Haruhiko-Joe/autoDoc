@@ -1,0 +1,217 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "1ca034dd-969f-4340-9a79-b5df3fd04301",
+  "description": "消息渲染系统。Message.tsx 是核心路由组件，按消息类型分发到 messages/ 下 30+ 种具体渲染器（用户文本/图片/命令、助手文本/思考/工具调用、系统错误/速率限制、工具结果成功/拒绝/取消等）。Messages.tsx 负责消息列表编排（分组、折叠、压缩边界、搜索高亮），VirtualMessageList 实现虚拟化滚动，MessageRow 处理单条消息布局（时间戳、模型标签、操作菜单），shell/ 提供 Shell 输出的专用渲染。还包含工具加载指示器和各类工具执行反馈消息组件。",
+  "codeScope": [
+    "src/components/messages/",
+    "src/components/shell/",
+    "src/components/Message.tsx",
+    "src/components/Messages.tsx",
+    "src/components/VirtualMessageList.tsx",
+    "src/components/MessageRow.tsx",
+    "src/components/MessageResponse.tsx",
+    "src/components/MessageSelector.tsx",
+    "src/components/MessageTimestamp.tsx",
+    "src/components/MessageModel.tsx",
+    "src/components/messageActions.tsx",
+    "src/components/CompactSummary.tsx",
+    "src/components/FallbackToolUseErrorMessage.tsx",
+    "src/components/FallbackToolUseRejectedMessage.tsx",
+    "src/components/FileEditToolUpdatedMessage.tsx",
+    "src/components/FileEditToolUseRejectedMessage.tsx",
+    "src/components/NotebookEditToolUseRejectedMessage.tsx",
+    "src/components/InterruptedByUser.tsx",
+    "src/components/ToolUseLoader.tsx"
+  ],
+  "nodes": [
+    {
+      "name": "MessageListOrchestration",
+      "description": "消息列表编排与虚拟滚动。Messages.tsx（833 行）负责消息列表的高层编排——消息规范化、分组（applyGrouping）、折叠（collapseReadSearchGroups、collapseHookSummaries、collapseTeammateShutdowns）、压缩边界裁剪、搜索高亮、渲染顺序重排（reorderMessagesInUI），以及 LogoHeader 和 StatusNotices 的顶部渲染。VirtualMessageList.tsx（1081 行）实现虚拟化滚动引擎——基于 useVirtualScroll 的高性能渲染、sticky prompt 粘性提示、增量搜索（JumpHandle 接口：nextMatch/prevMatch/setSearchQuery）、搜索文本缓存预热、消息导航定位（jumpToIndex/scrollTo），以及与 messageActions 的选中状态集成。两者共同构成消息列表的核心运行时。",
+      "edges": [
+        {
+          "target": "MessageRowLayout",
+          "type": "composes",
+          "description": "Messages 将每条消息包装为 MessageRow 渲染，传递 lookups、工具状态等上下文"
+        },
+        {
+          "target": "MessageRouter",
+          "type": "composes",
+          "description": "MessageRow 内部使用 Message 组件进行消息类型分发渲染"
+        },
+        {
+          "target": "MessageInteraction",
+          "type": "depends",
+          "description": "VirtualMessageList 消费 MessageActionsSelectedContext 管理选中高亮，使用 isNavigableMessage 过滤可导航消息"
+        }
+      ],
+      "codeScope": [
+        "src/components/Messages.tsx",
+        "src/components/VirtualMessageList.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "MessageListOrchestration"
+      }
+    },
+    {
+      "name": "MessageRouter",
+      "description": "消息类型路由分发组件。Message.tsx（626 行）是整个消息渲染系统的核心枢纽——接收规范化消息对象，按 message.type（user/assistant/system/grouped_tool_use/collapsed_read_search/attachment）和 content block 类型（text/image/tool_use/tool_result/thinking/redacted_thinking）分发到 messages/ 下 30+ 种具体渲染器。处理 user 消息时进一步按 XML 标签（bash-stdout、command、teammate-message 等）和 isMeta/isCompactSummary 等标志细分。还包含 ExpandShellOutputProvider 上下文注入和 OffscreenFreeze 性能优化。",
+      "edges": [
+        {
+          "target": "MessageTypeRenderers",
+          "type": "calls",
+          "description": "根据消息类型和 content block 类型分发到对应的具体渲染组件"
+        },
+        {
+          "target": "ShellOutput",
+          "type": "depends",
+          "description": "注入 ExpandShellOutputProvider 上下文供 Shell 输出渲染使用"
+        },
+        {
+          "target": "ToolFeedbackComponents",
+          "type": "calls",
+          "description": "tool_result 类型消息分发到 UserToolResultMessage 和 CompactSummary"
+        }
+      ],
+      "codeScope": [
+        "src/components/Message.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "MessageRouter"
+      }
+    },
+    {
+      "name": "MessageRowLayout",
+      "description": "单条消息的布局与元信息显示。MessageRow.tsx（382 行）处理单条消息的外层布局——时间戳位置、模型标签、静态/动态渲染判断（shouldRenderStatically）、折叠组的工具进度状态、以及 hasContentAfterIndex 辅助函数。MessageTimestamp.tsx（62 行）格式化并渲染消息时间戳。MessageModel.tsx（42 行）显示生成该消息的模型标签。MessageResponse.tsx（77 行）封装助手响应的展示容器。",
+      "edges": [
+        {
+          "target": "MessageRouter",
+          "type": "composes",
+          "description": "MessageRow 内部渲染 Message 组件，传递工具状态和显示参数"
+        }
+      ],
+      "codeScope": [
+        "src/components/MessageRow.tsx",
+        "src/components/MessageTimestamp.tsx",
+        "src/components/MessageModel.tsx",
+        "src/components/MessageResponse.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "MessageRowLayout"
+      }
+    },
+    {
+      "name": "MessageTypeRenderers",
+      "description": "30+ 种具体消息类型渲染器集合（messages/ 目录，~6000 行）。按角色分类：助手消息（AssistantTextMessage 文本渲染含 Markdown 流式输出、AssistantThinkingMessage/RedactedThinking 思考过程展示、AssistantToolUseMessage 工具调用预览含参数折叠）；用户消息（UserTextMessage 含提及高亮、UserImageMessage、UserCommandMessage 斜杠命令、UserBashInput/Output Bash 交互、UserChannelMessage 频道消息、UserTeammateMessage 队友消息、UserPromptMessage、UserPlanMessage、UserMemoryInputMessage、UserAgentNotificationMessage、UserResourceUpdateMessage、UserLocalCommandOutputMessage）；系统消息（SystemTextMessage 826 行含多种子类型如 error/interrupted/retry_prompt 等、SystemAPIErrorMessage API 错误展示、RateLimitMessage 速率限制含倒计时、ShutdownMessage 关闭通知）；特殊组件（AttachmentMessage 535 行附件展示、CollapsedReadSearchContent 483 行折叠的读取/搜索组、GroupedToolUseContent 分组工具调用、AdvisorMessage 建议消息、PlanApprovalMessage 计划审批、HookProgressMessage Hook 进度、TaskAssignmentMessage 任务分配、HighlightedThinkingText 高亮思考文本）；工具结果子系统（UserToolResultMessage/ 含成功/错误/拒绝/取消/计划拒绝 7 个子组件和 utils）。",
+      "edges": [
+        {
+          "target": "ShellOutput",
+          "type": "depends",
+          "description": "UserBashOutputMessage 和 UserLocalCommandOutputMessage 使用 shell/ 组件渲染命令输出"
+        },
+        {
+          "target": "ToolFeedbackComponents",
+          "type": "depends",
+          "description": "AssistantToolUseMessage 使用 ToolUseLoader 展示工具执行中的加载状态"
+        }
+      ],
+      "codeScope": [
+        "src/components/messages/AdvisorMessage.tsx",
+        "src/components/messages/AssistantRedactedThinkingMessage.tsx",
+        "src/components/messages/AssistantTextMessage.tsx",
+        "src/components/messages/AssistantThinkingMessage.tsx",
+        "src/components/messages/AssistantToolUseMessage.tsx",
+        "src/components/messages/AttachmentMessage.tsx",
+        "src/components/messages/CollapsedReadSearchContent.tsx",
+        "src/components/messages/CompactBoundaryMessage.tsx",
+        "src/components/messages/GroupedToolUseContent.tsx",
+        "src/components/messages/HighlightedThinkingText.tsx",
+        "src/components/messages/HookProgressMessage.tsx",
+        "src/components/messages/PlanApprovalMessage.tsx",
+        "src/components/messages/RateLimitMessage.tsx",
+        "src/components/messages/ShutdownMessage.tsx",
+        "src/components/messages/SystemAPIErrorMessage.tsx",
+        "src/components/messages/SystemTextMessage.tsx",
+        "src/components/messages/TaskAssignmentMessage.tsx",
+        "src/components/messages/UserAgentNotificationMessage.tsx",
+        "src/components/messages/UserBashInputMessage.tsx",
+        "src/components/messages/UserBashOutputMessage.tsx",
+        "src/components/messages/UserChannelMessage.tsx",
+        "src/components/messages/UserCommandMessage.tsx",
+        "src/components/messages/UserImageMessage.tsx",
+        "src/components/messages/UserLocalCommandOutputMessage.tsx",
+        "src/components/messages/UserMemoryInputMessage.tsx",
+        "src/components/messages/UserPlanMessage.tsx",
+        "src/components/messages/UserPromptMessage.tsx",
+        "src/components/messages/UserResourceUpdateMessage.tsx",
+        "src/components/messages/UserTeammateMessage.tsx",
+        "src/components/messages/UserTextMessage.tsx",
+        "src/components/messages/UserToolResultMessage/RejectedPlanMessage.tsx",
+        "src/components/messages/UserToolResultMessage/RejectedToolUseMessage.tsx",
+        "src/components/messages/UserToolResultMessage/UserToolCanceledMessage.tsx",
+        "src/components/messages/UserToolResultMessage/UserToolErrorMessage.tsx",
+        "src/components/messages/UserToolResultMessage/UserToolRejectMessage.tsx",
+        "src/components/messages/UserToolResultMessage/UserToolResultMessage.tsx",
+        "src/components/messages/UserToolResultMessage/UserToolSuccessMessage.tsx",
+        "src/components/messages/UserToolResultMessage/utils.tsx",
+        "src/components/messages/nullRenderingAttachments.ts",
+        "src/components/messages/teamMemCollapsed.tsx",
+        "src/components/messages/teamMemSaved.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "MessageTypeRenderers"
+      }
+    },
+    {
+      "name": "MessageInteraction",
+      "description": "消息导航、选中与操作系统。messageActions.tsx（449 行）定义消息操作的核心基础设施——NavigableMessage 类型判断（isNavigableMessage 按消息类型过滤可导航项）、PRIMARY_INPUT 工具调用输入提取映射、toolCallOf 工具调用信息提取、stripSystemReminders XML 清理、InVirtualListContext/MessageActionsSelectedContext 上下文、MessageActionsNav 导航接口。MessageSelector.tsx（830 行）实现消息选择器面板——支持会话恢复（restore conversation/code）、摘要生成（summarize/summarize_up_to）、差异统计展示（DiffStats）、文件历史回退（fileHistoryCanRestore），通过 Select 组件提供交互选项。",
+      "edges": [],
+      "codeScope": [
+        "src/components/messageActions.tsx",
+        "src/components/MessageSelector.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "MessageInteraction"
+      }
+    },
+    {
+      "name": "ShellOutput",
+      "description": "Shell 命令输出专用渲染系统（374 行）。ExpandShellOutputContext.tsx 提供展开/折叠 Shell 输出的 React Context。OutputLine.tsx（117 行）渲染单行 Shell 输出，处理 ANSI 颜色代码和行截断。ShellProgressMessage.tsx（149 行）渲染 Shell 命令执行进度——包含命令标题、退出码、执行时长（ShellTimeDisplay）、输出行数统计和展开/折叠交互。ShellTimeDisplay.tsx（73 行）格式化并显示命令执行耗时。",
+      "edges": [],
+      "codeScope": [
+        "src/components/shell/ExpandShellOutputContext.tsx",
+        "src/components/shell/OutputLine.tsx",
+        "src/components/shell/ShellProgressMessage.tsx",
+        "src/components/shell/ShellTimeDisplay.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ShellOutput"
+      }
+    },
+    {
+      "name": "ToolFeedbackComponents",
+      "description": "工具执行反馈与状态指示组件（~685 行）。ToolUseLoader.tsx（41 行）工具执行中的加载指示器（Spinner + 工具名称）。FallbackToolUseErrorMessage.tsx（115 行）通用工具执行错误展示（含错误详情和 diff 预览）。FallbackToolUseRejectedMessage.tsx（15 行）通用工具拒绝消息。FileEditToolUpdatedMessage.tsx（123 行）文件编辑完成的结果展示（含 diff 统计和路径链接）。FileEditToolUseRejectedMessage.tsx（169 行）文件编辑拒绝展示（含原始编辑内容预览）。NotebookEditToolUseRejectedMessage.tsx（91 行）Notebook 编辑拒绝展示。InterruptedByUser.tsx（14 行）用户中断提示。CompactSummary.tsx（117 行）压缩摘要展示组件（显示压缩边界和摘要内容）。",
+      "edges": [],
+      "codeScope": [
+        "src/components/ToolUseLoader.tsx",
+        "src/components/FallbackToolUseErrorMessage.tsx",
+        "src/components/FallbackToolUseRejectedMessage.tsx",
+        "src/components/FileEditToolUpdatedMessage.tsx",
+        "src/components/FileEditToolUseRejectedMessage.tsx",
+        "src/components/NotebookEditToolUseRejectedMessage.tsx",
+        "src/components/InterruptedByUser.tsx",
+        "src/components/CompactSummary.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ToolFeedbackComponents"
+      }
+    }
+  ]
+}

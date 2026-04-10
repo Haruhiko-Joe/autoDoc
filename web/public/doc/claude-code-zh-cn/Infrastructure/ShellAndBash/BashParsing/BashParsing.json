@@ -1,0 +1,109 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "072c5759-dad5-4110-9780-ee7f544ede34",
+  "description": "完整的 Bash 解析管线，从源码到安全分析。bashParser.ts 是纯 TypeScript 实现的 Bash tokenizer/parser（4400+ 行，产出 tree-sitter 兼容 AST），ast.ts 基于 AST 白名单机制提取 argv 用于安全分类（fail-closed 设计），treeSitterAnalysis.ts 提取引号上下文/复合结构/危险模式等安全元数据，commands.ts 处理命令拆分和输出重定向提取，ParsedCommand.ts 定义统一的解析命令接口。还包含 shell 引号处理（shellQuote/shellQuoting）、heredoc 提取恢复、管道命令重排（bashPipeCommand）等字符串操作工具",
+  "codeScope": [
+    "src/utils/bash/bashParser.ts",
+    "src/utils/bash/parser.ts",
+    "src/utils/bash/ast.ts",
+    "src/utils/bash/treeSitterAnalysis.ts",
+    "src/utils/bash/commands.ts",
+    "src/utils/bash/ParsedCommand.ts",
+    "src/utils/bash/heredoc.ts",
+    "src/utils/bash/shellQuote.ts",
+    "src/utils/bash/shellQuoting.ts",
+    "src/utils/bash/bashPipeCommand.ts",
+    "src/utils/bash/shellPrefix.ts"
+  ],
+  "nodes": [
+    {
+      "name": "BashParser",
+      "description": "纯 TypeScript 实现的 Bash tokenizer 和 parser（bashParser.ts，4400+ 行），产出 tree-sitter 兼容 AST（TsNode）。包含完整的词法分析（16 种 token 类型）、语法分析（支持管道、重定向、heredoc、算术展开、命令替换等 Bash 语法）、50ms 超时保护和 50K 节点预算。parser.ts 作为桥接层，添加特性门控（feature flag）、长度限制、解析中止信号（PARSE_ABORTED sentinel），并提供 parseCommand/parseCommandRaw 两个入口",
+      "edges": [],
+      "codeScope": [
+        "src/utils/bash/bashParser.ts",
+        "src/utils/bash/parser.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "BashParser"
+      }
+    },
+    {
+      "name": "ASTSecurity",
+      "description": "基于 AST 白名单机制的安全分析核心（ast.ts，2679 行）。以 fail-closed 设计遍历 tree-sitter AST，仅允许显式白名单内的节点类型通过；对每个 simple command 提取 argv[]、环境变量赋值和重定向信息（SimpleCommand 类型）。遇到未知节点类型时拒绝提取并返回 'too-complex'，强制走权限提示流程。支持递归处理命令替换 $()、管道、逻辑操作符等复合结构",
+      "edges": [
+        {
+          "target": "BashParser",
+          "type": "calls",
+          "description": "调用 parseCommandRaw 获取 AST 根节点，导入 SHELL_KEYWORDS 常量和 Node 类型定义"
+        }
+      ],
+      "codeScope": [
+        "src/utils/bash/ast.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ASTSecurity"
+      }
+    },
+    {
+      "name": "TreeSitterAnalysis",
+      "description": "从 tree-sitter AST 提取安全相关元数据（treeSitterAnalysis.ts，506 行）。单遍遍历收集三类信息：引号上下文（QuoteContext，区分单引号/双引号/完全去引号内容）、复合结构（CompoundStructure，检测管道/子 shell/命令组/逻辑操作符）、危险模式（DangerousPatterns，检测命令替换/进程替换/参数展开/heredoc/注释）。通过融合遍历优化性能（~5x 减少树遍历次数）",
+      "edges": [],
+      "codeScope": [
+        "src/utils/bash/treeSitterAnalysis.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TreeSitterAnalysis"
+      }
+    },
+    {
+      "name": "CommandProcessing",
+      "description": "命令拆分、重定向提取和统一解析命令接口。commands.ts（1339 行）基于 shell-quote 库实现命令分割（splitCommandWithOperators）和输出重定向提取（extractOutputRedirections），使用随机盐占位符防注入攻击，处理 heredoc 安全保留和静态重定向目标校验。ParsedCommand.ts（318 行）定义 IParsedCommand 接口和两个实现：TreeSitterParsedCommand（基于 AST 的管道分割和重定向提取）和 RegexParsedCommand_DEPRECATED（遗留正则回退路径）",
+      "edges": [
+        {
+          "target": "BashParser",
+          "type": "depends",
+          "description": "ParsedCommand 导入 Node 类型定义用于 AST 节点遍历"
+        },
+        {
+          "target": "TreeSitterAnalysis",
+          "type": "calls",
+          "description": "TreeSitterParsedCommand 调用 analyzeCommand 获取安全元数据（引号上下文、复合结构、危险模式）"
+        },
+        {
+          "target": "ShellStringTools",
+          "type": "calls",
+          "description": "commands.ts 调用 shellQuote 的解析/引用功能和 heredoc 的提取/恢复工具"
+        }
+      ],
+      "codeScope": [
+        "src/utils/bash/commands.ts",
+        "src/utils/bash/ParsedCommand.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "CommandProcessing"
+      }
+    },
+    {
+      "name": "ShellStringTools",
+      "description": "Shell 字符串处理工具集合。shellQuote.ts（304 行）封装 shell-quote 库的安全包装器（错误处理、类型验证、单引号 bug 检测、畸形 token 检测）；shellQuoting.ts（128 行）提供高层命令引用（处理 heredoc 和多行字符串的特殊引用策略、stdin 重定向检测）；heredoc.ts（733 行）实现 heredoc 提取与恢复（随机盐占位符、安全的分隔符模式匹配、带引号/破折号变体支持）；bashPipeCommand.ts（294 行）重排管道命令的 stdin 重定向位置（处理 shell-quote 解析差异的多种边界情况）；shellPrefix.ts（28 行）格式化 Shell 前缀命令路径",
+      "edges": [],
+      "codeScope": [
+        "src/utils/bash/shellQuote.ts",
+        "src/utils/bash/shellQuoting.ts",
+        "src/utils/bash/shellPrefix.ts",
+        "src/utils/bash/heredoc.ts",
+        "src/utils/bash/bashPipeCommand.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ShellStringTools"
+      }
+    }
+  ]
+}

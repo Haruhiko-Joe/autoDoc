@@ -1,0 +1,284 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "04caef3e-6728-4a31-bb1c-f512b0d230cd",
+  "description": "80+ 个 React 自定义 Hooks，提供 UI 层的核心行为逻辑。包括输入处理（useTextInput、useVimInput、usePasteHandler）、历史导航（useArrowKeyHistory、useHistorySearch）、IDE 集成（useIDEIntegration、useIdeSelection）、远程会话（useRemoteSession、useSSHSession）、后台任务（useTasksV2、useBackgroundTaskNavigation）、权限工具（useCanUseTool）、建议系统（useSuggestions、useTypeahead）、动态配置（useDynamicConfig、useSettings）等。",
+  "codeScope": [
+    "src/hooks/"
+  ],
+  "nodes": [
+    {
+      "name": "InputAndEditing",
+      "description": "文本输入与编辑行为 Hooks。useTextInput 处理基础文本输入和光标控制，useVimInput 在其上叠加 Vim 模式，usePasteHandler 处理粘贴事件（含图片检测），useSearchInput 提供搜索框行为，useInputBuffer 管理输入缓冲区，useCopyOnSelect 实现选中复制，useDoublePress 检测双击手势。还包括历史导航：useArrowKeyHistory 上下箭头浏览历史，useHistorySearch 模糊搜索历史（Ctrl+R 风格），useAssistantHistory 管理助手回复历史记录。",
+      "edges": [
+        {
+          "target": "SuggestionsAndTypeahead",
+          "type": "data-flow",
+          "description": "输入内容变化驱动建议系统实时更新补全候选项"
+        }
+      ],
+      "codeScope": [
+        "src/hooks/useTextInput.ts",
+        "src/hooks/useVimInput.ts",
+        "src/hooks/usePasteHandler.ts",
+        "src/hooks/useSearchInput.ts",
+        "src/hooks/useInputBuffer.ts",
+        "src/hooks/useCopyOnSelect.ts",
+        "src/hooks/useDoublePress.ts",
+        "src/hooks/useArrowKeyHistory.tsx",
+        "src/hooks/useHistorySearch.ts",
+        "src/hooks/useAssistantHistory.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "InputAndEditing"
+      }
+    },
+    {
+      "name": "SuggestionsAndTypeahead",
+      "description": "建议系统与自动补全 Hooks。useTypeahead（1384 行，最大单文件）实现完整的 Tab 补全引擎——管理补全状态机、候选排序、前缀匹配和 UI 渲染。fileSuggestions 提供文件路径补全的后台索引构建和匹配算法，unifiedSuggestions 统一文件建议与命令建议的生成逻辑，usePromptSuggestion 生成上下文相关的提示建议。",
+      "edges": [
+        {
+          "target": "IDEAndDiff",
+          "type": "data-flow",
+          "description": "文件建议利用 IDE 上下文信息增强补全相关性"
+        }
+      ],
+      "codeScope": [
+        "src/hooks/useTypeahead.tsx",
+        "src/hooks/fileSuggestions.ts",
+        "src/hooks/unifiedSuggestions.ts",
+        "src/hooks/usePromptSuggestion.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SuggestionsAndTypeahead"
+      }
+    },
+    {
+      "name": "IDEAndDiff",
+      "description": "IDE 集成与差异展示 Hooks。useIDEIntegration 是核心编排 Hook——建立与 VS Code 等 IDE 的双向通信通道。useIdeSelection 同步 IDE 编辑器选区到终端，useIdeAtMentioned 处理 IDE 中的 @mention 事件，useIdeConnectionStatus 监控连接状态，useIdeLogging 转发 IDE 日志。useDiffInIDE 将文件差异发送到 IDE 展示，useDiffData 计算和缓存差异数据。",
+      "edges": [
+        {
+          "target": "REPLAndCoreBridge",
+          "type": "data-flow",
+          "description": "IDE 事件（选区变化、@mention）传递给 REPL 核心处理"
+        }
+      ],
+      "codeScope": [
+        "src/hooks/useIDEIntegration.tsx",
+        "src/hooks/useIdeSelection.ts",
+        "src/hooks/useIdeAtMentioned.ts",
+        "src/hooks/useIdeConnectionStatus.ts",
+        "src/hooks/useIdeLogging.ts",
+        "src/hooks/useDiffInIDE.ts",
+        "src/hooks/useDiffData.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "IDEAndDiff"
+      }
+    },
+    {
+      "name": "REPLAndCoreBridge",
+      "description": "REPL 核心桥接与控制流 Hooks。useReplBridge（722 行）是 UI 与 CoreEngine 的主桥接——管理消息发送、流式响应接收和会话生命周期。useCanUseTool 实现工具权限判断逻辑，useCancelRequest 处理请求中断（Escape 键），useMainLoopModel 追踪当前模型状态。useCommandQueue/useQueueProcessor 实现命令排队和顺序执行，useDeferredHookMessages 管理延迟消息注入。useLogMessages 将系统日志推送到消息流。useCommandKeybindings/useGlobalKeybindings 注册全局和命令级快捷键响应，useExitOnCtrlCD/useExitOnCtrlCDWithKeybindings 处理退出手势。",
+      "edges": [
+        {
+          "target": "ToolPermission",
+          "type": "calls",
+          "description": "useCanUseTool 调用权限系统判断工具是否可执行"
+        },
+        {
+          "target": "TasksAndSwarm",
+          "type": "data-flow",
+          "description": "REPL 桥接层管理后台任务状态的展示和导航"
+        },
+        {
+          "target": "InputAndEditing",
+          "type": "depends",
+          "description": "REPL 主循环依赖输入处理 Hooks 获取用户输入"
+        }
+      ],
+      "codeScope": [
+        "src/hooks/useReplBridge.tsx",
+        "src/hooks/useCanUseTool.tsx",
+        "src/hooks/useCancelRequest.ts",
+        "src/hooks/useMainLoopModel.ts",
+        "src/hooks/useCommandQueue.ts",
+        "src/hooks/useQueueProcessor.ts",
+        "src/hooks/useDeferredHookMessages.ts",
+        "src/hooks/useLogMessages.ts",
+        "src/hooks/useCommandKeybindings.tsx",
+        "src/hooks/useGlobalKeybindings.tsx",
+        "src/hooks/useExitOnCtrlCD.ts",
+        "src/hooks/useExitOnCtrlCDWithKeybindings.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "REPLAndCoreBridge"
+      }
+    },
+    {
+      "name": "ToolPermission",
+      "description": "工具权限管理子系统。PermissionContext 定义权限 React Context 和 Provider，封装权限状态的存储与分发。handlers/ 目录包含三种权限处理策略：interactiveHandler（536 行）实现交互式权限确认流程（弹窗、用户选择、规则记忆），swarmWorkerHandler 处理 Swarm 工作节点的权限委托，coordinatorHandler 处理协调者模式的权限转发。permissionLogging 记录权限决策审计日志。",
+      "edges": [],
+      "codeScope": [
+        "src/hooks/toolPermission/PermissionContext.ts",
+        "src/hooks/toolPermission/permissionLogging.ts",
+        "src/hooks/toolPermission/handlers/interactiveHandler.ts",
+        "src/hooks/toolPermission/handlers/swarmWorkerHandler.ts",
+        "src/hooks/toolPermission/handlers/coordinatorHandler.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ToolPermission"
+      }
+    },
+    {
+      "name": "RemoteAndSessions",
+      "description": "远程会话与连接管理 Hooks。useRemoteSession（605 行）管理与云端运行时（CCR）的 WebSocket 会话——建连、心跳、重连、消息路由。useSSHSession（241 行）处理 SSH 隧道会话的建立和维护。useDirectConnect 实现点对点直连模式。useSessionBackgrounding 管理会话后台化和恢复，useTeleportResume 处理跨设备会话迁移（Teleport）。",
+      "edges": [
+        {
+          "target": "REPLAndCoreBridge",
+          "type": "data-flow",
+          "description": "远程会话的消息和状态变更推送到 REPL 核心渲染"
+        }
+      ],
+      "codeScope": [
+        "src/hooks/useRemoteSession.ts",
+        "src/hooks/useSSHSession.ts",
+        "src/hooks/useDirectConnect.ts",
+        "src/hooks/useSessionBackgrounding.ts",
+        "src/hooks/useTeleportResume.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "RemoteAndSessions"
+      }
+    },
+    {
+      "name": "TasksAndSwarm",
+      "description": "任务管理与多 Agent 协调 Hooks。useTasksV2 管理后台任务列表的状态和生命周期，useBackgroundTaskNavigation（251 行）实现任务间切换导航，useTaskListWatcher 监听任务列表变化并触发 UI 更新，useScheduledTasks 管理定时任务。Swarm 相关：useSwarmInitialization 初始化 Swarm 多 Agent 模式，useSwarmPermissionPoller（330 行）轮询协调节点获取权限决策。useInboxPoller（969 行）轮询收件箱获取跨 Agent 消息，useMailboxBridge 桥接邮箱通信。useTeammateViewAutoExit 处理队友视图的自动退出。",
+      "edges": [
+        {
+          "target": "RemoteAndSessions",
+          "type": "depends",
+          "description": "Swarm 远程 Agent 任务依赖远程会话 Hooks 建立连接"
+        },
+        {
+          "target": "ToolPermission",
+          "type": "depends",
+          "description": "Swarm 权限轮询器与工具权限系统交互进行权限委托"
+        }
+      ],
+      "codeScope": [
+        "src/hooks/useTasksV2.ts",
+        "src/hooks/useBackgroundTaskNavigation.ts",
+        "src/hooks/useTaskListWatcher.ts",
+        "src/hooks/useScheduledTasks.ts",
+        "src/hooks/useSwarmInitialization.ts",
+        "src/hooks/useSwarmPermissionPoller.ts",
+        "src/hooks/useInboxPoller.ts",
+        "src/hooks/useMailboxBridge.ts",
+        "src/hooks/useTeammateViewAutoExit.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TasksAndSwarm"
+      }
+    },
+    {
+      "name": "VoiceInput",
+      "description": "语音输入系统 Hooks。useVoice（1144 行）是核心实现——管理音频录制、语音识别（STT）、流式转录、静音检测和自动提交。useVoiceEnabled 检查语音功能的启用条件（特性开关、平台支持）。useVoiceIntegration 是顶层编排 Hook——根据 useVoiceEnabled 决定是否动态加载 useVoice，并将语音状态注入 UI 层。",
+      "edges": [
+        {
+          "target": "InputAndEditing",
+          "type": "data-flow",
+          "description": "语音识别结果作为文本注入到输入缓冲区"
+        }
+      ],
+      "codeScope": [
+        "src/hooks/useVoice.ts",
+        "src/hooks/useVoiceEnabled.ts",
+        "src/hooks/useVoiceIntegration.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "VoiceInput"
+      }
+    },
+    {
+      "name": "Notifications",
+      "description": "通知与状态提示 Hooks。notifs/ 子目录包含 16 个专用通知 Hook：useRateLimitWarningNotification 显示速率限制警告，useFastModeNotification 提示快速模式状态，useIDEStatusIndicator 展示 IDE 连接指示器，useLspInitializationNotification 显示 LSP 初始化进度，usePluginInstallationStatus/usePluginAutoupdateNotification 跟踪插件状态，useModelMigrationNotifications 处理模型迁移提示，useSettingsErrors 展示配置错误等。顶层还有 useChromeExtensionNotification、useClaudeCodeHintRecommendation、useOfficialMarketplaceNotification 处理 Chrome 扩展和市场推荐通知，useUpdateNotification 显示版本更新提示，useIssueFlagBanner 展示问题标记横幅，usePromptsFromClaudeInChrome 接收来自 Chrome 中 Claude 的提示。",
+      "edges": [
+        {
+          "target": "ConfigAndPlugins",
+          "type": "depends",
+          "description": "多个通知 Hook 依赖配置和插件状态判断是否显示通知"
+        }
+      ],
+      "codeScope": [
+        "src/hooks/notifs/",
+        "src/hooks/useChromeExtensionNotification.tsx",
+        "src/hooks/useClaudeCodeHintRecommendation.tsx",
+        "src/hooks/useOfficialMarketplaceNotification.tsx",
+        "src/hooks/useUpdateNotification.ts",
+        "src/hooks/useIssueFlagBanner.ts",
+        "src/hooks/usePromptsFromClaudeInChrome.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Notifications"
+      }
+    },
+    {
+      "name": "ConfigAndPlugins",
+      "description": "配置管理与插件集成 Hooks。useDynamicConfig 从远程获取动态特性配置（Growthbook），useSettings 读取和监听用户设置变化，useSettingsChange 处理设置变更事件。插件相关：useManagePlugins（304 行）管理插件的安装、卸载和更新流程，useLspPluginRecommendation/usePluginRecommendationBase 实现插件推荐逻辑，useMergedClients/useMergedCommands/useMergedTools 将 MCP 客户端、命令和工具合并到统一注册表。useSkillsChange 监听技能列表变化，useSkillImprovementSurvey 管理技能改进调查问卷。useApiKeyVerification 验证 API 密钥有效性。",
+      "edges": [],
+      "codeScope": [
+        "src/hooks/useDynamicConfig.ts",
+        "src/hooks/useSettings.ts",
+        "src/hooks/useSettingsChange.ts",
+        "src/hooks/useManagePlugins.ts",
+        "src/hooks/useLspPluginRecommendation.tsx",
+        "src/hooks/usePluginRecommendationBase.tsx",
+        "src/hooks/useMergedClients.ts",
+        "src/hooks/useMergedCommands.ts",
+        "src/hooks/useMergedTools.ts",
+        "src/hooks/useSkillsChange.ts",
+        "src/hooks/useSkillImprovementSurvey.ts",
+        "src/hooks/useApiKeyVerification.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ConfigAndPlugins"
+      }
+    },
+    {
+      "name": "UIUtilities",
+      "description": "通用 UI 工具 Hooks。时间与动画类：useBlink 实现光标闪烁，useElapsedTime 追踪经过时间，useMinDisplayTime 保证最小展示时长，useTimeout/useNotifyAfterTimeout 管理超时回调，useAfterFirstRender 延迟到首次渲染后执行。布局类：useTerminalSize 监听终端尺寸变化，useVirtualScroll（721 行）实现虚拟滚动（大列表性能优化）。状态类：useMemoryUsage 监控内存使用，usePrStatus 追踪 PR 状态，useTurnDiffs 计算对话轮次间的文件差异，useFileHistorySnapshotInit 初始化文件历史快照，useAwaySummary 生成离开期间的摘要，useClipboardImageHint 检测剪贴板图片提示，renderPlaceholder 提供占位符渲染逻辑。",
+      "edges": [],
+      "codeScope": [
+        "src/hooks/useBlink.ts",
+        "src/hooks/useElapsedTime.ts",
+        "src/hooks/useMinDisplayTime.ts",
+        "src/hooks/useTimeout.ts",
+        "src/hooks/useNotifyAfterTimeout.ts",
+        "src/hooks/useAfterFirstRender.ts",
+        "src/hooks/useTerminalSize.ts",
+        "src/hooks/useVirtualScroll.ts",
+        "src/hooks/useMemoryUsage.ts",
+        "src/hooks/usePrStatus.ts",
+        "src/hooks/useTurnDiffs.ts",
+        "src/hooks/useFileHistorySnapshotInit.ts",
+        "src/hooks/useAwaySummary.ts",
+        "src/hooks/useClipboardImageHint.ts",
+        "src/hooks/renderPlaceholder.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "UIUtilities"
+      }
+    }
+  ]
+}

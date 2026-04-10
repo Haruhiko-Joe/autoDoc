@@ -1,0 +1,168 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "75f27739-5095-409e-ab1e-7394c49f07dc",
+  "description": "Remote Control 桥接核心系统（31 个文件）。实现 v1（Environments API 轮询）和 v2（env-less 直连 session-ingress）两套桥接路径，包含 API 客户端、会话生命周期管理、消息收发与去重、传输层抽象（HybridTransport/SSETransport）、子进程会话运行器、轮询配置、JWT 刷新调度、权限回调、终端 UI 状态展示、崩溃恢复指针等。是整个远程控制模式的主体实现。",
+  "codeScope": [
+    "src/bridge/"
+  ],
+  "nodes": [
+    {
+      "name": "Orchestration",
+      "description": "桥接系统的入口与主循环编排层。bridgeMain.ts 实现多会话独立桥接守护进程的主轮询循环——环境注册、工作轮询、会话派发、心跳保活和优雅关闭；initReplBridge.ts 是 REPL 模式的引导包装器，读取启动状态后委派给 v1 或 v2 核心；bridgeEnabled.ts 提供运行时特性门控（订阅校验、版本兼容性检查、env-less 路径开关）",
+      "edges": [
+        {
+          "target": "BridgeCores",
+          "type": "calls",
+          "description": "initReplBridge 根据配置委派给 replBridge.initBridgeCore（v1）或 remoteBridgeCore.initEnvLessBridgeCore（v2）执行实际桥接逻辑"
+        },
+        {
+          "target": "SessionManagement",
+          "type": "calls",
+          "description": "bridgeMain 调用 sessionRunner.createSessionSpawner 创建会话派发器，管理子进程生命周期"
+        },
+        {
+          "target": "APIAndConfig",
+          "type": "depends",
+          "description": "依赖 bridgeApi 创建 API 客户端、pollConfig 获取轮询间隔、jwtUtils 调度令牌刷新、bridgeConfig 读取认证配置"
+        },
+        {
+          "target": "UIAndDebug",
+          "type": "calls",
+          "description": "bridgeMain 调用 createBridgeLogger 创建终端状态显示器，实时展示会话数量和活动状态"
+        }
+      ],
+      "codeScope": [
+        "src/bridge/bridgeMain.ts",
+        "src/bridge/initReplBridge.ts",
+        "src/bridge/bridgeEnabled.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Orchestration"
+      }
+    },
+    {
+      "name": "BridgeCores",
+      "description": "两套桥接路径的核心实现。replBridge.ts（2400+ 行）实现 v1 环境绑定桥接——通过 Environments API 注册环境、WebSocket/CCR 传输收发消息、管理会话状态机和令牌刷新；remoteBridgeCore.ts（1000+ 行）实现 v2 env-less 直连桥接——绕过 Environments API，直接连接 session-ingress 配合 CCR v2 传输和 JWT 主动刷新；envLessBridgeConfig.ts 提供 v2 路径的超时、重试、心跳等配置参数",
+      "edges": [
+        {
+          "target": "Transport",
+          "type": "calls",
+          "description": "两个核心均通过 replBridgeTransport 创建传输实例，使用 bridgeMessaging 处理消息解析、去重和控制请求"
+        },
+        {
+          "target": "APIAndConfig",
+          "type": "depends",
+          "description": "replBridge 使用 bridgeApi 轮询工作、workSecret 解码会话凭证、jwtUtils 刷新令牌、trustedDevice 获取设备令牌；remoteBridgeCore 使用 workSecret 构建 URL、jwtUtils 调度刷新"
+        },
+        {
+          "target": "SessionManagement",
+          "type": "depends",
+          "description": "使用 sessionIdCompat 进行 cse_*/session_* 会话 ID 格式转换"
+        }
+      ],
+      "codeScope": [
+        "src/bridge/replBridge.ts",
+        "src/bridge/remoteBridgeCore.ts",
+        "src/bridge/envLessBridgeConfig.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "BridgeCores"
+      }
+    },
+    {
+      "name": "Transport",
+      "description": "传输层抽象与消息处理。replBridgeTransport.ts 定义 ReplBridgeTransport 接口并提供 v1（HybridTransport/WS）和 v2（SSE + CCRClient）两种创建工厂；bridgeMessaging.ts 实现消息解析、回声去重（BoundedUUIDSet）、SDK 消息类型判断和控制请求处理；inboundMessages.ts 规范化入站消息字段（如 camelCase→snake_case 修正）；inboundAttachments.ts 解析并下载 web 端上传的文件附件；flushGate.ts 实现历史消息 flush 阶段的状态机，防止新旧消息交错",
+      "edges": [
+        {
+          "target": "APIAndConfig",
+          "type": "depends",
+          "description": "replBridgeTransport 使用 workSecret 构建 SDK WebSocket URL；inboundAttachments 使用 bridgeConfig 获取认证令牌下载附件"
+        }
+      ],
+      "codeScope": [
+        "src/bridge/replBridgeTransport.ts",
+        "src/bridge/bridgeMessaging.ts",
+        "src/bridge/inboundMessages.ts",
+        "src/bridge/inboundAttachments.ts",
+        "src/bridge/flushGate.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Transport"
+      }
+    },
+    {
+      "name": "SessionManagement",
+      "description": "会话生命周期管理。sessionRunner.ts 负责派发子 CLI 进程作为会话运行器，捕获 stdout/stderr 并维护活动环形缓冲区；createSession.ts 封装 HTTP 会话创建/更新标题/归档 API；codeSessionApi.ts 是 CCR v2 code-session API 的轻量封装；bridgePointer.ts 管理磁盘上的崩溃恢复指针，支持 --session-id 恢复；sessionIdCompat.ts 在 cse_*/session_* 两种 ID 格式间转换；replBridgeHandle.ts 维护全局活跃 REPL 桥接句柄",
+      "edges": [
+        {
+          "target": "APIAndConfig",
+          "type": "depends",
+          "description": "createSession 依赖认证配置发送 HTTP 请求；sessionRunner 使用 types.ts 中的 SessionSpawner 接口"
+        },
+        {
+          "target": "UIAndDebug",
+          "type": "depends",
+          "description": "codeSessionApi 使用 debugUtils 格式化 API 错误信息"
+        }
+      ],
+      "codeScope": [
+        "src/bridge/sessionRunner.ts",
+        "src/bridge/createSession.ts",
+        "src/bridge/codeSessionApi.ts",
+        "src/bridge/bridgePointer.ts",
+        "src/bridge/sessionIdCompat.ts",
+        "src/bridge/replBridgeHandle.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SessionManagement"
+      }
+    },
+    {
+      "name": "APIAndConfig",
+      "description": "API 客户端、认证与配置基础层。bridgeApi.ts 创建带 OAuth 认证和 401 重试的 HTTP API 客户端（环境注册、轮询、确认、停止、心跳）；jwtUtils.ts 实现 JWT 过期前主动刷新调度器；bridgeConfig.ts 集中管理认证令牌和 API 基础 URL；trustedDevice.ts 管理可信设备令牌（CCR v2 ELEVATED 安全层级）；workSecret.ts 解码工作密钥并构建 SDK URL；types.ts 定义核心接口契约（BridgeConfig、SessionHandle、BridgeApiClient 等）；bridgePermissionCallbacks.ts 定义权限请求/响应类型；pollConfig.ts 和 pollConfigDefaults.ts 管理轮询间隔配置；capacityWake.ts 实现容量释放唤醒信号",
+      "edges": [],
+      "codeScope": [
+        "src/bridge/bridgeApi.ts",
+        "src/bridge/jwtUtils.ts",
+        "src/bridge/bridgeConfig.ts",
+        "src/bridge/trustedDevice.ts",
+        "src/bridge/workSecret.ts",
+        "src/bridge/types.ts",
+        "src/bridge/bridgePermissionCallbacks.ts",
+        "src/bridge/pollConfig.ts",
+        "src/bridge/pollConfigDefaults.ts",
+        "src/bridge/capacityWake.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "APIAndConfig"
+      }
+    },
+    {
+      "name": "UIAndDebug",
+      "description": "终端状态展示与调试工具。bridgeUI.ts 创建桥接日志器，管理实时终端状态显示——闪烁动画、会话计数、QR 码和活动轨迹；bridgeStatusUtil.ts 提供 URL 构建、时间格式化、活动缩写等状态展示辅助函数；bridgeDebug.ts 提供 Ant-only 故障注入机制，用于手动测试桥接恢复路径（轮询失败、WS 断开等）；debugUtils.ts 提供密钥脱敏和 API 错误描述等调试日志工具",
+      "edges": [
+        {
+          "target": "APIAndConfig",
+          "type": "depends",
+          "description": "bridgeUI 使用 types.ts 中的 BridgeLogger 接口；bridgeDebug 使用 bridgeApi 的客户端类型进行故障注入"
+        }
+      ],
+      "codeScope": [
+        "src/bridge/bridgeUI.ts",
+        "src/bridge/bridgeStatusUtil.ts",
+        "src/bridge/bridgeDebug.ts",
+        "src/bridge/debugUtils.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "UIAndDebug"
+      }
+    }
+  ]
+}

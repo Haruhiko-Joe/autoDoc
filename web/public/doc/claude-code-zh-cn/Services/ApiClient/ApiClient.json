@@ -1,0 +1,146 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "298dbb03-d490-41be-b042-edcc34d3604a",
+  "description": "Anthropic Claude API 通信层。封装 SDK 客户端创建（支持 AWS Bedrock、GCP Vertex、Azure 等多云提供商）、消息流式调用、重试逻辑、错误处理、用量统计、Prompt 缓存检测和日志记录。claude.ts 是核心调用入口，client.ts 负责多云客户端实例化。",
+  "codeScope": [
+    "src/services/api/"
+  ],
+  "nodes": [
+    {
+      "name": "MessageStream",
+      "description": "Claude API 核心调用入口。claude.ts 是整个 API 通信层的主函数，负责构建请求参数（系统提示词、消息规范化、工具 schema 转换、Beta 头拼装、Token 预算计算）、发起流式消息请求、处理流事件（content_block_delta、message_delta 等）、收集用量统计，并协调重试、日志、缓存检测等子模块。约 3000 行，是模块中最核心也最庞大的文件。",
+      "edges": [
+        {
+          "target": "ClientFactory",
+          "type": "calls",
+          "description": "调用 getAnthropicClient() 获取已配置的 SDK 客户端实例发起请求"
+        },
+        {
+          "target": "RetryAndResilience",
+          "type": "calls",
+          "description": "通过 withRetry 包装 API 调用，实现自动重试和错误恢复"
+        },
+        {
+          "target": "ErrorHandling",
+          "type": "calls",
+          "description": "使用 errors.ts 中的错误分类器将 API 错误转换为用户可读消息"
+        },
+        {
+          "target": "Logging",
+          "type": "calls",
+          "description": "调用日志模块记录每次 API 调用的详细指标（用量、耗时、网关检测等）"
+        },
+        {
+          "target": "CacheBreakDetection",
+          "type": "calls",
+          "description": "每次请求后调用缓存中断检测，诊断 prompt 缓存失效原因"
+        }
+      ],
+      "codeScope": [
+        "src/services/api/claude.ts",
+        "src/services/api/dumpPrompts.ts",
+        "src/services/api/emptyUsage.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "MessageStream"
+      }
+    },
+    {
+      "name": "ClientFactory",
+      "description": "多云 SDK 客户端工厂。client.ts 根据配置的 API 提供商（Anthropic 直连、AWS Bedrock、GCP Vertex、Azure Foundry）实例化对应的 Anthropic SDK 客户端，处理各云平台的认证凭证（API Key、OAuth、AWS STS、GCP ADC、Azure AD）、区域路由、代理配置和日志注入。",
+      "edges": [],
+      "codeScope": [
+        "src/services/api/client.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ClientFactory"
+      }
+    },
+    {
+      "name": "RetryAndResilience",
+      "description": "重试与容错逻辑。withRetry.ts 实现带指数退避的自动重试机制，处理 429（速率限制）和 529（过载）错误，支持前台/后台查询源差异化重试策略、Fast Mode 降级冷却、凭证刷新（OAuth 401、AWS/GCP 凭证过期）、Keep-Alive 连接重建和输出 Token 动态调整。",
+      "edges": [
+        {
+          "target": "ErrorHandling",
+          "type": "depends",
+          "description": "依赖 errors.ts 的错误常量和 errorUtils.ts 的连接错误解析来判断重试策略"
+        }
+      ],
+      "codeScope": [
+        "src/services/api/withRetry.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "RetryAndResilience"
+      }
+    },
+    {
+      "name": "ErrorHandling",
+      "description": "API 错误分类与格式化。errors.ts（~1000 行）将 SDK 原始错误映射为用户友好的错误消息，覆盖认证失败、速率限制、模型过载、prompt 过长、内容审核、权限不足等数十种错误场景，并集成订阅状态和提供商信息生成针对性提示。errorUtils.ts 解析底层连接错误链（SSL/TLS、DNS、超时等）。",
+      "edges": [],
+      "codeScope": [
+        "src/services/api/errors.ts",
+        "src/services/api/errorUtils.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ErrorHandling"
+      }
+    },
+    {
+      "name": "Logging",
+      "description": "API 调用日志与遥测。logging.ts 记录每次 API 请求的完整指标——输入/输出 Token 数、缓存命中率、响应耗时、停止原因、模型信息、网关检测（LiteLLM/Helicone/Portkey 等 7 种 AI 网关指纹识别）、全局缓存策略分析，并通过 logEvent 上报到分析系统和 OpenTelemetry。",
+      "edges": [
+        {
+          "target": "ErrorHandling",
+          "type": "depends",
+          "description": "使用 classifyAPIError 和 extractConnectionErrorDetails 记录错误类型"
+        }
+      ],
+      "codeScope": [
+        "src/services/api/logging.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Logging"
+      }
+    },
+    {
+      "name": "CacheBreakDetection",
+      "description": "Prompt 缓存中断检测与诊断。promptCacheBreakDetection.ts 跟踪每次请求的系统提示词、工具列表、Beta 头、模型、缓存策略等维度的哈希值，当缓存命中率突降时自动对比前后状态差异，生成详细的 diff 报告（精确到哪个工具 schema 变化、哪个 Beta 头增删），帮助开发者诊断缓存失效根因。",
+      "edges": [],
+      "codeScope": [
+        "src/services/api/promptCacheBreakDetection.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "CacheBreakDetection"
+      }
+    },
+    {
+      "name": "PlatformAPIs",
+      "description": "平台后端 API 客户端集合。封装与 Anthropic 后端（非 Claude 模型 API）的 REST 通信：bootstrap（启动配置拉取）、usage（配额利用率查询）、filesApi（文件上传下载）、sessionIngress（会话日志回传）、grove（Grove 知识共享设置）、adminRequests（管理员请求）、referral（推荐计划）、overageCreditGrant（超额额度授予）、metricsOptOut（指标采集开关）、firstTokenDate（首次使用日期）、ultrareviewQuota（Ultrareview 配额）。均为独立的 HTTP 端点客户端，共享 OAuth 认证和统一的错误处理模式。",
+      "edges": [],
+      "codeScope": [
+        "src/services/api/bootstrap.ts",
+        "src/services/api/usage.ts",
+        "src/services/api/filesApi.ts",
+        "src/services/api/sessionIngress.ts",
+        "src/services/api/grove.ts",
+        "src/services/api/adminRequests.ts",
+        "src/services/api/referral.ts",
+        "src/services/api/overageCreditGrant.ts",
+        "src/services/api/metricsOptOut.ts",
+        "src/services/api/firstTokenDate.ts",
+        "src/services/api/ultrareviewQuota.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PlatformAPIs"
+      }
+    }
+  ]
+}

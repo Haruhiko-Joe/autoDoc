@@ -1,0 +1,237 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "7b20b6f7-40c2-408b-9ce2-5a9c201a3fef",
+  "description": "后端服务集成层。api/ 封装 Anthropic Claude API 通信（多云支持：AWS Bedrock、GCP Vertex、Azure）；mcp/ 实现 MCP 客户端连接外部工具服务器；oauth/ 处理认证流程；compact/ 管理上下文窗口压缩；analytics/ 提供遥测和特性开关（Growthbook）；lsp/ 集成语言服务器协议。",
+  "codeScope": [
+    "src/services/"
+  ],
+  "nodes": [
+    {
+      "name": "ApiClient",
+      "description": "Anthropic Claude API 通信层。封装 SDK 客户端创建（支持 AWS Bedrock、GCP Vertex、Azure 等多云提供商）、消息流式调用、重试逻辑、错误处理、用量统计、Prompt 缓存检测和日志记录。claude.ts 是核心调用入口，client.ts 负责多云客户端实例化。",
+      "edges": [
+        {
+          "target": "Compact",
+          "type": "calls",
+          "description": "claude.ts 调用 compact 模块的 apiMicrocompact 和 microCompact 实现上下文管理"
+        },
+        {
+          "target": "Analytics",
+          "type": "depends",
+          "description": "API 调用过程中记录遥测事件和使用指标"
+        }
+      ],
+      "codeScope": [
+        "src/services/api/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "ApiClient"
+      }
+    },
+    {
+      "name": "McpClient",
+      "description": "MCP（Model Context Protocol）客户端实现。管理与外部 MCP 工具服务器的连接生命周期，支持 stdio/SSE/StreamableHTTP 三种传输协议。包含连接管理器、权限控制（channelPermissions/Allowlist）、认证流程（OAuth/XAA）、环境变量展开、claude.ai 集成、官方注册表查询等。",
+      "edges": [
+        {
+          "target": "Analytics",
+          "type": "depends",
+          "description": "连接和工具调用事件通过分析系统记录"
+        }
+      ],
+      "codeScope": [
+        "src/services/mcp/",
+        "src/services/mcpServerApproval.tsx"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "McpClient"
+      }
+    },
+    {
+      "name": "Compact",
+      "description": "上下文窗口压缩服务。实现对话历史的自动压缩和微压缩（microCompact），支持基于时间的压缩配置、消息分组策略、会话记忆压缩、压缩后清理，以及压缩预警提示。在 Token 预算接近上限时自动触发，减少上下文长度同时保留关键信息。",
+      "edges": [
+        {
+          "target": "ApiClient",
+          "type": "calls",
+          "description": "压缩过程需要调用 Claude API 生成摘要"
+        }
+      ],
+      "codeScope": [
+        "src/services/compact/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Compact"
+      }
+    },
+    {
+      "name": "Analytics",
+      "description": "遥测、事件日志和特性开关服务。集成 Growthbook 实现特性门控和远程配置，提供事件日志记录（支持第一方事件导出）、Datadog 集成、Killswitch 机制和分析元数据管理。是整个服务层的横切关注点，被多个模块依赖。",
+      "edges": [],
+      "codeScope": [
+        "src/services/analytics/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Analytics"
+      }
+    },
+    {
+      "name": "LspIntegration",
+      "description": "语言服务器协议（LSP）集成服务。管理 LSP 服务器实例的生命周期（启动、连接、诊断收集），提供 LSP 客户端通信、诊断注册表和被动反馈功能，用于增强代码编辑工具的智能提示能力。",
+      "edges": [
+        {
+          "target": "Analytics",
+          "type": "depends",
+          "description": "LSP 诊断事件通过分析系统追踪"
+        }
+      ],
+      "codeScope": [
+        "src/services/lsp/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "LspIntegration"
+      }
+    },
+    {
+      "name": "OAuthService",
+      "description": "OAuth 认证流程服务。实现 OAuth 授权码流程（PKCE），包含本地 HTTP 服务器监听回调、加密工具、令牌管理和用户配置文件获取。为 API 客户端和 MCP 连接提供认证支持。",
+      "edges": [],
+      "codeScope": [
+        "src/services/oauth/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "OAuthService"
+      }
+    },
+    {
+      "name": "ToolOrchestration",
+      "description": "工具执行编排服务。管理工具调用的并发执行、流式执行器、工具生命周期钩子（前置/后置处理），以及 MCP 工具的桥接调用。是 ToolSystem 和 Services 之间的桥梁层。",
+      "edges": [
+        {
+          "target": "McpClient",
+          "type": "calls",
+          "description": "工具执行时通过 MCP 客户端调用外部工具服务器"
+        }
+      ],
+      "codeScope": [
+        "src/services/tools/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ToolOrchestration"
+      }
+    },
+    {
+      "name": "MemoryServices",
+      "description": "会话记忆与知识提取服务。SessionMemory 管理会话级记忆的存储和检索，extractMemories 从对话中自动提取值得保存的记忆。两者配合 MemorySystem 实现跨会话上下文保持。",
+      "edges": [
+        {
+          "target": "Analytics",
+          "type": "depends",
+          "description": "记忆提取事件通过分析系统记录"
+        }
+      ],
+      "codeScope": [
+        "src/services/SessionMemory/",
+        "src/services/extractMemories/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "MemoryServices"
+      }
+    },
+    {
+      "name": "RateLimitAndPolicy",
+      "description": "速率限制和策略管理服务。处理 API 速率限制消息展示、限制模拟（用于测试）、claude.ai 订阅限制检查、策略限制执行，以及超额额度授予。确保 API 调用符合配额和策略约束。",
+      "edges": [
+        {
+          "target": "ApiClient",
+          "type": "depends",
+          "description": "速率限制信息来自 API 响应头"
+        },
+        {
+          "target": "Analytics",
+          "type": "depends",
+          "description": "限制事件通过分析系统记录"
+        }
+      ],
+      "codeScope": [
+        "src/services/rateLimitMessages.ts",
+        "src/services/rateLimitMocking.ts",
+        "src/services/mockRateLimits.ts",
+        "src/services/claudeAiLimits.ts",
+        "src/services/claudeAiLimitsHook.ts",
+        "src/services/policyLimits/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "RateLimitAndPolicy"
+      }
+    },
+    {
+      "name": "SyncAndSettings",
+      "description": "远程配置同步与设置管理服务。remoteManagedSettings 处理远程托管的安全策略和配置同步缓存；settingsSync 实现设置双向同步；teamMemorySync 管理团队记忆的同步与安全扫描（防止敏感信息泄露）。",
+      "edges": [
+        {
+          "target": "Analytics",
+          "type": "depends",
+          "description": "同步事件和安全扫描结果通过分析系统记录"
+        }
+      ],
+      "codeScope": [
+        "src/services/remoteManagedSettings/",
+        "src/services/settingsSync/",
+        "src/services/teamMemorySync/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SyncAndSettings"
+      }
+    },
+    {
+      "name": "AssistantFeatures",
+      "description": "辅助功能服务集合。包括语音输入（voice/voiceStreamSTT 语音转文字）、提示建议（PromptSuggestion 推测性预测）、自动梦境（autoDream 对话巩固）、魔法文档（MagicDocs）、使用提示（tips 调度与展示）、代理摘要（AgentSummary）、工具使用摘要、通知、Token 估算、离开摘要、VCR 录放、防休眠、诊断追踪和内部日志等。",
+      "edges": [
+        {
+          "target": "ApiClient",
+          "type": "calls",
+          "description": "语音转文字和提示建议等功能需调用 API"
+        },
+        {
+          "target": "Analytics",
+          "type": "depends",
+          "description": "各辅助功能的使用事件通过分析系统追踪"
+        }
+      ],
+      "codeScope": [
+        "src/services/voice.ts",
+        "src/services/voiceKeyterms.ts",
+        "src/services/voiceStreamSTT.ts",
+        "src/services/PromptSuggestion/",
+        "src/services/autoDream/",
+        "src/services/MagicDocs/",
+        "src/services/tips/",
+        "src/services/AgentSummary/",
+        "src/services/toolUseSummary/",
+        "src/services/notifier.ts",
+        "src/services/tokenEstimation.ts",
+        "src/services/awaySummary.ts",
+        "src/services/vcr.ts",
+        "src/services/preventSleep.ts",
+        "src/services/diagnosticTracking.ts",
+        "src/services/internalLogging.ts",
+        "src/services/plugins/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "AssistantFeatures"
+      }
+    }
+  ]
+}

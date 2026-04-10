@@ -1,0 +1,90 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "d779d613-62eb-4dd2-bfda-861e2d12ff96",
+  "description": "技能与插件扩展系统。skills/ 定义可调用技能（commit、review-pr、simplify 等 17 个内置技能），支持从目录和 MCP 动态加载。plugins/ 提供插件注册机制。两者共同实现了 Claude Code 的领域能力扩展。",
+  "codeScope": [
+    "src/skills/",
+    "src/plugins/"
+  ],
+  "nodes": [
+    {
+      "name": "SkillRegistry",
+      "description": "技能注册基础设施。bundledSkills.ts 定义 BundledSkillDefinition 类型和 registerBundledSkill() 注册函数，维护内部 Command[] 注册表，并负责将技能附带的参考文件安全地解压到磁盘（O_NOFOLLOW/O_EXCL 防符号链接攻击）。mcpSkillBuilders.ts 是一个无依赖的桥接模块，通过 write-once 注册模式将 loadSkillsDir 的解析函数暴露给 MCP 技能发现，避免循环依赖。",
+      "edges": [
+        {
+          "target": "BundledSkills",
+          "type": "depends",
+          "description": "提供 registerBundledSkill() 供每个内置技能调用注册"
+        },
+        {
+          "target": "SkillLoader",
+          "type": "depends",
+          "description": "mcpSkillBuilders 桥接 SkillLoader 的解析函数供外部 MCP 使用"
+        }
+      ],
+      "codeScope": [
+        "src/skills/bundledSkills.ts",
+        "src/skills/mcpSkillBuilders.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SkillRegistry"
+      }
+    },
+    {
+      "name": "SkillLoader",
+      "description": "目录级技能加载器。扫描多层级目录（项目级 .claude/skills/、用户级、托管级）中的 Markdown 技能文件，解析 YAML frontmatter（名称、描述、允许工具、模型、hooks、shell 命令等字段），创建 Command 对象。支持 .gitignore 过滤、参数替换（$ARGUMENTS）、shell 命令内嵌执行、token 估算，以及技能变更信号通知 UI 刷新。同时向 MCP 桥接模块注册解析函数。",
+      "edges": [
+        {
+          "target": "SkillRegistry",
+          "type": "calls",
+          "description": "在模块初始化时通过 registerMCPSkillBuilders 注册解析函数到桥接模块"
+        }
+      ],
+      "codeScope": [
+        "src/skills/loadSkillsDir.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SkillLoader"
+      }
+    },
+    {
+      "name": "BundledSkills",
+      "description": "内置技能集合。包含 17+ 个编译进 CLI 的技能实现，每个技能导出 register 函数并调用 registerBundledSkill() 注册。涵盖：配置管理（updateConfig、keybindings）、代码质量（simplify、verify）、调试辅助（debug、stuck）、API 集成（claudeApi）、任务调度（loop、scheduleRemoteAgents、batch）、技能创建（skillify）、记忆（remember）等。部分技能通过 feature flag 条件加载（KAIROS、AGENT_TRIGGERS 等）。index.ts 的 initBundledSkills() 在启动时统一初始化所有技能。",
+      "edges": [
+        {
+          "target": "SkillRegistry",
+          "type": "calls",
+          "description": "每个技能调用 registerBundledSkill() 注册到中央注册表"
+        }
+      ],
+      "codeScope": [
+        "src/skills/bundled/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "BundledSkills"
+      }
+    },
+    {
+      "name": "Plugins",
+      "description": "插件注册与管理系统。builtinPlugins.ts 提供内置插件注册表（Map 结构），支持插件的注册、启用/禁用状态管理（基于用户设置持久化）、可用性检查。插件 ID 格式为 {name}@builtin，区别于市场插件。插件可包含多个组件（技能、hooks、MCP 服务器），其中技能复用 BundledSkillDefinition 类型转换为 Command。bundled/index.ts 为未来插件迁移预留了初始化入口。",
+      "edges": [
+        {
+          "target": "SkillRegistry",
+          "type": "depends",
+          "description": "复用 BundledSkillDefinition 类型，将插件中的技能转换为 Command 对象"
+        }
+      ],
+      "codeScope": [
+        "src/plugins/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Plugins"
+      }
+    }
+  ]
+}

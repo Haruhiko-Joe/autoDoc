@@ -1,0 +1,187 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "686541a4-16ef-4f38-9f18-9b3d9e543bdc",
+  "description": "基于 React/Ink 的终端 UI 引擎。ink/ 是深度定制的 Ink 框架（布局、渲染、事件、终端 IO），components/ 包含 144 个 UI 组件（对话框、权限确认、进度显示等），screens/ 定义 REPL 主屏幕。还包括 Vim 模式、键绑定、语音输入等交互增强。",
+  "codeScope": [
+    "src/ink/",
+    "src/ink.ts",
+    "src/components/",
+    "src/screens/",
+    "src/hooks/",
+    "src/state/",
+    "src/context/",
+    "src/vim/",
+    "src/keybindings/",
+    "src/voice/",
+    "src/outputStyles/",
+    "src/moreright/",
+    "src/dialogLaunchers.tsx",
+    "src/interactiveHelpers.tsx",
+    "src/replLauncher.tsx"
+  ],
+  "nodes": [
+    {
+      "name": "InkFramework",
+      "description": "深度定制的 Ink 终端渲染框架。包含 React reconciler、Yoga 布局引擎、DOM 抽象、输出优化器、边框/文本渲染管线、事件系统（键盘、鼠标点击、焦点、终端事件）、基础 UI 原语（Box、Text、ScrollBox、Button、Link 等 18 个组件）、以及终端 IO 层（同步输出、光标管理、屏幕查询）。这是整个终端 UI 的底层运行时。",
+      "edges": [],
+      "codeScope": [
+        "src/ink/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "InkFramework"
+      }
+    },
+    {
+      "name": "UIComponents",
+      "description": "144 个业务 UI 组件库。涵盖对话框系统（权限确认、MCP 审批、设置、导出等）、消息渲染（用户/助手/系统/工具消息 30+ 种类型）、权限请求 UI（Bash、文件编辑、Notebook 等分场景审批）、设计系统（主题、Dialog、Pane、ProgressBar 等基础组件）、PromptInput 输入框、Spinner 动画、StructuredDiff 差异展示、任务/Agent/团队状态面板等。",
+      "edges": [
+        {
+          "target": "InkFramework",
+          "type": "depends",
+          "description": "所有组件基于 Ink 原语（Box、Text、ScrollBox 等）构建 UI"
+        },
+        {
+          "target": "StateAndContext",
+          "type": "depends",
+          "description": "组件消费 AppState、通知、模态框等 Context 获取全局状态"
+        },
+        {
+          "target": "Keybindings",
+          "type": "depends",
+          "description": "组件使用 useKeybinding 注册快捷键响应"
+        }
+      ],
+      "codeScope": [
+        "src/components/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "UIComponents"
+      }
+    },
+    {
+      "name": "Hooks",
+      "description": "80+ 个 React 自定义 Hooks，提供 UI 层的核心行为逻辑。包括输入处理（useTextInput、useVimInput、usePasteHandler）、历史导航（useArrowKeyHistory、useHistorySearch）、IDE 集成（useIDEIntegration、useIdeSelection）、远程会话（useRemoteSession、useSSHSession）、后台任务（useTasksV2、useBackgroundTaskNavigation）、权限工具（useCanUseTool）、建议系统（useSuggestions、useTypeahead）、动态配置（useDynamicConfig、useSettings）等。",
+      "edges": [
+        {
+          "target": "InkFramework",
+          "type": "depends",
+          "description": "部分 Hooks 使用 Ink 底层 hooks（useInput、useStdin 等）"
+        },
+        {
+          "target": "StateAndContext",
+          "type": "depends",
+          "description": "Hooks 读写 AppState 和各类 Context"
+        },
+        {
+          "target": "Keybindings",
+          "type": "depends",
+          "description": "useCommandKeybindings、useGlobalKeybindings 依赖快捷键系统"
+        }
+      ],
+      "codeScope": [
+        "src/hooks/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "Hooks"
+      }
+    },
+    {
+      "name": "Screens",
+      "description": "REPL 主屏幕和应用启动编排。REPL.tsx 是核心交互界面（消息列表、输入框、权限弹窗、对话框的组装），Doctor.tsx 提供诊断屏幕，ResumeConversation.tsx 处理会话恢复。replLauncher.tsx 动态加载并挂载 App+REPL，dialogLaunchers.tsx 提供各类一次性对话框的启动器，interactiveHelpers.tsx 封装渲染和 setup 流程，ink.ts 是 Ink 渲染入口（包装 ThemeProvider）。",
+      "edges": [
+        {
+          "target": "UIComponents",
+          "type": "composes",
+          "description": "REPL 屏幕组装大量 UI 组件（PromptInput、Messages、PermissionRequest 等）"
+        },
+        {
+          "target": "Hooks",
+          "type": "depends",
+          "description": "屏幕使用众多 Hooks 实现交互逻辑（useReplBridge、useLogMessages 等）"
+        },
+        {
+          "target": "InkFramework",
+          "type": "depends",
+          "description": "ink.ts 封装 Ink 渲染入口，屏幕基于 Ink 原语构建"
+        },
+        {
+          "target": "StateAndContext",
+          "type": "depends",
+          "description": "屏幕通过 AppStateProvider 提供全局状态，消费 Context"
+        },
+        {
+          "target": "Keybindings",
+          "type": "depends",
+          "description": "REPL 屏幕通过 KeybindingSetup 初始化快捷键系统"
+        }
+      ],
+      "codeScope": [
+        "src/screens/",
+        "src/replLauncher.tsx",
+        "src/dialogLaunchers.tsx",
+        "src/interactiveHelpers.tsx",
+        "src/ink.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Screens"
+      }
+    },
+    {
+      "name": "StateAndContext",
+      "description": "全局状态管理和 React Context 层。state/ 包含 AppState 状态定义（Zustand store）、状态变更监听（onChangeAppState）、选择器和 teammate 视图辅助。context/ 提供 9 个 React Context：消息队列（QueuedMessageContext）、FPS 指标、邮箱通信、模态框控制、通知系统、覆盖层管理、提示覆盖层、统计和语音状态。",
+      "edges": [
+        {
+          "target": "InkFramework",
+          "type": "depends",
+          "description": "Context Provider 基于 Ink 的 React 运行时工作"
+        }
+      ],
+      "codeScope": [
+        "src/state/",
+        "src/context/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "StateAndContext"
+      }
+    },
+    {
+      "name": "Keybindings",
+      "description": "快捷键绑定系统。定义默认按键映射（defaultBindings）、用户自定义绑定加载（loadUserBindings）、按键解析器（parser）、匹配器（match）、冲突解析器（resolver）、Schema 校验（schema/validate）、保留快捷键声明，以及 KeybindingContext/KeybindingProviderSetup 将快捷键能力注入 React 树。支持 chord 组合键。",
+      "edges": [],
+      "codeScope": [
+        "src/keybindings/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Keybindings"
+      }
+    },
+    {
+      "name": "InteractionModes",
+      "description": "交互模式增强。vim/ 实现完整的 Vim 编辑模式（motions/operators/textObjects/transitions 状态机）；voice/ 控制语音输入功能的启用状态；outputStyles/ 加载自定义输出样式目录；moreright/ 提供 useMoreRight hook 处理右侧溢出内容的横向滚动。",
+      "edges": [
+        {
+          "target": "Hooks",
+          "type": "depends",
+          "description": "useVimInput、useVoice 等 Hooks 消费这些模式的核心逻辑"
+        }
+      ],
+      "codeScope": [
+        "src/vim/",
+        "src/voice/",
+        "src/outputStyles/",
+        "src/moreright/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "InteractionModes"
+      }
+    }
+  ]
+}

@@ -1,0 +1,270 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "add23b31-954f-4139-9d14-b97a02db2ea0",
+  "description": "Claude Code — Anthropic 出品的 CLI 智能编程助手（v2.1.88 反编译源码）。基于终端的交互式 AI 编程工具，通过 Anthropic Claude API 驱动，支持代码阅读、编辑、搜索、Shell 执行等数十种工具能力，并可通过 MCP 协议无限扩展。内置 React/Ink 终端 UI 引擎、多 Agent 协作、远程会话桥接、SDK/MCP Server 多种接入模式，是将大语言模型深度融入软件工程工作流的全栈解决方案。",
+  "nodes": [
+    {
+      "name": "Entrypoints",
+      "description": "应用入口层，定义 CLI、MCP Server、SDK 三种启动模式。cli.tsx 处理命令行参数和快速路径分发，mcp.ts 将 Claude Code 作为 MCP 服务器暴露给外部客户端，sdk/ 目录提供编程式接入的类型定义和控制协议 Schema。",
+      "codeScope": [
+        "src/entrypoints/",
+        "src/main.tsx",
+        "src/setup.ts"
+      ],
+      "edges": [
+        {
+          "type": "calls",
+          "target": "CoreEngine",
+          "description": "初始化后启动查询引擎和 REPL 主循环"
+        },
+        {
+          "type": "depends",
+          "target": "TerminalUI",
+          "description": "CLI 模式依赖 Ink 渲染终端界面"
+        },
+        {
+          "type": "depends",
+          "target": "Services",
+          "description": "启动时初始化认证、分析、策略限制等服务"
+        },
+        {
+          "type": "depends",
+          "target": "ToolSystem",
+          "description": "MCP Server 入口需注册并暴露工具列表"
+        }
+      ]
+    },
+    {
+      "name": "CoreEngine",
+      "description": "核心对话与查询引擎，包含 QueryEngine（消息流处理与工具编排主循环）、query.ts（消息规范化、Token 预算管理、自动压缩触发）、上下文构建（系统提示词、CLAUDE.md、Git 状态注入）、以及命令注册系统。这是整个应用的\"大脑\"。",
+      "codeScope": [
+        "src/QueryEngine.ts",
+        "src/query.ts",
+        "src/query/",
+        "src/context.ts",
+        "src/commands.ts",
+        "src/commands/",
+        "src/cost-tracker.ts",
+        "src/costHook.ts",
+        "src/history.ts"
+      ],
+      "edges": [
+        {
+          "type": "calls",
+          "target": "Services",
+          "description": "调用 API 服务与 Claude 模型通信，触发消息压缩"
+        },
+        {
+          "type": "calls",
+          "target": "ToolSystem",
+          "description": "根据模型响应调度工具执行，收集工具结果"
+        },
+        {
+          "type": "data-flow",
+          "target": "TerminalUI",
+          "description": "将模型流式响应和工具执行结果推送到 UI 层渲染"
+        },
+        {
+          "type": "depends",
+          "target": "TaskSystem",
+          "description": "查询引擎中管理后台任务状态和 Agent 子任务"
+        }
+      ]
+    },
+    {
+      "name": "ToolSystem",
+      "description": "工具注册与执行框架。Tool.ts 定义工具接口和权限模型，tools.ts 是中央注册表（40+ 内置工具），tools/ 目录包含每个工具的具体实现（Bash、文件读写、Glob、Grep、Agent、MCP 调用等）。支持特性门控按需加载工具。",
+      "codeScope": [
+        "src/Tool.ts",
+        "src/tools.ts",
+        "src/tools/"
+      ],
+      "edges": [
+        {
+          "type": "calls",
+          "target": "TaskSystem",
+          "description": "AgentTool 创建子 Agent 任务，TaskTool 管理后台任务"
+        },
+        {
+          "type": "depends",
+          "target": "Services",
+          "description": "部分工具依赖 MCP 客户端、LSP 服务等"
+        },
+        {
+          "type": "calls",
+          "target": "SkillsAndPlugins",
+          "description": "SkillTool 调用技能系统执行特定领域操作"
+        }
+      ]
+    },
+    {
+      "name": "TerminalUI",
+      "description": "基于 React/Ink 的终端 UI 引擎。ink/ 是深度定制的 Ink 框架（布局、渲染、事件、终端 IO），components/ 包含 144 个 UI 组件（对话框、权限确认、进度显示等），screens/ 定义 REPL 主屏幕。还包括 Vim 模式、键绑定、语音输入等交互增强。",
+      "codeScope": [
+        "src/ink/",
+        "src/ink.ts",
+        "src/components/",
+        "src/screens/",
+        "src/hooks/",
+        "src/state/",
+        "src/context/",
+        "src/vim/",
+        "src/keybindings/",
+        "src/voice/",
+        "src/outputStyles/",
+        "src/moreright/",
+        "src/dialogLaunchers.tsx",
+        "src/interactiveHelpers.tsx",
+        "src/replLauncher.tsx"
+      ],
+      "edges": [
+        {
+          "type": "depends",
+          "target": "CoreEngine",
+          "description": "REPL 屏幕驱动查询引擎处理用户输入"
+        },
+        {
+          "type": "depends",
+          "target": "Services",
+          "description": "UI 组件使用分析、通知、费率限制等服务"
+        }
+      ]
+    },
+    {
+      "name": "Services",
+      "description": "后端服务集成层。api/ 封装 Anthropic Claude API 通信（多云支持：AWS Bedrock、GCP Vertex、Azure）；mcp/ 实现 MCP 客户端连接外部工具服务器；oauth/ 处理认证流程；compact/ 管理上下文窗口压缩；analytics/ 提供遥测和特性开关（Growthbook）；lsp/ 集成语言服务器协议。",
+      "codeScope": [
+        "src/services/"
+      ],
+      "edges": [
+        {
+          "type": "calls",
+          "target": "MemorySystem",
+          "description": "SessionMemory 和 extractMemories 服务与记忆系统交互"
+        },
+        {
+          "type": "depends",
+          "target": "Infrastructure",
+          "description": "服务层依赖底层工具函数、类型定义和配置"
+        }
+      ]
+    },
+    {
+      "name": "TaskSystem",
+      "description": "多任务与多 Agent 执行框架。Task.ts 定义统一任务抽象（本地 Shell/Agent、远程 Agent、团队协作、工作流等），tasks/ 目录实现各类任务运行时。coordinator/ 管理多 Agent 协调模式（Swarm），支持任务的创建、监控、终止和后台运行。",
+      "codeScope": [
+        "src/Task.ts",
+        "src/tasks.ts",
+        "src/tasks/",
+        "src/coordinator/"
+      ],
+      "edges": [
+        {
+          "type": "calls",
+          "target": "BridgeAndRemote",
+          "description": "RemoteAgentTask 通过远程会话管理器连接 CCR 执行"
+        },
+        {
+          "type": "depends",
+          "target": "CoreEngine",
+          "description": "本地 Agent 任务复用查询引擎进行对话"
+        }
+      ]
+    },
+    {
+      "name": "BridgeAndRemote",
+      "description": "远程会话与桥接系统。bridge/ 实现 remote-control 模式——注册本地环境、轮询工作、管理子进程生命周期（支持单会话/worktree/共享目录三种模式）。remote/ 通过 WebSocket 管理与云端运行时（CCR）的双向通信。server/ 提供直连会话管理。",
+      "codeScope": [
+        "src/bridge/",
+        "src/remote/",
+        "src/server/",
+        "src/upstreamproxy/"
+      ],
+      "edges": [
+        {
+          "type": "data-flow",
+          "target": "TerminalUI",
+          "description": "远程会话消息和权限请求推送到 UI 层展示"
+        },
+        {
+          "type": "depends",
+          "target": "Services",
+          "description": "使用 OAuth 认证和 API 服务进行会话鉴权"
+        }
+      ]
+    },
+    {
+      "name": "SkillsAndPlugins",
+      "description": "技能与插件扩展系统。skills/ 定义可调用技能（commit、review-pr、simplify 等 17 个内置技能），支持从目录和 MCP 动态加载。plugins/ 提供插件注册机制。两者共同实现了 Claude Code 的领域能力扩展。",
+      "codeScope": [
+        "src/skills/",
+        "src/plugins/"
+      ],
+      "edges": [
+        {
+          "type": "depends",
+          "target": "ToolSystem",
+          "description": "技能执行时使用工具系统完成具体操作"
+        },
+        {
+          "type": "depends",
+          "target": "Services",
+          "description": "部分技能依赖 MCP 服务进行技能构建"
+        }
+      ]
+    },
+    {
+      "name": "MemorySystem",
+      "description": "持久化记忆系统。memdir/ 实现基于文件的记忆存储（用户偏好、项目上下文、反馈等），支持相关性检索和记忆衰减。与 SessionMemory 和 extractMemories 服务配合，实现跨会话的上下文保持和自动记忆提取。",
+      "codeScope": [
+        "src/memdir/"
+      ],
+      "edges": [
+        {
+          "type": "depends",
+          "target": "Infrastructure",
+          "description": "依赖文件系统工具函数和路径管理"
+        }
+      ]
+    },
+    {
+      "name": "CLITransport",
+      "description": "CLI 通信与 IO 层。cli/ 目录包含命令处理器（handlers/）、输出格式化（print、NDJSON、结构化 IO）、传输协议适配和版本更新检查。负责 CLI 模式下的输入解析、输出序列化和进程间通信。",
+      "codeScope": [
+        "src/cli/"
+      ],
+      "edges": [
+        {
+          "type": "depends",
+          "target": "Entrypoints",
+          "description": "被入口层调用处理具体 CLI 命令"
+        },
+        {
+          "type": "data-flow",
+          "target": "CoreEngine",
+          "description": "将解析后的用户输入传递给查询引擎"
+        }
+      ]
+    },
+    {
+      "name": "Infrastructure",
+      "description": "基础设施与构建系统。src/utils/ 提供通用工具函数（认证、配置、Git 操作、Shell 管理等），src/types/ 和 types/ 定义全局类型，stubs/ 提供 Bun 编译时桩，scripts/ 包含 esbuild 构建脚本，vendor/ 封装原生模块，native-ts/ 包含纯 TS 实现的布局和索引引擎。",
+      "codeScope": [
+        "src/utils/",
+        "src/types/",
+        "src/schemas/",
+        "src/bootstrap/",
+        "src/migrations/",
+        "src/native-ts/",
+        "src/constants/",
+        "types/",
+        "utils/",
+        "stubs/",
+        "scripts/",
+        "vendor/"
+      ],
+      "edges": []
+    }
+  ]
+}

@@ -1,0 +1,79 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "40b4e5be-c2d0-4115-937e-fa78ee1f32f1",
+  "description": "远程会话与桥接系统。bridge/ 实现 remote-control 模式——注册本地环境、轮询工作、管理子进程生命周期（支持单会话/worktree/共享目录三种模式）。remote/ 通过 WebSocket 管理与云端运行时（CCR）的双向通信。server/ 提供直连会话管理。",
+  "codeScope": [
+    "src/bridge/",
+    "src/remote/",
+    "src/server/",
+    "src/upstreamproxy/"
+  ],
+  "nodes": [
+    {
+      "name": "Bridge",
+      "description": "Remote Control 桥接核心系统（31 个文件）。实现 v1（Environments API 轮询）和 v2（env-less 直连 session-ingress）两套桥接路径，包含 API 客户端、会话生命周期管理、消息收发与去重、传输层抽象（HybridTransport/SSETransport）、子进程会话运行器、轮询配置、JWT 刷新调度、权限回调、终端 UI 状态展示、崩溃恢复指针等。是整个远程控制模式的主体实现。",
+      "edges": [
+        {
+          "target": "RemoteSession",
+          "type": "depends",
+          "description": "共享 SDK 消息协议类型和权限响应类型，两者共同服务于远程会话场景"
+        },
+        {
+          "target": "UpstreamProxy",
+          "type": "depends",
+          "description": "CCR 环境中桥接会话的子进程需要通过 upstream proxy 访问外部网络"
+        }
+      ],
+      "codeScope": [
+        "src/bridge/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "Bridge"
+      }
+    },
+    {
+      "name": "RemoteSession",
+      "description": "远程 CCR 会话管理器。RemoteSessionManager 通过 WebSocket（SessionsWebSocket）连接云端运行时，接收流式消息和权限请求；sdkMessageAdapter 将 SDK 消息格式转换为内部 REPL 消息类型；remotePermissionBridge 为远程工具创建合成消息和工具桩，使本地 UI 能展示远程权限请求。支持自动重连、指数退避和 ping 保活。",
+      "edges": [
+        {
+          "target": "DirectConnect",
+          "type": "depends",
+          "description": "DirectConnect 复用 RemotePermissionResponse 类型定义"
+        }
+      ],
+      "codeScope": [
+        "src/remote/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "RemoteSession"
+      }
+    },
+    {
+      "name": "DirectConnect",
+      "description": "直连会话管理器。通过 HTTP POST 创建会话（createDirectConnectSession），通过 WebSocket 接收换行分隔的 JSON 消息流（DirectConnectSessionManager）。支持消息发送、权限响应、中断操作。types.ts 定义服务器配置、会话状态机（starting→running→detached→stopping→stopped）和持久化会话索引。",
+      "edges": [],
+      "codeScope": [
+        "src/server/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "DirectConnect"
+      }
+    },
+    {
+      "name": "UpstreamProxy",
+      "description": "CCR 容器侧的 CONNECT-over-WebSocket 上游代理。relay.ts 实现手写 protobuf 编解码的 TCP-to-WebSocket 隧道（支持 Bun/Node 双运行时）；upstreamproxy.ts 负责初始化——读取会话令牌、下载 CA 证书、启动中继、配置 HTTPS_PROXY 等环境变量。所有步骤 fail-open，不会阻断会话。",
+      "edges": [],
+      "codeScope": [
+        "src/upstreamproxy/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "UpstreamProxy"
+      }
+    }
+  ]
+}

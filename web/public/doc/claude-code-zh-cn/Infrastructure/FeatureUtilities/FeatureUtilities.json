@@ -1,0 +1,232 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "e5ada935-a3e6-4603-852d-69678a100b49",
+  "description": "领域特定工具库集合。包含多个相对独立的子系统：plugins/（44 文件）实现插件生命周期管理和市场集成；hooks/（17 文件）提供 Hook 注册与执行框架；model/（16 文件）管理模型选择、能力检测和多提供商支持；swarm/（22 文件）支持多 Agent 协调；computerUse/（15 文件）实现计算机操作能力；telemetry/（9 文件）封装遥测数据收集；以及 session 管理、深度链接、Chrome 集成等专用工具。",
+  "codeScope": [
+    "src/utils/plugins/",
+    "src/utils/hooks/",
+    "src/utils/model/",
+    "src/utils/swarm/",
+    "src/utils/computerUse/",
+    "src/utils/telemetry/",
+    "src/utils/telemetryAttributes.ts",
+    "src/utils/claudeInChrome/",
+    "src/utils/deepLink/",
+    "src/utils/nativeInstaller/",
+    "src/utils/dxt/",
+    "src/utils/filePersistence/",
+    "src/utils/messages/",
+    "src/utils/suggestions/",
+    "src/utils/task/",
+    "src/utils/todo/",
+    "src/utils/ultraplan/",
+    "src/utils/background/",
+    "src/utils/memory/",
+    "src/utils/processUserInput/",
+    "src/utils/skills/",
+    "src/utils/teleport/",
+    "src/utils/mcp/",
+    "src/utils/sessionActivity.ts",
+    "src/utils/sessionEnvVars.ts",
+    "src/utils/sessionEnvironment.ts",
+    "src/utils/sessionFileAccessHooks.ts",
+    "src/utils/sessionIngressAuth.ts",
+    "src/utils/sessionRestore.ts",
+    "src/utils/sessionStart.ts",
+    "src/utils/sessionState.ts",
+    "src/utils/sessionStorage.ts",
+    "src/utils/sessionStoragePortable.ts",
+    "src/utils/sessionTitle.ts",
+    "src/utils/sessionUrl.ts",
+    "src/utils/tokens.ts",
+    "src/utils/tokenBudget.ts",
+    "src/utils/thinking.ts",
+    "src/utils/betas.ts"
+  ],
+  "nodes": [
+    {
+      "name": "Plugins",
+      "description": "插件生命周期管理与市场集成系统。包含插件发现与加载（pluginLoader、pluginDirectories）、市场管理（marketplaceManager、officialMarketplace）、安装与版本控制（pluginInstallationHelpers、pluginVersioning、pluginAutoupdate）、启动检查与策略（pluginStartupCheck、pluginPolicy、pluginBlocklist）、以及 Hooks/Commands/Agents/LSP/MCP 等插件资产的加载整合。44 个文件，约 2 万行",
+      "edges": [
+        {
+          "target": "Hooks",
+          "type": "calls",
+          "description": "loadPluginHooks 将插件声明的 Hook 注册到 Hook 框架中"
+        },
+        {
+          "target": "Telemetry",
+          "type": "calls",
+          "description": "fetchTelemetry 和 pluginFlagging 上报插件安装/使用遥测数据"
+        }
+      ],
+      "codeScope": [
+        "src/utils/plugins/",
+        "src/utils/dxt/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "Plugins"
+      }
+    },
+    {
+      "name": "Hooks",
+      "description": "Hook 注册与执行框架。AsyncHookRegistry 管理异步 Hook 的生命周期，支持 API 查询钩子、HTTP/命令行/Prompt 三种执行方式，提供 SSRF 防护、配置快照、前端 Hook 注册（frontmatter/skill）、文件变更监听和 Session 级 Hook 管理",
+      "edges": [],
+      "codeScope": [
+        "src/utils/hooks/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Hooks"
+      }
+    },
+    {
+      "name": "ModelManagement",
+      "description": "模型选择、能力检测与多提供商支持。model.ts 封装模型元数据查询，modelCapabilities.ts 定义各模型能力矩阵，providers.ts 管理多云提供商（Anthropic/Bedrock/Vertex），aliases.ts 处理模型别名解析，configs.ts 提供运行时模型配置。辅以 token 预算计算、思考模式控制和 Beta 特性管理",
+      "edges": [],
+      "codeScope": [
+        "src/utils/model/",
+        "src/utils/tokens.ts",
+        "src/utils/tokenBudget.ts",
+        "src/utils/thinking.ts",
+        "src/utils/betas.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ModelManagement"
+      }
+    },
+    {
+      "name": "Swarm",
+      "description": "多 Agent 协调（Swarm）子系统。支持 iTerm2 分屏和 Tmux 两种终端后端以及进程内后端，管理 Teammate 的初始化、模型选择、Prompt 增强、权限同步和布局编排。包含领导者权限桥接、断线重连和多种执行模式",
+      "edges": [
+        {
+          "target": "ModelManagement",
+          "type": "depends",
+          "description": "teammateModel 依赖模型选择和能力检测确定 Teammate 使用的模型"
+        }
+      ],
+      "codeScope": [
+        "src/utils/swarm/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "Swarm"
+      }
+    },
+    {
+      "name": "ComputerUse",
+      "description": "计算机操作能力实现。封装鼠标、键盘、截屏等原生操作，通过 hostAdapter 适配不同运行环境，executor 编排操作执行，setup 管理初始化和锁机制，同时提供 MCP Server 接口供外部调用和终端 UI 渲染组件",
+      "edges": [],
+      "codeScope": [
+        "src/utils/computerUse/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ComputerUse"
+      }
+    },
+    {
+      "name": "Telemetry",
+      "description": "遥测数据收集与追踪框架。instrumentation.ts 初始化 OpenTelemetry，events.ts 定义遥测事件类型，logger.ts 提供结构化日志，sessionTracing/betaSessionTracing 实现会话级 Trace 采集，bigqueryExporter 将数据导出到 BigQuery，perfettoTracing 生成 Perfetto 兼容的性能分析数据",
+      "edges": [],
+      "codeScope": [
+        "src/utils/telemetry/",
+        "src/utils/telemetryAttributes.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Telemetry"
+      }
+    },
+    {
+      "name": "SessionManagement",
+      "description": "会话生命周期管理。sessionStorage.ts（5100 行）是核心持久化引擎，管理消息、工具结果和会话快照的磁盘读写；sessionStart 处理会话初始化和 Hook 执行；sessionRestore 实现会话恢复；sessionState 维护运行时状态；还包括环境变量注入、鉴权、文件访问控制、标题生成等会话辅助功能",
+      "edges": [
+        {
+          "target": "Hooks",
+          "type": "calls",
+          "description": "sessionStart 触发 session 级 Hook 执行，sessionFileAccessHooks 注册文件访问钩子"
+        },
+        {
+          "target": "Telemetry",
+          "type": "depends",
+          "description": "sessionActivity 上报会话活动遥测事件"
+        }
+      ],
+      "codeScope": [
+        "src/utils/sessionActivity.ts",
+        "src/utils/sessionEnvVars.ts",
+        "src/utils/sessionEnvironment.ts",
+        "src/utils/sessionFileAccessHooks.ts",
+        "src/utils/sessionIngressAuth.ts",
+        "src/utils/sessionRestore.ts",
+        "src/utils/sessionStart.ts",
+        "src/utils/sessionState.ts",
+        "src/utils/sessionStorage.ts",
+        "src/utils/sessionStoragePortable.ts",
+        "src/utils/sessionTitle.ts",
+        "src/utils/sessionUrl.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SessionManagement"
+      }
+    },
+    {
+      "name": "ProcessUserInput",
+      "description": "用户输入处理管道。processUserInput.ts 是入口分发器，根据输入类型分别路由到 processSlashCommand（斜杠命令解析与执行）、processBashCommand（Bash 命令快捷处理）和 processTextPrompt（文本提示词预处理，含图片/附件解析）",
+      "edges": [],
+      "codeScope": [
+        "src/utils/processUserInput/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ProcessUserInput"
+      }
+    },
+    {
+      "name": "IntegrationUtilities",
+      "description": "外部平台集成工具集。claudeInChrome/ 实现 Chrome Native Host 通信和浏览器内 Claude 体验；deepLink/ 处理 claude:// 协议注册、解析和终端启动；nativeInstaller/ 管理原生依赖的下载与安装（支持多包管理器）；teleport/ 提供远程环境选择和 Git Bundle 传输",
+      "edges": [],
+      "codeScope": [
+        "src/utils/claudeInChrome/",
+        "src/utils/deepLink/",
+        "src/utils/nativeInstaller/",
+        "src/utils/teleport/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "IntegrationUtilities"
+      }
+    },
+    {
+      "name": "DomainHelpers",
+      "description": "领域辅助工具散件集合。filePersistence/ 管理文件输出持久化和扫描；messages/ 提供消息映射和系统初始化消息构建；suggestions/ 实现命令补全、目录补全和技能使用追踪；task/ 封装任务输出格式化和 SDK 进度报告；以及 todo 类型定义、ultraplan 关键词检测、background 远程会话、memory 类型、skills 变更检测和 MCP 日期解析/验证等小型工具",
+      "edges": [
+        {
+          "target": "SessionManagement",
+          "type": "depends",
+          "description": "background/remote 和 task/ 依赖 session 状态管理进行上下文传递"
+        }
+      ],
+      "codeScope": [
+        "src/utils/filePersistence/",
+        "src/utils/messages/",
+        "src/utils/suggestions/",
+        "src/utils/task/",
+        "src/utils/todo/",
+        "src/utils/ultraplan/",
+        "src/utils/background/",
+        "src/utils/memory/",
+        "src/utils/skills/",
+        "src/utils/mcp/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "DomainHelpers"
+      }
+    }
+  ]
+}

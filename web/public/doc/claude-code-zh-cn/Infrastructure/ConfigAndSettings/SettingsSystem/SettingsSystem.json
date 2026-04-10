@@ -1,0 +1,129 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "1de254d4-4b7d-4eed-b806-726f941038f0",
+  "description": "多层级设置加载与管理系统。settings.ts 实现从用户、项目、MDM、企业等多个来源加载和合并设置；mdm/ 子目录封装 MDM/企业策略读取；changeDetector.ts 通过 chokidar 监听设置文件变更并触发 Hook；settingsCache.ts 管理会话级缓存；validation.ts 和 permissionValidation.ts 校验设置合法性；types.ts 定义 SettingsJson 的完整 Zod Schema（~1150 行）。共 19 个文件，~4500 行，内部有明确的子系统划分。",
+  "codeScope": [
+    "src/utils/settings/"
+  ],
+  "nodes": [
+    {
+      "name": "SettingsLoader",
+      "description": "核心设置加载与合并管道。settings.ts 实现从 user、project、local、flag、policy 五个来源加载和合并设置（lodash mergeWith），支持 drop-in 目录分片策略；settingsCache.ts 管理三级缓存（会话级合并结果、per-source 缓存、per-file 解析缓存）；constants.ts 定义设置来源枚举和优先级；managedPath.ts 按平台解析企业托管路径；pluginOnlyPolicy.ts 实现 strictPluginOnlyCustomization 策略门控；allErrors.ts 聚合设置校验与 MCP 配置错误",
+      "edges": [
+        {
+          "target": "TypesAndSchema",
+          "type": "depends",
+          "description": "使用 SettingsSchema 进行 Zod 解析和 SettingsJson 类型定义"
+        },
+        {
+          "target": "Validation",
+          "type": "calls",
+          "description": "调用 filterInvalidPermissionRules、formatZodError 过滤和格式化校验错误"
+        },
+        {
+          "target": "MDMPolicy",
+          "type": "calls",
+          "description": "调用 getMdmSettings/getHkcuSettings 获取企业 MDM 策略设置"
+        },
+        {
+          "target": "ChangeDetection",
+          "type": "depends",
+          "description": "写入设置前调用 markInternalWrite 标记内部写入以避免变更检测误触发"
+        }
+      ],
+      "codeScope": [
+        "src/utils/settings/settings.ts",
+        "src/utils/settings/settingsCache.ts",
+        "src/utils/settings/constants.ts",
+        "src/utils/settings/managedPath.ts",
+        "src/utils/settings/pluginOnlyPolicy.ts",
+        "src/utils/settings/allErrors.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SettingsLoader"
+      }
+    },
+    {
+      "name": "TypesAndSchema",
+      "description": "SettingsJson 的完整 Zod Schema 定义（~1150 行）。定义 permissions、hooks、env、MCP server、模型偏好、沙箱配置等所有设置字段的类型和校验规则。使用 lazySchema 延迟求值避免循环依赖。同时 re-export hooks schema 类型以保持向后兼容。schemaOutput.ts 提供 JSON Schema 导出能力",
+      "edges": [
+        {
+          "target": "Validation",
+          "type": "depends",
+          "description": "引用 PermissionRuleSchema 构建权限相关的 Zod 子 schema"
+        }
+      ],
+      "codeScope": [
+        "src/utils/settings/types.ts",
+        "src/utils/settings/schemaOutput.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TypesAndSchema"
+      }
+    },
+    {
+      "name": "Validation",
+      "description": "设置校验子系统。validation.ts 实现 Zod 错误格式化、字段级校验和整文件校验；permissionValidation.ts 定义 PermissionRuleSchema（工具名+参数的正则/glob 模式校验）；toolValidationConfig.ts 配置各工具的特殊校验规则（文件模式工具、Bash 前缀工具、自定义校验）；validationTips.ts 为常见校验错误提供修复建议和文档链接；validateEditTool.ts 在 Edit 工具修改设置文件时拦截校验",
+      "edges": [],
+      "codeScope": [
+        "src/utils/settings/validation.ts",
+        "src/utils/settings/permissionValidation.ts",
+        "src/utils/settings/validationTips.ts",
+        "src/utils/settings/validateEditTool.ts",
+        "src/utils/settings/toolValidationConfig.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Validation"
+      }
+    },
+    {
+      "name": "MDMPolicy",
+      "description": "MDM/企业策略读取子系统。通过 OS 原生机制读取企业管理设置：macOS 使用 plutil 读取 /Library/Managed Preferences/ 下的 plist；Windows 通过 reg query 读取 HKLM/HKCU 注册表策略键；Linux 无 MDM 等价物（使用文件方式）。rawRead.ts 在启动时尽早发起子进程读取（零重依赖），settings.ts 解析结果并实现 first-source-wins 优先级策略和缓存，constants.ts 定义注册表路径和 plist 域名等共享常量",
+      "edges": [
+        {
+          "target": "Validation",
+          "type": "calls",
+          "description": "调用 filterInvalidPermissionRules 和 formatZodError 校验 MDM 返回的设置"
+        }
+      ],
+      "codeScope": [
+        "src/utils/settings/mdm/constants.ts",
+        "src/utils/settings/mdm/rawRead.ts",
+        "src/utils/settings/mdm/settings.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "MDMPolicy"
+      }
+    },
+    {
+      "name": "ChangeDetection",
+      "description": "设置文件变更检测与响应子系统。changeDetector.ts（~488 行）使用 chokidar 监听所有设置文件（user/project/local/managed/drop-in 目录），支持 awaitWriteFinish 防抖、删除宽限期（处理 delete-recreate 模式）、MDM 轮询（30 分钟间隔）；通过 signal 机制通知订阅者。internalWrites.ts 维护时间戳 Map 区分内部写入和外部变更，避免自身写入触发 Hook。applySettingsChange.ts 作为变更响应器，重新加载设置、同步权限规则和 Hook 配置到 AppState",
+      "edges": [
+        {
+          "target": "SettingsLoader",
+          "type": "calls",
+          "description": "变更后调用 getInitialSettings 和 resetSettingsCache 重新加载设置"
+        },
+        {
+          "target": "MDMPolicy",
+          "type": "calls",
+          "description": "定期调用 refreshMdmSettings 轮询 MDM 策略变更"
+        }
+      ],
+      "codeScope": [
+        "src/utils/settings/changeDetector.ts",
+        "src/utils/settings/internalWrites.ts",
+        "src/utils/settings/applySettingsChange.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ChangeDetection"
+      }
+    }
+  ]
+}

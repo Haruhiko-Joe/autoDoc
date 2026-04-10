@@ -1,0 +1,105 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "97806487-6d2d-4051-bc9d-ebc8a9fa101b",
+  "description": "多 Agent 协调（Swarm）子系统。支持 iTerm2 分屏和 Tmux 两种终端后端以及进程内后端，管理 Teammate 的初始化、模型选择、Prompt 增强、权限同步和布局编排。包含领导者权限桥接、断线重连和多种执行模式",
+  "codeScope": [
+    "src/utils/swarm/"
+  ],
+  "nodes": [
+    {
+      "name": "Backends",
+      "description": "终端后端抽象层。定义 PaneBackend 和 TeammateExecutor 两层接口，实现 TmuxBackend（支持内部分屏和外部 swarm session 两种模式）、ITermBackend（通过 it2 CLI 驱动 iTerm2 原生分屏）和 InProcessBackend（同进程内 AsyncLocalStorage 隔离执行）三种后端。registry.ts 实现自动检测优先级（tmux 内 → iTerm2+it2 → tmux 外部 → in-process 回退），PaneBackendExecutor 适配器将 PaneBackend 包装为统一的 TeammateExecutor 接口。还包含 it2 安装/验证工具、TeammateMode 启动快照和 React 安装引导 UI",
+      "edges": [
+        {
+          "target": "TeamConfig",
+          "type": "depends",
+          "description": "PaneBackendExecutor 调用 teammateLayoutManager 分配颜色，registry 读取 teammateModeSnapshot 决定执行模式"
+        },
+        {
+          "target": "TeammateLifecycle",
+          "type": "calls",
+          "description": "InProcessBackend 调用 spawnInProcess 创建任务并调用 inProcessRunner 启动 Agent 执行循环"
+        }
+      ],
+      "codeScope": [
+        "src/utils/swarm/backends/types.ts",
+        "src/utils/swarm/backends/detection.ts",
+        "src/utils/swarm/backends/registry.ts",
+        "src/utils/swarm/backends/TmuxBackend.ts",
+        "src/utils/swarm/backends/ITermBackend.ts",
+        "src/utils/swarm/backends/InProcessBackend.ts",
+        "src/utils/swarm/backends/PaneBackendExecutor.ts",
+        "src/utils/swarm/backends/it2Setup.ts",
+        "src/utils/swarm/backends/teammateModeSnapshot.ts",
+        "src/utils/swarm/It2SetupPrompt.tsx"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "Backends"
+      }
+    },
+    {
+      "name": "PermissionSync",
+      "description": "跨 Agent 权限协调系统。实现 Worker→Leader 的权限请求转发和审批回传，支持文件目录（pending/resolved）和 Mailbox 两种通信通道。包含工具权限请求和沙箱网络权限请求两类场景，提供 Zod Schema 校验、文件锁原子写入、过期清理和 Leader/Worker 角色判定。leaderPermissionBridge 提供模块级桥接，使进程内 Teammate 可复用 REPL 的权限确认队列",
+      "edges": [
+        {
+          "target": "TeamConfig",
+          "type": "depends",
+          "description": "通过 teamHelpers 读取 TeamFile 获取 Leader 名称和团队目录路径"
+        }
+      ],
+      "codeScope": [
+        "src/utils/swarm/permissionSync.ts",
+        "src/utils/swarm/leaderPermissionBridge.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PermissionSync"
+      }
+    },
+    {
+      "name": "TeammateLifecycle",
+      "description": "Teammate 全生命周期管理：初始化、Spawn、执行和断线重连。teammateInit 注册 Stop Hook 实现空闲通知；spawnInProcess 创建 TeammateContext、AbortController 和 AppState 任务注册；inProcessRunner（1500+ 行核心）封装 runAgent 执行循环，集成 Mailbox 消息轮询、权限回调注册、Plan Mode 审批流、自动压缩、空闲通知和 canUseTool 过滤。spawnUtils 构建继承的 CLI 标志和环境变量。reconnection 支持会话恢复时重建 teamContext",
+      "edges": [
+        {
+          "target": "TeamConfig",
+          "type": "depends",
+          "description": "teammateInit 读取 TeamFile 获取 Leader ID 和权限路径，spawnInProcess 使用 teamHelpers 清理成员"
+        },
+        {
+          "target": "PermissionSync",
+          "type": "calls",
+          "description": "inProcessRunner 处理 Mailbox 中的权限响应消息，调用 permissionSync 的回调注册和响应处理"
+        }
+      ],
+      "codeScope": [
+        "src/utils/swarm/teammateInit.ts",
+        "src/utils/swarm/spawnInProcess.ts",
+        "src/utils/swarm/inProcessRunner.ts",
+        "src/utils/swarm/spawnUtils.ts",
+        "src/utils/swarm/reconnection.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TeammateLifecycle"
+      }
+    },
+    {
+      "name": "TeamConfig",
+      "description": "团队配置与辅助工具集。teamHelpers（683 行核心）管理 TeamFile 的 CRUD——成员增删、权限模式同步、活跃状态设置、Git Worktree 销毁和会话级清理。teammateLayoutManager 管理颜色轮转分配并提供 Pane 创建门面。teammateModel 提供 Teammate 默认模型回退（Opus 4.6）。teammatePromptAddendum 定义 Teammate 专用系统提示词。constants 定义会话名、命令名等全局常量",
+      "edges": [],
+      "codeScope": [
+        "src/utils/swarm/teamHelpers.ts",
+        "src/utils/swarm/teammateLayoutManager.ts",
+        "src/utils/swarm/teammateModel.ts",
+        "src/utils/swarm/teammatePromptAddendum.ts",
+        "src/utils/swarm/constants.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TeamConfig"
+      }
+    }
+  ]
+}

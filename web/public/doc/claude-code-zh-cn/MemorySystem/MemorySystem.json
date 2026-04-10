@@ -1,0 +1,69 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "c4436892-de52-4ec7-9dcb-0234303e5139",
+  "description": "持久化记忆系统。memdir/ 实现基于文件的记忆存储（用户偏好、项目上下文、反馈等），支持相关性检索和记忆衰减。与 SessionMemory 和 extractMemories 服务配合，实现跨会话的上下文保持和自动记忆提取。",
+  "codeScope": [
+    "src/memdir/"
+  ],
+  "nodes": [
+    {
+      "name": "PathsAndConfig",
+      "description": "记忆存储路径解析与安全校验。paths.ts 管理自动记忆目录的路径计算（支持环境变量/设置/Git 根目录三级解析）、启用状态判断（isAutoMemoryEnabled）、路径安全校验（防遍历攻击）。teamMemPaths.ts 扩展了团队记忆目录的路径管理，包含 symlink 解析、PathTraversalError 防御、realpath 深度校验等安全机制。",
+      "edges": [],
+      "codeScope": [
+        "src/memdir/paths.ts",
+        "src/memdir/teamMemPaths.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PathsAndConfig"
+      }
+    },
+    {
+      "name": "PromptBuilding",
+      "description": "记忆系统提示词构建。memdir.ts 是核心入口，负责构建系统提示词（buildMemoryLines/buildMemoryPrompt）、MEMORY.md 截断逻辑、目录初始化、以及 loadMemoryPrompt 多模式分发（自动记忆/团队记忆/KAIROS 日志模式）。memoryTypes.ts 定义四类记忆类型分类（user/feedback/project/reference）及对应的提示词段落。teamMemPrompts.ts 构建自动+团队双目录联合提示词。",
+      "edges": [
+        {
+          "target": "PathsAndConfig",
+          "type": "depends",
+          "description": "依赖路径模块获取记忆目录位置和启用状态"
+        },
+        {
+          "target": "Retrieval",
+          "type": "depends",
+          "description": "提示词中引用 memoryScan 的 MEMORY.md 入口文件内容和截断逻辑"
+        }
+      ],
+      "codeScope": [
+        "src/memdir/memdir.ts",
+        "src/memdir/memoryTypes.ts",
+        "src/memdir/teamMemPrompts.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PromptBuilding"
+      }
+    },
+    {
+      "name": "Retrieval",
+      "description": "记忆检索与相关性筛选。findRelevantMemories.ts 使用 Sonnet 模型侧查询从记忆文件中选出与当前查询最相关的记忆（最多 5 条），支持已展示记忆去重和工具使用过滤。memoryScan.ts 扫描记忆目录、解析 frontmatter 元数据、生成记忆清单。memoryAge.ts 提供记忆新鲜度计算和过期提醒文本。",
+      "edges": [
+        {
+          "target": "PathsAndConfig",
+          "type": "depends",
+          "description": "扫描时依赖路径模块定位记忆目录"
+        }
+      ],
+      "codeScope": [
+        "src/memdir/findRelevantMemories.ts",
+        "src/memdir/memoryScan.ts",
+        "src/memdir/memoryAge.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Retrieval"
+      }
+    }
+  ]
+}

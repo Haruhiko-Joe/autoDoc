@@ -1,0 +1,171 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "196bf6b3-5ad1-4605-a580-384a5c766726",
+  "description": "辅助功能服务集合。包括语音输入（voice/voiceStreamSTT 语音转文字）、提示建议（PromptSuggestion 推测性预测）、自动梦境（autoDream 对话巩固）、魔法文档（MagicDocs）、使用提示（tips 调度与展示）、代理摘要（AgentSummary）、工具使用摘要、通知、Token 估算、离开摘要、VCR 录放、防休眠、诊断追踪和内部日志等。",
+  "codeScope": [
+    "src/services/voice.ts",
+    "src/services/voiceKeyterms.ts",
+    "src/services/voiceStreamSTT.ts",
+    "src/services/PromptSuggestion/",
+    "src/services/autoDream/",
+    "src/services/MagicDocs/",
+    "src/services/tips/",
+    "src/services/AgentSummary/",
+    "src/services/toolUseSummary/",
+    "src/services/notifier.ts",
+    "src/services/tokenEstimation.ts",
+    "src/services/awaySummary.ts",
+    "src/services/vcr.ts",
+    "src/services/preventSleep.ts",
+    "src/services/diagnosticTracking.ts",
+    "src/services/internalLogging.ts",
+    "src/services/plugins/"
+  ],
+  "nodes": [
+    {
+      "name": "Voice",
+      "description": "语音输入子系统。voice.ts 实现音频录制（支持原生 cpal 和 SoX/arecord 回退），voiceStreamSTT.ts 通过 WebSocket 连接 Anthropic voice_stream 端点进行实时语音转文字，voiceKeyterms.ts 提供编程领域词汇提示以提高 STT 准确率。三者紧密配合实现按住说话的语音输入功能",
+      "edges": [],
+      "codeScope": [
+        "src/services/voice.ts",
+        "src/services/voiceKeyterms.ts",
+        "src/services/voiceStreamSTT.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Voice"
+      }
+    },
+    {
+      "name": "PromptSuggestion",
+      "description": "提示建议与推测性预测系统。promptSuggestion.ts 在用户空闲时通过 forkedAgent 生成下一步操作建议，speculation.ts 实现完整的推测执行引擎——预测用户意图后在后台预先执行工具调用，用户确认后直接采纳结果，大幅减少等待时间。是整个模块中最复杂的子系统（~1500 行）",
+      "edges": [],
+      "codeScope": [
+        "src/services/PromptSuggestion/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PromptSuggestion"
+      }
+    },
+    {
+      "name": "AutoDream",
+      "description": "自动梦境——后台记忆巩固服务。在满足时间门控和会话数门控后，通过 forkedAgent 执行 /dream 提示，对历史会话进行反思性整理并写入持久化记忆。包含配置（config.ts）、文件锁和时间戳管理（consolidationLock.ts）、以及巩固提示模板（consolidationPrompt.ts）",
+      "edges": [],
+      "codeScope": [
+        "src/services/autoDream/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "AutoDream"
+      }
+    },
+    {
+      "name": "MagicDocs",
+      "description": "魔法文档自动维护服务。检测文件中的 '# MAGIC DOC:' 标记头，在对话过程中周期性地通过后台 Agent 自动更新文档内容，将对话中的新知识融入文档。magicDocs.ts 负责检测和调度，prompts.ts 定义更新提示模板",
+      "edges": [],
+      "codeScope": [
+        "src/services/MagicDocs/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "MagicDocs"
+      }
+    },
+    {
+      "name": "Tips",
+      "description": "使用提示调度与展示系统。tipRegistry.ts 定义数十条上下文相关的使用提示（根据 IDE、平台、配置等条件过滤），tipScheduler.ts 基于冷却策略选择最久未展示的提示，tipHistory.ts 通过全局配置持久化展示记录。提示在 spinner 等待时展示给用户",
+      "edges": [],
+      "codeScope": [
+        "src/services/tips/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Tips"
+      }
+    },
+    {
+      "name": "Summaries",
+      "description": "摘要生成服务集合。AgentSummary 每 30 秒为子 Agent 生成 3-5 词进度摘要用于 UI 展示；toolUseSummaryGenerator 通过 Haiku 模型为工具调用批次生成一行摘要（SDK 使用）；awaySummary 在用户离开后生成会话回顾卡片。三者均通过 API 调用模型生成文本",
+      "edges": [],
+      "codeScope": [
+        "src/services/AgentSummary/",
+        "src/services/toolUseSummary/",
+        "src/services/awaySummary.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Summaries"
+      }
+    },
+    {
+      "name": "TokenEstimation",
+      "description": "Token 计数与估算服务。封装 Anthropic countTokens API 调用，支持多云提供商（直连、Bedrock、Vertex），处理 thinking blocks 剥离、工具搜索字段清理、附件规范化等预处理。与 VCR 集成支持测试时的 fixture 录放",
+      "edges": [
+        {
+          "target": "VCR",
+          "type": "calls",
+          "description": "通过 withTokenCountVCR 在测试模式下录放 token 计数结果"
+        }
+      ],
+      "codeScope": [
+        "src/services/tokenEstimation.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TokenEstimation"
+      }
+    },
+    {
+      "name": "VCR",
+      "description": "录放机（VCR）测试辅助服务。为 API 调用和 token 计数提供 fixture 管理——根据输入哈希生成确定性文件名，首次调用时录制真实响应，后续调用时回放缓存结果。支持流式消息和成本追踪的录放。仅在测试环境或 ant 用户强制开启时激活",
+      "edges": [],
+      "codeScope": [
+        "src/services/vcr.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "VCR"
+      }
+    },
+    {
+      "name": "Notifier",
+      "description": "桌面通知服务。根据用户配置的通知渠道（auto/iterm2/kitty/terminal-bell/osc9/osascript 等）发送系统通知，支持多终端自动检测、通知钩子执行和分析事件记录。在长时间操作完成时提醒用户",
+      "edges": [],
+      "codeScope": [
+        "src/services/notifier.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Notifier"
+      }
+    },
+    {
+      "name": "Plugins",
+      "description": "插件生命周期管理服务。PluginInstallationManager 在后台执行 marketplace 对账和自动安装；pluginOperations 提供安装、卸载、启用、禁用、更新等核心操作的纯函数实现；pluginCliCommands 封装 CLI 命令层（console 输出和 process.exit 处理）",
+      "edges": [],
+      "codeScope": [
+        "src/services/plugins/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Plugins"
+      }
+    },
+    {
+      "name": "SystemUtilities",
+      "description": "系统级辅助工具集合。preventSleep 通过 macOS caffeinate 命令防止系统休眠（引用计数机制）；diagnosticTracking 集成 IDE MCP 客户端收集代码诊断信息（错误/警告）；internalLogging 记录 Kubernetes 命名空间、容器 ID 等运行环境元数据和工具权限事件（仅限内部构建）",
+      "edges": [],
+      "codeScope": [
+        "src/services/preventSleep.ts",
+        "src/services/diagnosticTracking.ts",
+        "src/services/internalLogging.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SystemUtilities"
+      }
+    }
+  ]
+}

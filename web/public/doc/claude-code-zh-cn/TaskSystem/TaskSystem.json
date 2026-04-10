@@ -1,0 +1,171 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "12dc0323-99fd-4db2-b520-268d3c30e1aa",
+  "description": "多任务与多 Agent 执行框架。Task.ts 定义统一任务抽象（本地 Shell/Agent、远程 Agent、团队协作、工作流等），tasks/ 目录实现各类任务运行时。coordinator/ 管理多 Agent 协调模式（Swarm），支持任务的创建、监控、终止和后台运行。",
+  "codeScope": [
+    "src/Task.ts",
+    "src/tasks.ts",
+    "src/tasks/",
+    "src/coordinator/"
+  ],
+  "nodes": [
+    {
+      "name": "TaskCore",
+      "description": "任务系统核心抽象层。Task.ts 定义统一的 TaskType/TaskStatus/TaskStateBase 类型和 Task 接口（仅 kill 方法），tasks.ts 是任务注册表（按 feature gate 按需加载），tasks/types.ts 聚合所有具体任务状态为 TaskState 联合类型并提供后台任务判断。tasks/stopTask.ts 封装通用的任务停止逻辑，tasks/pillLabel.ts 生成状态栏任务标签文本。",
+      "edges": [],
+      "codeScope": [
+        "src/Task.ts",
+        "src/tasks.ts",
+        "src/tasks/types.ts",
+        "src/tasks/stopTask.ts",
+        "src/tasks/pillLabel.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TaskCore"
+      }
+    },
+    {
+      "name": "LocalShellTask",
+      "description": "本地 Shell 后台任务运行时。负责 spawn 后台 Shell 命令、输出文件管理、stall watchdog（检测交互式提示阻塞）、进程终止（SIGTERM→SIGKILL 级联），以及任务完成后的通知生成。支持普通 bash 和 monitor 两种 kind。",
+      "edges": [
+        {
+          "target": "TaskCore",
+          "type": "depends",
+          "description": "使用 TaskStateBase、createTaskStateBase、registerTask 等核心框架"
+        }
+      ],
+      "codeScope": [
+        "src/tasks/LocalShellTask/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "LocalShellTask"
+      }
+    },
+    {
+      "name": "LocalAgentTask",
+      "description": "本地 Agent 子任务运行时。在独立 AbortController 下运行子 Agent 查询循环，跟踪 token 用量和工具调用进度（ProgressTracker），支持前台/后台切换（backgroundAgentTask），完成后生成带 worktree 信息的 XML 通知。也被 LocalMainSessionTask 复用。",
+      "edges": [
+        {
+          "target": "TaskCore",
+          "type": "depends",
+          "description": "使用 TaskStateBase 和任务注册框架"
+        },
+        {
+          "target": "LocalMainSessionTask",
+          "type": "calls",
+          "description": "backgroundAgentTask 函数被主会话后台化时复用"
+        }
+      ],
+      "codeScope": [
+        "src/tasks/LocalAgentTask/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "LocalAgentTask"
+      }
+    },
+    {
+      "name": "RemoteAgentTask",
+      "description": "远程 Agent 任务运行时。通过 WebSocket 轮询 CCR（Claude Cloud Runtime）会话事件，管理远程会话生命周期（创建、轮询、归档），支持 ultraplan 阶段追踪和 remote-review 进度解析。处理远程任务的 todo list 同步和 SDK 事件发射。",
+      "edges": [
+        {
+          "target": "TaskCore",
+          "type": "depends",
+          "description": "使用 TaskStateBase 和任务注册框架"
+        }
+      ],
+      "codeScope": [
+        "src/tasks/RemoteAgentTask/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "RemoteAgentTask"
+      }
+    },
+    {
+      "name": "InProcessTeammateTask",
+      "description": "进程内 Teammate 任务运行时。为 Swarm 协调模式中的 teammate 提供生命周期管理——使用 AsyncLocalStorage 在同一进程内隔离运行，支持 plan mode 审批流、消息队列（capped 到 MAX_MESSAGES）、空闲/活跃状态切换和优雅关闭。",
+      "edges": [
+        {
+          "target": "TaskCore",
+          "type": "depends",
+          "description": "使用 TaskStateBase 和 kill 接口"
+        },
+        {
+          "target": "CoordinatorMode",
+          "type": "depends",
+          "description": "仅在 coordinator 模式下创建，配合 Swarm 协调使用"
+        }
+      ],
+      "codeScope": [
+        "src/tasks/InProcessTeammateTask/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "InProcessTeammateTask"
+      }
+    },
+    {
+      "name": "DreamTask",
+      "description": "Dream 记忆整合任务。为 auto-dream（后台记忆整合子 Agent）提供任务 UI 表面——跟踪 phase（starting/updating）、被触及的文件路径、assistant 轮次，以及 consolidation lock 回滚。本身不执行 dream 逻辑，仅是任务注册和状态追踪。",
+      "edges": [
+        {
+          "target": "TaskCore",
+          "type": "depends",
+          "description": "使用 TaskStateBase 和任务注册框架"
+        }
+      ],
+      "codeScope": [
+        "src/tasks/DreamTask/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "DreamTask"
+      }
+    },
+    {
+      "name": "LocalMainSessionTask",
+      "description": "主会话后台化任务。当用户按两次 Ctrl+B 时，将当前主会话查询转为后台运行——fork 出独立的 Agent 上下文和 AbortController，复用 query() 函数继续执行，完成后生成 XML 通知。复用 LocalAgentTask 的状态结构。",
+      "edges": [
+        {
+          "target": "TaskCore",
+          "type": "depends",
+          "description": "使用 createTaskStateBase 和任务状态管理"
+        },
+        {
+          "target": "LocalAgentTask",
+          "type": "depends",
+          "description": "复用 LocalAgentTaskState 状态结构和 backgroundAgentTask"
+        }
+      ],
+      "codeScope": [
+        "src/tasks/LocalMainSessionTask.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "LocalMainSessionTask"
+      }
+    },
+    {
+      "name": "CoordinatorMode",
+      "description": "多 Agent 协调（Swarm）模式配置。定义 coordinator 模式的开关检测（环境变量驱动）、会话模式匹配（恢复会话时自动切换）、coordinator 系统提示词（定义 worker 调度策略、任务工作流阶段、prompt 编写规范），以及 worker 可用工具上下文的生成。",
+      "edges": [
+        {
+          "target": "TaskCore",
+          "type": "depends",
+          "description": "协调模式下的 worker 通过任务系统管理生命周期"
+        }
+      ],
+      "codeScope": [
+        "src/coordinator/coordinatorMode.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "CoordinatorMode"
+      }
+    }
+  ]
+}

@@ -1,0 +1,357 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "589fc816-b47b-404e-88d9-cbef5ae6f195",
+  "description": "基础设施与构建系统。src/utils/ 提供通用工具函数（认证、配置、Git 操作、Shell 管理等），src/types/ 和 types/ 定义全局类型，stubs/ 提供 Bun 编译时桩，scripts/ 包含 esbuild 构建脚本，vendor/ 封装原生模块，native-ts/ 包含纯 TS 实现的布局和索引引擎。",
+  "codeScope": [
+    "src/utils/",
+    "src/types/",
+    "src/schemas/",
+    "src/bootstrap/",
+    "src/migrations/",
+    "src/native-ts/",
+    "src/constants/",
+    "types/",
+    "utils/",
+    "stubs/",
+    "scripts/",
+    "vendor/"
+  ],
+  "nodes": [
+    {
+      "name": "ShellAndBash",
+      "description": "Shell 执行与 Bash 解析基础设施。Shell.ts/ShellCommand.ts 管理子进程生命周期和命令执行，bash/ 包含完整的 Bash AST 解析器（基于 tree-sitter）、管道命令处理和 Shell 补全，shell/ 管理 Shell 会话状态和环境快照，powershell/ 提供 Windows PowerShell 支持。",
+      "edges": [
+        {
+          "target": "ConfigAndSettings",
+          "type": "depends",
+          "description": "Shell 配置（shellConfig）和执行参数来自 settings 系统"
+        },
+        {
+          "target": "PermissionsAndAuth",
+          "type": "depends",
+          "description": "Shell 命令执行前需通过权限分类器（bashClassifier）校验"
+        }
+      ],
+      "codeScope": [
+        "src/utils/Shell.ts",
+        "src/utils/ShellCommand.ts",
+        "src/utils/shellConfig.ts",
+        "src/utils/bash/",
+        "src/utils/shell/",
+        "src/utils/powershell/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "ShellAndBash"
+      }
+    },
+    {
+      "name": "GitOperations",
+      "description": "Git 版本控制操作与 GitHub 集成工具。git.ts 封装核心 Git 命令（status、diff、log、blame 等），git/ 目录包含 Git 上下文收集和仓库信息解析，gitDiff.ts 提供差异分析，github/ 封装 GitHub API 交互，worktree.ts 管理 Git worktree 的创建和清理。",
+      "edges": [
+        {
+          "target": "ShellAndBash",
+          "type": "calls",
+          "description": "Git 命令通过 Shell 子进程执行"
+        }
+      ],
+      "codeScope": [
+        "src/utils/git.ts",
+        "src/utils/gitDiff.ts",
+        "src/utils/gitSettings.ts",
+        "src/utils/git/",
+        "src/utils/github/",
+        "src/utils/githubRepoPathMapping.ts",
+        "src/utils/worktree.ts",
+        "src/utils/worktreeModeEnabled.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "GitOperations"
+      }
+    },
+    {
+      "name": "ConfigAndSettings",
+      "description": "配置、设置与环境管理系统。settings/ 实现多层级设置加载（用户/项目/MDM/企业），支持变更检测和缓存；env*.ts 管理环境变量验证和动态注入；src/constants/ 定义全局常量（API 限制、提示词、工具限制等）；src/bootstrap/ 管理启动状态；src/migrations/ 包含 11 个配置迁移脚本（模型切换、设置结构升级等）。",
+      "edges": [
+        {
+          "target": "TypesAndSchemas",
+          "type": "depends",
+          "description": "设置类型定义和校验 schema 来自类型层"
+        }
+      ],
+      "codeScope": [
+        "src/utils/config.ts",
+        "src/utils/configConstants.ts",
+        "src/utils/settings/",
+        "src/utils/env.ts",
+        "src/utils/envDynamic.ts",
+        "src/utils/envUtils.ts",
+        "src/utils/envValidation.ts",
+        "src/utils/cliArgs.ts",
+        "src/constants/",
+        "src/bootstrap/",
+        "src/migrations/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "ConfigAndSettings"
+      }
+    },
+    {
+      "name": "PermissionsAndAuth",
+      "description": "权限框架与认证安全层。permissions/ 实现完整的权限模型——包括权限模式（PermissionMode）、规则解析器、Bash 命令分类器（安全/危险命令判定）、文件系统路径校验、YOLO 模式分类器和拒绝追踪。auth*.ts 处理用户认证令牌管理，secureStorage/ 封装系统级安全存储，sandbox/ 提供沙箱隔离机制。",
+      "edges": [
+        {
+          "target": "ConfigAndSettings",
+          "type": "depends",
+          "description": "权限规则和认证配置存储在 settings 系统中"
+        }
+      ],
+      "codeScope": [
+        "src/utils/permissions/",
+        "src/utils/auth.ts",
+        "src/utils/authFileDescriptor.ts",
+        "src/utils/authPortable.ts",
+        "src/utils/secureStorage/",
+        "src/utils/sandbox/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PermissionsAndAuth"
+      }
+    },
+    {
+      "name": "TypesAndSchemas",
+      "description": "全局类型定义与校验 Schema。src/types/ 定义核心类型（命令、Hook、权限、日志、插件等），其中 generated/ 包含从 Proto/外部 schema 生成的类型；types/ (根目录) 提供 JS connector 类型；src/schemas/ 定义 Hook 配置的 Zod 校验 schema。",
+      "edges": [],
+      "codeScope": [
+        "src/types/",
+        "types/",
+        "src/schemas/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TypesAndSchemas"
+      }
+    },
+    {
+      "name": "BuildSystem",
+      "description": "构建工具链与编译基础设施。scripts/ 包含 esbuild 构建脚本（build.mjs）、源码预处理（prepare-src.mjs）、模块桩生成（stub-modules.mjs）和代码转换（transform.mjs）；stubs/ 提供 Bun 编译时桩和全局类型声明；vendor/ 封装 4 个原生模块（音频捕获、图像处理、键盘修饰符、URL 处理）；utils/ (根目录) 提供构建时辅助脚本；src/native-ts/ 包含 3 个纯 TypeScript 实现引擎（颜色差异、文件索引、Yoga 布局）替代原生依赖。",
+      "edges": [],
+      "codeScope": [
+        "scripts/",
+        "stubs/",
+        "vendor/",
+        "utils/",
+        "src/native-ts/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "BuildSystem"
+      }
+    },
+    {
+      "name": "FeatureUtilities",
+      "description": "领域特定工具库集合。包含多个相对独立的子系统：plugins/（44 文件）实现插件生命周期管理和市场集成；hooks/（17 文件）提供 Hook 注册与执行框架；model/（16 文件）管理模型选择、能力检测和多提供商支持；swarm/（22 文件）支持多 Agent 协调；computerUse/（15 文件）实现计算机操作能力；telemetry/（9 文件）封装遥测数据收集；以及 session 管理、深度链接、Chrome 集成等专用工具。",
+      "edges": [
+        {
+          "target": "ConfigAndSettings",
+          "type": "depends",
+          "description": "各子系统依赖配置和设置获取特性开关和运行参数"
+        },
+        {
+          "target": "PermissionsAndAuth",
+          "type": "depends",
+          "description": "插件加载和 Hook 执行需通过权限校验"
+        },
+        {
+          "target": "CommonUtilities",
+          "type": "depends",
+          "description": "使用通用工具函数（路径处理、字符串操作、UUID 等）"
+        }
+      ],
+      "codeScope": [
+        "src/utils/plugins/",
+        "src/utils/hooks/",
+        "src/utils/model/",
+        "src/utils/swarm/",
+        "src/utils/computerUse/",
+        "src/utils/telemetry/",
+        "src/utils/telemetryAttributes.ts",
+        "src/utils/claudeInChrome/",
+        "src/utils/deepLink/",
+        "src/utils/nativeInstaller/",
+        "src/utils/dxt/",
+        "src/utils/filePersistence/",
+        "src/utils/messages/",
+        "src/utils/suggestions/",
+        "src/utils/task/",
+        "src/utils/todo/",
+        "src/utils/ultraplan/",
+        "src/utils/background/",
+        "src/utils/memory/",
+        "src/utils/processUserInput/",
+        "src/utils/skills/",
+        "src/utils/teleport/",
+        "src/utils/mcp/",
+        "src/utils/sessionActivity.ts",
+        "src/utils/sessionEnvVars.ts",
+        "src/utils/sessionEnvironment.ts",
+        "src/utils/sessionFileAccessHooks.ts",
+        "src/utils/sessionIngressAuth.ts",
+        "src/utils/sessionRestore.ts",
+        "src/utils/sessionStart.ts",
+        "src/utils/sessionState.ts",
+        "src/utils/sessionStorage.ts",
+        "src/utils/sessionStoragePortable.ts",
+        "src/utils/sessionTitle.ts",
+        "src/utils/sessionUrl.ts",
+        "src/utils/tokens.ts",
+        "src/utils/tokenBudget.ts",
+        "src/utils/thinking.ts",
+        "src/utils/betas.ts"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "FeatureUtilities"
+      }
+    },
+    {
+      "name": "CommonUtilities",
+      "description": "通用工具函数库。提供整个应用共享的基础能力：CircularBuffer/Cursor 数据结构、abort 控制器管理、UUID/semver 生成、字符串处理（truncate、sliceAnsi、stringUtils）、数组/集合操作、文件路径管理（xdg、systemDirectories、cachePaths）、并发控制（sequential、sleep、withResolvers）、XML/YAML 序列化、ANSI 转图片、进度显示（slowOperations）、日志缓冲（bufferedWriter）等 70+ 独立工具模块。",
+      "edges": [
+        {
+          "target": "TypesAndSchemas",
+          "type": "depends",
+          "description": "使用全局类型定义"
+        }
+      ],
+      "codeScope": [
+        "src/utils/CircularBuffer.ts",
+        "src/utils/Cursor.ts",
+        "src/utils/QueryGuard.ts",
+        "src/utils/abortController.ts",
+        "src/utils/activityManager.ts",
+        "src/utils/advisor.ts",
+        "src/utils/agentContext.ts",
+        "src/utils/agentId.ts",
+        "src/utils/agentSwarmsEnabled.ts",
+        "src/utils/agenticSessionSearch.ts",
+        "src/utils/analyzeContext.ts",
+        "src/utils/ansiToPng.ts",
+        "src/utils/ansiToSvg.ts",
+        "src/utils/api.ts",
+        "src/utils/apiPreconnect.ts",
+        "src/utils/appleTerminalBackup.ts",
+        "src/utils/argumentSubstitution.ts",
+        "src/utils/array.ts",
+        "src/utils/asciicast.ts",
+        "src/utils/attachments.ts",
+        "src/utils/attribution.ts",
+        "src/utils/autoModeDenials.ts",
+        "src/utils/autoRunIssue.tsx",
+        "src/utils/autoUpdater.ts",
+        "src/utils/aws.ts",
+        "src/utils/awsAuthStatusManager.ts",
+        "src/utils/billing.ts",
+        "src/utils/binaryCheck.ts",
+        "src/utils/browser.ts",
+        "src/utils/bufferedWriter.ts",
+        "src/utils/bundledMode.ts",
+        "src/utils/caCerts.ts",
+        "src/utils/caCertsConfig.ts",
+        "src/utils/cachePaths.ts",
+        "src/utils/classifierApprovals.ts",
+        "src/utils/classifierApprovalsHook.ts",
+        "src/utils/claudeCodeHints.ts",
+        "src/utils/claudeDesktop.ts",
+        "src/utils/claudemd.ts",
+        "src/utils/cleanup.ts",
+        "src/utils/cleanupRegistry.ts",
+        "src/utils/cliHighlight.ts",
+        "src/utils/codeIndexing.ts",
+        "src/utils/collapseBackgroundBashNotifications.ts",
+        "src/utils/collapseHookSummaries.ts",
+        "src/utils/collapseReadSearch.ts",
+        "src/utils/collapseTeammateShutdowns.ts",
+        "src/utils/combinedAbortSignal.ts",
+        "src/utils/commandLifecycle.ts",
+        "src/utils/semver.ts",
+        "src/utils/sequential.ts",
+        "src/utils/set.ts",
+        "src/utils/signal.ts",
+        "src/utils/sinks.ts",
+        "src/utils/slashCommandParsing.ts",
+        "src/utils/sleep.ts",
+        "src/utils/sliceAnsi.ts",
+        "src/utils/slowOperations.ts",
+        "src/utils/standaloneAgent.ts",
+        "src/utils/startupProfiler.ts",
+        "src/utils/staticRender.tsx",
+        "src/utils/stats.ts",
+        "src/utils/statsCache.ts",
+        "src/utils/status.tsx",
+        "src/utils/statusNoticeDefinitions.tsx",
+        "src/utils/statusNoticeHelpers.ts",
+        "src/utils/stream.ts",
+        "src/utils/streamJsonStdoutGuard.ts",
+        "src/utils/streamlinedTransform.ts",
+        "src/utils/stringUtils.ts",
+        "src/utils/subprocessEnv.ts",
+        "src/utils/systemDirectories.ts",
+        "src/utils/systemPrompt.ts",
+        "src/utils/systemPromptType.ts",
+        "src/utils/systemTheme.ts",
+        "src/utils/taggedId.ts",
+        "src/utils/tasks.ts",
+        "src/utils/teamDiscovery.ts",
+        "src/utils/teamMemoryOps.ts",
+        "src/utils/teammate.ts",
+        "src/utils/teammateContext.ts",
+        "src/utils/teammateMailbox.ts",
+        "src/utils/tempfile.ts",
+        "src/utils/terminal.ts",
+        "src/utils/terminalPanel.ts",
+        "src/utils/textHighlighting.ts",
+        "src/utils/theme.ts",
+        "src/utils/timeouts.ts",
+        "src/utils/tmuxSocket.ts",
+        "src/utils/toolErrors.ts",
+        "src/utils/toolPool.ts",
+        "src/utils/toolResultStorage.ts",
+        "src/utils/toolSchemaCache.ts",
+        "src/utils/toolSearch.ts",
+        "src/utils/transcriptSearch.ts",
+        "src/utils/treeify.ts",
+        "src/utils/truncate.ts",
+        "src/utils/unaryLogging.ts",
+        "src/utils/undercover.ts",
+        "src/utils/user.ts",
+        "src/utils/userAgent.ts",
+        "src/utils/userPromptKeywords.ts",
+        "src/utils/uuid.ts",
+        "src/utils/warningHandler.ts",
+        "src/utils/which.ts",
+        "src/utils/windowsPaths.ts",
+        "src/utils/withResolvers.ts",
+        "src/utils/words.ts",
+        "src/utils/workloadContext.ts",
+        "src/utils/xdg.ts",
+        "src/utils/xml.ts",
+        "src/utils/yaml.ts",
+        "src/utils/zodToJsonSchema.ts",
+        "src/utils/sideQuery.ts",
+        "src/utils/sideQuestion.ts",
+        "src/utils/sdkEventQueue.ts",
+        "src/utils/semanticBoolean.ts",
+        "src/utils/semanticNumber.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "CommonUtilities"
+      }
+    }
+  ]
+}

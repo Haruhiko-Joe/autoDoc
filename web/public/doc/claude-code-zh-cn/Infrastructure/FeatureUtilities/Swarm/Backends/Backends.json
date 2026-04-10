@@ -1,0 +1,162 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "ea04ac97-48f8-40a6-bb92-91db1b300525",
+  "description": "终端后端抽象层。定义 PaneBackend 和 TeammateExecutor 两层接口，实现 TmuxBackend（支持内部分屏和外部 swarm session 两种模式）、ITermBackend（通过 it2 CLI 驱动 iTerm2 原生分屏）和 InProcessBackend（同进程内 AsyncLocalStorage 隔离执行）三种后端。registry.ts 实现自动检测优先级（tmux 内 → iTerm2+it2 → tmux 外部 → in-process 回退），PaneBackendExecutor 适配器将 PaneBackend 包装为统一的 TeammateExecutor 接口。还包含 it2 安装/验证工具、TeammateMode 启动快照和 React 安装引导 UI",
+  "codeScope": [
+    "src/utils/swarm/backends/types.ts",
+    "src/utils/swarm/backends/detection.ts",
+    "src/utils/swarm/backends/registry.ts",
+    "src/utils/swarm/backends/TmuxBackend.ts",
+    "src/utils/swarm/backends/ITermBackend.ts",
+    "src/utils/swarm/backends/InProcessBackend.ts",
+    "src/utils/swarm/backends/PaneBackendExecutor.ts",
+    "src/utils/swarm/backends/it2Setup.ts",
+    "src/utils/swarm/backends/teammateModeSnapshot.ts",
+    "src/utils/swarm/It2SetupPrompt.tsx"
+  ],
+  "nodes": [
+    {
+      "name": "TypesAndInterfaces",
+      "description": "后端类型定义与接口抽象层。定义 BackendType、PaneBackendType 等类型标识，PaneBackend 接口（终端分屏操作：创建/销毁/隐藏/显示 Pane、设置边框颜色和标题、重排布局），TeammateExecutor 接口（高层 Teammate 生命周期：spawn/sendMessage/terminate/kill/isActive），以及 TeammateSpawnConfig、TeammateSpawnResult、TeammateMessage 等配套数据类型和 isPaneBackend 类型守卫",
+      "edges": [],
+      "codeScope": [
+        "src/utils/swarm/backends/types.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TypesAndInterfaces"
+      }
+    },
+    {
+      "name": "DetectionAndRegistry",
+      "description": "环境检测与后端注册中心。detection.ts 提供终端环境探测函数（isInsideTmux/isInITerm2/isTmuxAvailable/isIt2CliAvailable），在模块加载时捕获 TMUX/TMUX_PANE 环境变量并缓存结果。registry.ts 是后端选择的核心编排器——实现优先级检测流程（tmux 内部 → iTerm2+it2 → tmux 外部 → in-process 回退），通过动态 import 和自注册模式避免循环依赖，提供 getTeammateExecutor 统一入口和 isInProcessEnabled 模式判断，管理 TeammateMode 快照读取和 in-process 回退标记",
+      "edges": [
+        {
+          "target": "TypesAndInterfaces",
+          "type": "depends",
+          "description": "使用 PaneBackend、TeammateExecutor、BackendDetectionResult 等接口类型"
+        },
+        {
+          "target": "TmuxBackend",
+          "type": "calls",
+          "description": "通过动态 import 和 registerTmuxBackend 注册，按优先级创建 TmuxBackend 实例"
+        },
+        {
+          "target": "ITermBackend",
+          "type": "calls",
+          "description": "通过动态 import 和 registerITermBackend 注册，在 iTerm2 环境中创建 ITermBackend 实例"
+        },
+        {
+          "target": "InProcessBackend",
+          "type": "calls",
+          "description": "调用 createInProcessBackend 工厂函数创建进程内后端"
+        },
+        {
+          "target": "PaneBackendExecutor",
+          "type": "calls",
+          "description": "调用 createPaneBackendExecutor 将检测到的 PaneBackend 包装为 TeammateExecutor"
+        },
+        {
+          "target": "ConfigAndSetup",
+          "type": "depends",
+          "description": "registry 读取 getPreferTmuxOverIterm2 用户偏好和 getTeammateModeFromSnapshot 启动快照决定后端选择"
+        }
+      ],
+      "codeScope": [
+        "src/utils/swarm/backends/detection.ts",
+        "src/utils/swarm/backends/registry.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "DetectionAndRegistry"
+      }
+    },
+    {
+      "name": "TmuxBackend",
+      "description": "Tmux 终端后端实现（764 行）。实现 PaneBackend 接口的全部方法，支持两种运行模式：内部模式（在用户 tmux 会话中分屏，Leader 占 30% 左侧，Teammate 占 70% 右侧 main-vertical 布局）和外部模式（创建独立的 claude-swarm session 和 swarm-view window，所有 Teammate tiled 布局）。包含 Pane 创建锁机制防止并行竞态、Shell 初始化延迟等待、颜色/标题设置、hide/show（通过 break-pane/join-pane 实现）和 rebalance 布局管理。通过模块加载时副作用调用 registerTmuxBackend 自注册到 registry",
+      "edges": [
+        {
+          "target": "TypesAndInterfaces",
+          "type": "depends",
+          "description": "实现 PaneBackend 接口，使用 CreatePaneResult、PaneId 等类型"
+        }
+      ],
+      "codeScope": [
+        "src/utils/swarm/backends/TmuxBackend.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TmuxBackend"
+      }
+    },
+    {
+      "name": "ITermBackend",
+      "description": "iTerm2 原生分屏后端实现（370 行）。通过 it2 CLI 工具驱动 iTerm2 的 Python API 实现分屏管理。布局策略：Leader 在左，首个 Teammate 垂直分屏，后续 Teammate 从最后一个 Teammate session 水平分屏堆叠。包含死 session 检测与自动修剪重试机制（bounded O(N+1)）、Pane 创建锁、session ID 追踪。setPaneBorderColor/setPaneTitle/rebalancePanes 为 no-op（性能优化，每次 it2 调用都启动 Python 进程）。不支持 hide/show。通过模块加载时副作用自注册",
+      "edges": [
+        {
+          "target": "TypesAndInterfaces",
+          "type": "depends",
+          "description": "实现 PaneBackend 接口，使用 CreatePaneResult、PaneId 等类型"
+        }
+      ],
+      "codeScope": [
+        "src/utils/swarm/backends/ITermBackend.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ITermBackend"
+      }
+    },
+    {
+      "name": "InProcessBackend",
+      "description": "进程内 Teammate 后端实现（339 行）。实现 TeammateExecutor 接口，Teammate 在同一 Node.js 进程中通过 AsyncLocalStorage 隔离执行。spawn 调用 spawnInProcess 创建 TeammateContext 和 AbortController，然后 fire-and-forget 启动 inProcessRunner Agent 执行循环。通信使用与 Pane 后端相同的文件 Mailbox 机制。terminate 通过 Mailbox 发送 shutdown request 并设置 shutdownRequested 标记，kill 通过 AbortController 立即终止。isActive 检查 AppState 中任务状态和 abort 信号",
+      "edges": [
+        {
+          "target": "TypesAndInterfaces",
+          "type": "depends",
+          "description": "实现 TeammateExecutor 接口，使用 TeammateSpawnConfig/Result/Message 等类型"
+        }
+      ],
+      "codeScope": [
+        "src/utils/swarm/backends/InProcessBackend.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "InProcessBackend"
+      }
+    },
+    {
+      "name": "PaneBackendExecutor",
+      "description": "PaneBackend → TeammateExecutor 适配器（354 行）。将低层 PaneBackend 接口包装为高层 TeammateExecutor 接口，使 tmux/iTerm2 后端可通过统一抽象使用。spawn 方法：分配颜色 → 创建 Pane → 构建 CLI 命令（含 teammate 身份标志、继承的环境变量和 CLI 参数）→ 发送命令到 Pane → 通过 Mailbox 发送初始 prompt。维护 agentId→paneId 映射用于 kill/terminate。注册进程退出清理回调自动销毁所有 Pane。sendMessage/terminate 通过文件 Mailbox 通信",
+      "edges": [
+        {
+          "target": "TypesAndInterfaces",
+          "type": "depends",
+          "description": "实现 TeammateExecutor 接口，依赖 PaneBackend 接口委托底层操作"
+        }
+      ],
+      "codeScope": [
+        "src/utils/swarm/backends/PaneBackendExecutor.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PaneBackendExecutor"
+      }
+    },
+    {
+      "name": "ConfigAndSetup",
+      "description": "后端配置、安装引导与模式快照。it2Setup.ts 提供 it2 CLI 安装/验证工具链——检测 Python 包管理器（uv/pipx/pip 优先级）、安装 it2、验证 Python API 连通性、管理用户偏好（preferTmuxOverIterm2/it2SetupComplete 持久化到全局配置）。teammateModeSnapshot.ts 在会话启动时捕获 TeammateMode（auto/tmux/in-process），支持 CLI 覆盖和运行时清除，确保会话内模式一致。It2SetupPrompt.tsx 是 React/Ink 交互式安装引导 UI，引导用户完成 it2 安装和 Python API 启用",
+      "edges": [],
+      "codeScope": [
+        "src/utils/swarm/backends/it2Setup.ts",
+        "src/utils/swarm/backends/teammateModeSnapshot.ts",
+        "src/utils/swarm/It2SetupPrompt.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ConfigAndSetup"
+      }
+    }
+  ]
+}

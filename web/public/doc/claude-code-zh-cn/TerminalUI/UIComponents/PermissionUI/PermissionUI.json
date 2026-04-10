@@ -1,0 +1,136 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "42d6677e-a5b8-4dd3-b718-15e3e5e096b3",
+  "description": "权限请求 UI 系统。PermissionRequest.tsx 是总路由，根据工具类型分发到 12+ 种专用权限审批组件（Bash 命令执行、文件编辑/写入/读取、Notebook 编辑、PowerShell、WebFetch、Skill、Plan 模式切换、用户提问等）。每种权限请求有独立的预览展示和操作选项。还包含权限规则管理 UI（rules/ 子目录：规则列表、添加/删除工作区目录、拒绝历史）、通用权限对话框（PermissionDialog）、权限决策调试信息、Worker 徽章和待审批显示。",
+  "codeScope": [
+    "src/components/permissions/"
+  ],
+  "nodes": [
+    {
+      "name": "RouterAndShared",
+      "description": "权限请求路由与共享基础设施。PermissionRequest.tsx 是总路由，根据工具类型（BashTool、FileEditTool 等 15+ 种）分发到专用权限审批组件。共享层包括：PermissionDialog（带标题/边框的通用权限对话框容器）、PermissionPrompt（带反馈输入的操作选项选择器）、PermissionRequestTitle（标题栏含 Worker 徽章）、PermissionExplanation/PermissionRuleExplanation（权限决策解释）、PermissionDecisionDebugInfo（调试信息展示）、FallbackPermissionRequest（未匹配工具的通用回退 UI）、SandboxPermissionRequest（沙盒权限）、WorkerBadge/WorkerPendingPermission（Worker/队友权限标识与待审批显示）、hooks.ts（权限请求日志与分析 hooks）、utils.ts（工具函数）。",
+      "edges": [
+        {
+          "target": "ShellPermissions",
+          "type": "calls",
+          "description": "路由根据 BashTool/PowerShellTool 分发到 Shell 权限组件"
+        },
+        {
+          "target": "FilePermissions",
+          "type": "calls",
+          "description": "路由根据 FileEditTool/FileWriteTool/FileReadTool/GlobTool/GrepTool 分发到文件权限组件"
+        },
+        {
+          "target": "SpecializedPermissions",
+          "type": "calls",
+          "description": "路由根据 AskUserQuestionTool/NotebookEditTool/WebFetchTool/SkillTool/PlanMode/ComputerUse 等分发到专用组件"
+        }
+      ],
+      "codeScope": [
+        "src/components/permissions/PermissionRequest.tsx",
+        "src/components/permissions/PermissionDialog.tsx",
+        "src/components/permissions/PermissionPrompt.tsx",
+        "src/components/permissions/PermissionRequestTitle.tsx",
+        "src/components/permissions/PermissionExplanation.tsx",
+        "src/components/permissions/PermissionRuleExplanation.tsx",
+        "src/components/permissions/PermissionDecisionDebugInfo.tsx",
+        "src/components/permissions/FallbackPermissionRequest.tsx",
+        "src/components/permissions/SandboxPermissionRequest.tsx",
+        "src/components/permissions/WorkerBadge.tsx",
+        "src/components/permissions/WorkerPendingPermission.tsx",
+        "src/components/permissions/hooks.ts",
+        "src/components/permissions/utils.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "RouterAndShared"
+      }
+    },
+    {
+      "name": "ShellPermissions",
+      "description": "Shell 命令执行权限审批 UI 组。BashPermissionRequest 展示 Bash 命令预览、命令高亮和操作选项（允许/拒绝/始终允许等），bashToolUseOptions 定义 Bash 专用的操作选项配置。PowerShellPermissionRequest 提供 PowerShell 命令的类似审批体验，powershellToolUseOptions 定义其操作选项。SedEditPermissionRequest 处理 sed 编辑命令的权限请求。shellPermissionHelpers.tsx 封装 Shell 权限组件的共享工具（命令解析、路径提取、选项生成），useShellPermissionFeedback.ts 提供 Shell 权限反馈的统一 hook。",
+      "edges": [
+        {
+          "target": "RouterAndShared",
+          "type": "depends",
+          "description": "使用 PermissionDialog、PermissionPrompt 等共享组件和 hooks 构建审批界面"
+        }
+      ],
+      "codeScope": [
+        "src/components/permissions/BashPermissionRequest/",
+        "src/components/permissions/PowerShellPermissionRequest/",
+        "src/components/permissions/SedEditPermissionRequest/",
+        "src/components/permissions/shellPermissionHelpers.tsx",
+        "src/components/permissions/useShellPermissionFeedback.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ShellPermissions"
+      }
+    },
+    {
+      "name": "FilePermissions",
+      "description": "文件操作权限审批 UI 组。FilePermissionDialog/ 是共享的文件权限对话框框架：FilePermissionDialog.tsx 提供带 diff 预览和 IDE 打开功能的通用文件权限对话框，useFilePermissionDialog.ts 和 usePermissionHandler.ts 封装文件权限状态管理和决策处理逻辑，permissionOptions.tsx 定义文件操作类型和选项配置，ideDiffConfig.ts 配置 IDE diff 集成。FileEditPermissionRequest 展示文件编辑的结构化差异预览，FileWritePermissionRequest 展示文件写入内容预览（含 FileWriteToolDiff），FilesystemPermissionRequest 处理文件读取/Glob/Grep 等只读操作的权限确认。",
+      "edges": [
+        {
+          "target": "RouterAndShared",
+          "type": "depends",
+          "description": "使用 PermissionDialog、PermissionPrompt、hooks 等共享组件构建文件权限界面"
+        }
+      ],
+      "codeScope": [
+        "src/components/permissions/FilePermissionDialog/",
+        "src/components/permissions/FileEditPermissionRequest/",
+        "src/components/permissions/FileWritePermissionRequest/",
+        "src/components/permissions/FilesystemPermissionRequest/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "FilePermissions"
+      }
+    },
+    {
+      "name": "SpecializedPermissions",
+      "description": "专用权限审批组件集合，覆盖非 Shell/非文件的各类工具权限请求。AskUserQuestionPermissionRequest/ 是最复杂的一组（7 文件，2162 行），实现多步骤用户提问审批流程：问题预览（PreviewQuestionView/PreviewBox）、问题浏览导航（QuestionNavigationBar）、问题回答视图（QuestionView）、提交视图（SubmitQuestionsView）、多选状态管理（use-multiple-choice-state）。NotebookEditPermissionRequest 展示 Notebook 单元格编辑差异（NotebookEditToolDiff）。WebFetchPermissionRequest 展示 URL 抓取请求预览。SkillPermissionRequest 展示技能调用审批。EnterPlanModePermissionRequest/ExitPlanModePermissionRequest 处理 Plan 模式进入/退出确认（ExitPlanMode 包含复杂的计划展示逻辑，767 行）。ComputerUseApproval 处理计算机使用权限审批。",
+      "edges": [
+        {
+          "target": "RouterAndShared",
+          "type": "depends",
+          "description": "使用 PermissionDialog、PermissionPrompt、hooks 等共享组件构建各专用审批界面"
+        }
+      ],
+      "codeScope": [
+        "src/components/permissions/AskUserQuestionPermissionRequest/",
+        "src/components/permissions/NotebookEditPermissionRequest/",
+        "src/components/permissions/WebFetchPermissionRequest/",
+        "src/components/permissions/SkillPermissionRequest/",
+        "src/components/permissions/EnterPlanModePermissionRequest/",
+        "src/components/permissions/ExitPlanModePermissionRequest/",
+        "src/components/permissions/ComputerUseApproval/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SpecializedPermissions"
+      }
+    },
+    {
+      "name": "PermissionRules",
+      "description": "权限规则管理 UI。PermissionRuleList.tsx（1178 行）是核心组件，展示当前所有权限规则列表，支持按工具/路径/来源分组筛选，提供规则的启用/禁用/删除操作。AddPermissionRules.tsx 提供添加新权限规则的交互流程。PermissionRuleInput.tsx 是规则输入表单组件，PermissionRuleDescription.tsx 渲染单条规则的描述文本。WorkspaceTab.tsx 展示工作区目录配置标签页，AddWorkspaceDirectory.tsx 和 RemoveWorkspaceDirectory.tsx 处理工作区目录的添加和移除。RecentDenialsTab.tsx 展示最近被拒绝的权限请求历史，方便用户回顾和创建新规则。",
+      "edges": [
+        {
+          "target": "RouterAndShared",
+          "type": "depends",
+          "description": "使用 PermissionDialog 等共享组件，复用权限解释和调试信息展示"
+        }
+      ],
+      "codeScope": [
+        "src/components/permissions/rules/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PermissionRules"
+      }
+    }
+  ]
+}

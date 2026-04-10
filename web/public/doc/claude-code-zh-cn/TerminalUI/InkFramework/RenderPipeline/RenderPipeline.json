@@ -1,0 +1,126 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "9d9c7c51-5bfc-41ef-abed-da2a708d1f64",
+  "description": "多阶段渲染管线，将 DOM 树转换为终端输出。screen.ts（1486 行）实现高性能 Screen buffer（基于 TypedArray 的 cell 矩阵，CharPool/StylePool/HyperlinkPool 字符串池化，行级 diff 算法）。render-node-to-output.ts（1462 行）递归遍历 DOM 树，处理裁剪、滚动、溢出、绝对定位，将内容写入 Output buffer。output.ts 收集渲染操作并合成到 Screen。log-update.ts（773 行）实现终端增量更新（行级 diff、scroll region 优化、hyperlink 合并）。还包括边框渲染、搜索高亮、输出优化器。",
+  "codeScope": [
+    "src/ink/renderer.ts",
+    "src/ink/render-node-to-output.ts",
+    "src/ink/render-border.ts",
+    "src/ink/output.ts",
+    "src/ink/screen.ts",
+    "src/ink/render-to-screen.ts",
+    "src/ink/optimizer.ts",
+    "src/ink/frame.ts",
+    "src/ink/log-update.ts",
+    "src/ink/node-cache.ts",
+    "src/ink/line-width-cache.ts"
+  ],
+  "nodes": [
+    {
+      "name": "ScreenBuffer",
+      "description": "高性能 Screen 缓冲区核心数据结构。基于 TypedArray 实现 cell 矩阵（每个 cell 存储字符 ID、样式 ID、超链接 ID、宽度标记），提供三大字符串池化机制（CharPool ASCII 快速路径、StylePool SGR 样式缓存与转换、HyperlinkPool 超链接池化）。实现 createScreen 工厂、setCellAt 写入、cellAt/cellAtIndex 读取、blitRegion 区域拷贝、shiftRows 行移位、resetScreen 重置、diffEach 行级 diff 比较（整数 ID 比对而非字符串）、markNoSelectRegion 选区排除、以及 unionRect 脏区合并。这是整个渲染管线的中央数据交换格式。",
+      "edges": [],
+      "codeScope": [
+        "src/ink/screen.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ScreenBuffer"
+      }
+    },
+    {
+      "name": "DOMTraversal",
+      "description": "DOM 树递归遍历与渲染输出生成。render-node-to-output.ts（1462 行）是核心——递归遍历 DOM 树，处理 Yoga 布局坐标读取、overflow 裁剪、ScrollBox 滚动（含 DECSTBM 硬件滚动提示、分帧 drain、blit+shift 优化）、绝对定位节点渲染、文本样式应用、blit 快速路径（脏检测跳过未变子树）。render-border.ts 处理边框绘制（支持多种边框样式、四边独立颜色/dim、嵌入文本）。node-cache.ts 维护节点布局缓存（WeakMap 存储上帧位置/尺寸，支持 blit 优化和移除节点的 pending clear 管理，含绝对定位节点移除的全局污染标记）。",
+      "edges": [
+        {
+          "target": "OutputBuffer",
+          "type": "calls",
+          "description": "通过 Output 的 write/clip/unclip/blit/clear/noSelect/shift 方法将渲染操作写入缓冲区"
+        },
+        {
+          "target": "ScreenBuffer",
+          "type": "depends",
+          "description": "blit 快速路径从 prevScreen 读取未变区域直接拷贝到当前 Screen，跳过完整重绘"
+        }
+      ],
+      "codeScope": [
+        "src/ink/render-node-to-output.ts",
+        "src/ink/render-border.ts",
+        "src/ink/node-cache.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "DOMTraversal"
+      }
+    },
+    {
+      "name": "OutputBuffer",
+      "description": "渲染操作收集器与 Screen 合成层。output.ts（797 行）实现 Output 类，收集来自 DOM 遍历的多种操作（write/blit/clear/clip/unclip/noSelect/shift），维护裁剪栈（clip stack，支持嵌套裁剪区域交集计算），在 get() 方法中将所有操作按序应用到 Screen buffer。write 操作包含高性能字符处理管线：ANSI tokenize → grapheme 分段 → 双向文本重排 → 样式/超链接提取 → setCellAt 写入，并通过 charCache 缓存已处理的行（跨帧复用未变行的 tokenize + grapheme 结果）。line-width-cache.ts 提供 stringWidth 结果缓存，避免流式输出中重复度量不变行。",
+      "edges": [
+        {
+          "target": "ScreenBuffer",
+          "type": "calls",
+          "description": "通过 setCellAt、blitRegion、shiftRows、resetScreen、markNoSelectRegion 等函数将操作合成到 Screen cell 矩阵"
+        }
+      ],
+      "codeScope": [
+        "src/ink/output.ts",
+        "src/ink/line-width-cache.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "OutputBuffer"
+      }
+    },
+    {
+      "name": "TerminalDiff",
+      "description": "终端增量更新引擎。log-update.ts（773 行）实现 LogUpdate 类，核心 render() 方法对比前后帧的 Screen buffer 生成最小 Diff 补丁序列：逐行逐 cell 比对（利用 diffEach 整数 ID 快速比较），生成 cursorMove/stdout/styleStr/hyperlink 等 Patch 操作，支持 DECSTBM 硬件滚动优化（检测 ScrollHint 后发射 CSI scroll region + SU/SD 指令，仅重绘滚入行）、超链接 OSC 8 合并、全屏重置回退（viewport 变化/溢出时触发）。optimizer.ts 对 Diff 序列做单遍后处理优化：合并连续 cursorMove、折叠连续 cursorTo、拼接相邻 styleStr、去重连续同 URI 超链接、消除 cursorHide/Show 对、移除空操作。",
+      "edges": [
+        {
+          "target": "ScreenBuffer",
+          "type": "depends",
+          "description": "通过 cellAt、diffEach、charInCellAt 等函数读取前后帧 Screen 进行逐行 diff 比较"
+        }
+      ],
+      "codeScope": [
+        "src/ink/log-update.ts",
+        "src/ink/optimizer.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TerminalDiff"
+      }
+    },
+    {
+      "name": "PipelineOrchestration",
+      "description": "渲染管线编排与帧管理。renderer.ts（178 行）实现 createRenderer 工厂——管线主入口，编排双缓冲渲染循环：验证 Yoga 布局有效性 → 创建/复用 Output → 调用 renderNodeToOutput 遍历 DOM → 获取 Screen → 构建 Frame（含 viewport/cursor/scrollHint）。处理 alt-screen 高度钳制、prevFrame 污染检测（选区覆写/resize/强制重绘后禁用 blit）、scroll drain 续帧标记。frame.ts 定义 Frame/Patch/Diff 类型体系和 shouldClearScreen 判断逻辑。render-to-screen.ts 提供独立的搜索渲染路径——将单个 React 元素渲染到隔离 Screen（复用 reconciler/pools），扫描匹配位置（scanPositions），应用当前匹配高亮（applyPositionedHighlight）。",
+      "edges": [
+        {
+          "target": "DOMTraversal",
+          "type": "calls",
+          "description": "createRenderer 每帧调用 renderNodeToOutput 将 DOM 树遍历写入 Output"
+        },
+        {
+          "target": "OutputBuffer",
+          "type": "calls",
+          "description": "创建并复用 Output 实例，调用 output.get() 获取合成后的 Screen"
+        },
+        {
+          "target": "ScreenBuffer",
+          "type": "calls",
+          "description": "调用 createScreen 创建帧缓冲区，使用 CharPool/StylePool/HyperlinkPool 池化实例"
+        }
+      ],
+      "codeScope": [
+        "src/ink/renderer.ts",
+        "src/ink/frame.ts",
+        "src/ink/render-to-screen.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PipelineOrchestration"
+      }
+    }
+  ]
+}

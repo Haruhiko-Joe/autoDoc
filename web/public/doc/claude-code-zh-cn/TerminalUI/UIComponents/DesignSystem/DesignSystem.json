@@ -1,0 +1,221 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "56de0f7f-073b-4587-83dd-5b9e301ab929",
+  "description": "设计系统与展示原语层。design-system/ 提供主题系统（ThemeProvider、color、ThemedText/ThemedBox）、通用 UI 组件（Dialog、Pane、ProgressBar、Tabs、Divider、ListItem、StatusIcon、Byline、FuzzyPicker、KeyboardShortcutHint 等）。CustomSelect/ 实现自定义单选/多选控件，wizard/ 提供向导框架，ui/ 包含 TreeSelect 和有序列表。Spinner/ 实现多种加载动画（闪烁、微光、teammate 树形 spinner）。StructuredDiff/ 和 diff/ 提供差异对比展示，HighlightedCode 提供语法高亮，Markdown 渲染 Markdown 内容。还包含文本输入原语（BaseTextInput/TextInput/VimTextInput）、布局组件（FullscreenLayout）、搜索框、文件路径链接等通用 UI 构件。",
+  "codeScope": [
+    "src/components/design-system/",
+    "src/components/CustomSelect/",
+    "src/components/ui/",
+    "src/components/wizard/",
+    "src/components/Spinner/",
+    "src/components/Spinner.tsx",
+    "src/components/StructuredDiff/",
+    "src/components/StructuredDiff.tsx",
+    "src/components/StructuredDiffList.tsx",
+    "src/components/diff/",
+    "src/components/HighlightedCode/",
+    "src/components/HighlightedCode.tsx",
+    "src/components/Markdown.tsx",
+    "src/components/MarkdownTable.tsx",
+    "src/components/BaseTextInput.tsx",
+    "src/components/TextInput.tsx",
+    "src/components/VimTextInput.tsx",
+    "src/components/SearchBox.tsx",
+    "src/components/FullscreenLayout.tsx",
+    "src/components/OffscreenFreeze.tsx",
+    "src/components/ScrollKeybindingHandler.tsx",
+    "src/components/TagTabs.tsx",
+    "src/components/FilePathLink.tsx",
+    "src/components/ClickableImageRef.tsx",
+    "src/components/ConfigurableShortcutHint.tsx",
+    "src/components/PressEnterToContinue.tsx",
+    "src/components/CtrlOToExpand.tsx",
+    "src/components/ValidationErrorsList.tsx",
+    "src/components/FileEditToolDiff.tsx",
+    "src/components/SandboxViolationExpandedView.tsx"
+  ],
+  "nodes": [
+    {
+      "name": "ThemeSystem",
+      "description": "主题与展示原语核心层。ThemeProvider 提供主题上下文（亮/暗/系统主题切换），color.ts 定义颜色工具函数，ThemedText/ThemedBox 提供主题感知的文本和容器。还包含 Dialog（模态对话框壳）、Pane（面板容器）、Tabs（键盘导航标签页）、FuzzyPicker（模糊搜索选择器）、ListItem（可选中列表项）、Divider（分隔线）、ProgressBar（进度条）、StatusIcon（状态图标）、Byline（署名/元信息行）、KeyboardShortcutHint（快捷键提示）、LoadingState（加载态包装）、Ratchet（终端尺寸响应式组件）共 16 个基础组件，是整个 UI 组件库的视觉基石。",
+      "edges": [
+        {
+          "target": "TextInputPrimitives",
+          "type": "depends",
+          "description": "FuzzyPicker 内部使用 SearchBox 作为搜索输入框"
+        }
+      ],
+      "codeScope": [
+        "src/components/design-system/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ThemeSystem"
+      }
+    },
+    {
+      "name": "CustomSelect",
+      "description": "自定义单选/多选控件系统。select.tsx 是主选择器组件，支持键盘导航、搜索过滤、分组选项。SelectMulti 扩展为多选模式。内部通过 use-select-navigation（键盘导航逻辑）、use-select-state/use-multi-select-state（单选/多选状态管理）、use-select-input（输入处理）等 Hooks 实现复杂交互。select-option 和 select-input-option 提供两种选项渲染模式。共 10 个文件约 3000 行，是表单交互的核心控件。",
+      "edges": [
+        {
+          "target": "ThemeSystem",
+          "type": "depends",
+          "description": "使用 ListItem、Byline 等设计系统组件渲染选项和元信息"
+        },
+        {
+          "target": "TextInputPrimitives",
+          "type": "depends",
+          "description": "select-input-option 使用 TextInput 实现可编辑选项输入"
+        },
+        {
+          "target": "MiscUIWidgets",
+          "type": "depends",
+          "description": "使用 ClickableImageRef 和 ConfigurableShortcutHint 增强选项展示"
+        }
+      ],
+      "codeScope": [
+        "src/components/CustomSelect/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "CustomSelect"
+      }
+    },
+    {
+      "name": "SpinnerAnimations",
+      "description": "加载动画与进度指示系统。顶层 Spinner.tsx（约 560 行）是主入口，整合多种动画模式。Spinner/ 子目录实现具体动画：GlimmerMessage（闪烁文字效果，RGB 颜色插值）、FlashingChar/ShimmerChar（字符级闪烁/微光）、SpinnerGlyph（旋转字符）、SpinnerAnimationRow（动画行容器）。TeammateSpinnerTree/TeammateSpinnerLine 专为多 Agent 协作场景展示树形进度。useShimmerAnimation/useStalledAnimation 管理动画状态。共约 2000 行。",
+      "edges": [
+        {
+          "target": "ThemeSystem",
+          "type": "depends",
+          "description": "SpinnerAnimationRow 使用 Byline 展示加载状态附加信息"
+        }
+      ],
+      "codeScope": [
+        "src/components/Spinner/",
+        "src/components/Spinner.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SpinnerAnimations"
+      }
+    },
+    {
+      "name": "DiffDisplay",
+      "description": "差异对比展示系统。StructuredDiff.tsx 是结构化差异渲染入口，StructuredDiffList.tsx 渲染差异列表，StructuredDiff/ 子目录包含 Fallback 渲染器（约 486 行，带语法高亮和 NAPI 缓存）和 colorDiff.ts（语法着色工具）。diff/ 子目录提供高层级差异对话框：DiffDialog（差异查看器主界面）、DiffDetailView（单文件差异详情）、DiffFileList（差异文件列表导航）。FileEditToolDiff.tsx 为文件编辑工具提供专用差异视图。共约 1900 行。",
+      "edges": [
+        {
+          "target": "ThemeSystem",
+          "type": "depends",
+          "description": "DiffDialog 使用 Dialog 和 Byline 组件构建差异查看器界面"
+        }
+      ],
+      "codeScope": [
+        "src/components/StructuredDiff/",
+        "src/components/StructuredDiff.tsx",
+        "src/components/StructuredDiffList.tsx",
+        "src/components/diff/",
+        "src/components/FileEditToolDiff.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "DiffDisplay"
+      }
+    },
+    {
+      "name": "ContentRendering",
+      "description": "内容渲染组件。HighlightedCode.tsx 和 HighlightedCode/Fallback.tsx 提供代码语法高亮渲染（支持 NAPI 加速和纯文本回退）。Markdown.tsx 实现 Markdown 内容解析与终端渲染（token 解析、样式映射），MarkdownTable.tsx（约 320 行）处理 Markdown 表格的列宽计算和终端对齐渲染。共约 940 行。",
+      "edges": [
+        {
+          "target": "DiffDisplay",
+          "type": "depends",
+          "description": "HighlightedCode 使用 StructuredDiff/colorDiff 的语法着色能力"
+        }
+      ],
+      "codeScope": [
+        "src/components/HighlightedCode/",
+        "src/components/HighlightedCode.tsx",
+        "src/components/Markdown.tsx",
+        "src/components/MarkdownTable.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ContentRendering"
+      }
+    },
+    {
+      "name": "TextInputPrimitives",
+      "description": "文本输入原语层。BaseTextInput.tsx 是基础输入组件（光标定位、文本渲染），TextInput.tsx 在其上添加音频波形可视化支持，VimTextInput.tsx 集成 Vim 编辑模式。SearchBox.tsx 是搜索专用输入框（带搜索图标和快捷键提示）。四者形成继承式分层架构，共约 470 行。",
+      "edges": [],
+      "codeScope": [
+        "src/components/BaseTextInput.tsx",
+        "src/components/TextInput.tsx",
+        "src/components/VimTextInput.tsx",
+        "src/components/SearchBox.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TextInputPrimitives"
+      }
+    },
+    {
+      "name": "WizardAndTreeControls",
+      "description": "向导框架与树形控件。wizard/ 提供多步骤向导框架：WizardProvider 管理步骤状态和导航，WizardDialogLayout 提供对话框布局壳，WizardNavigationFooter 渲染上一步/下一步按钮，useWizard hook 暴露向导 API。ui/ 包含 TreeSelect（约 396 行，树形节点选择器，支持展开/折叠和键盘导航）、OrderedList/OrderedListItem（有序列表渲染）。共约 830 行。",
+      "edges": [
+        {
+          "target": "ThemeSystem",
+          "type": "depends",
+          "description": "WizardDialogLayout 基于 Dialog 组件构建向导对话框壳"
+        }
+      ],
+      "codeScope": [
+        "src/components/wizard/",
+        "src/components/ui/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "WizardAndTreeControls"
+      }
+    },
+    {
+      "name": "LayoutAndScroll",
+      "description": "布局管理与滚动控制。FullscreenLayout.tsx（约 636 行）实现全屏内容布局，管理终端尺寸适配、内容区域分割和溢出处理。ScrollKeybindingHandler.tsx（约 1011 行）是滚动行为的核心控制器，处理键盘驱动的滚动（Page Up/Down、Home/End 等）、滚动位置追踪和视口管理。OffscreenFreeze.tsx 在组件离开可视区域时冻结渲染以优化性能。共约 1690 行。",
+      "edges": [],
+      "codeScope": [
+        "src/components/FullscreenLayout.tsx",
+        "src/components/ScrollKeybindingHandler.tsx",
+        "src/components/OffscreenFreeze.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "LayoutAndScroll"
+      }
+    },
+    {
+      "name": "MiscUIWidgets",
+      "description": "独立通用 UI 小组件集合。TagTabs（标签式标签页切换）、FilePathLink（可点击文件路径链接）、ClickableImageRef（可交互图片引用）、ConfigurableShortcutHint（动态快捷键提示）、PressEnterToContinue（回车继续提示）、CtrlOToExpand（展开操作提示）、ValidationErrorsList（校验错误列表展示）、SandboxViolationExpandedView（沙盒违规详情展开视图）。每个组件职责单一、体量小（14-147 行），共约 620 行。",
+      "edges": [
+        {
+          "target": "ThemeSystem",
+          "type": "depends",
+          "description": "多个小组件使用 ThemedText、StatusIcon 等设计系统原语"
+        }
+      ],
+      "codeScope": [
+        "src/components/TagTabs.tsx",
+        "src/components/FilePathLink.tsx",
+        "src/components/ClickableImageRef.tsx",
+        "src/components/ConfigurableShortcutHint.tsx",
+        "src/components/PressEnterToContinue.tsx",
+        "src/components/CtrlOToExpand.tsx",
+        "src/components/ValidationErrorsList.tsx",
+        "src/components/SandboxViolationExpandedView.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "MiscUIWidgets"
+      }
+    }
+  ]
+}

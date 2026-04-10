@@ -1,0 +1,228 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "723a71eb-0de6-4e77-9325-8f48224f3671",
+  "description": "斜杠命令注册与加载系统。commands.ts 是中央注册表，聚合 80+ 内置命令、技能目录命令、插件命令和工作流命令，支持按可用性（auth provider）和特性门控过滤。src/commands/ 目录包含 200+ 文件，实现各类用户可调用的斜杠命令（/help、/compact、/config、/commit、/mcp、/review 等），涵盖会话管理、Git 操作、配置修改、诊断调试等功能域。",
+  "codeScope": [
+    "src/commands.ts",
+    "src/commands/"
+  ],
+  "nodes": [
+    {
+      "name": "CommandRegistry",
+      "description": "命令中央注册表与聚合引擎。commands.ts 从多个来源（80+ 内置命令、技能目录命令、插件命令、工作流命令、MCP 技能）收集并聚合所有斜杠命令，使用 memoize 缓存加载结果。提供按 auth provider 可用性过滤（meetsAvailabilityRequirement）、特性门控过滤（isCommandEnabled）、命令查找（findCommand/getCommand）、远程/桥接安全命令白名单（REMOTE_SAFE_COMMANDS/BRIDGE_SAFE_COMMANDS）、缓存清理（clearCommandsCache）、以及面向 SkillTool 的命令筛选（getSkillToolCommands/getSlashCommandToolSkills）。是整个命令系统的入口和调度中枢。",
+      "edges": [
+        {
+          "target": "SessionCommands",
+          "type": "composes",
+          "description": "注册并聚合会话管理类命令到统一命令列表"
+        },
+        {
+          "target": "ConfigCommands",
+          "type": "composes",
+          "description": "注册并聚合配置修改类命令到统一命令列表"
+        },
+        {
+          "target": "GitAndReviewCommands",
+          "type": "composes",
+          "description": "注册并聚合 Git 操作和代码审查类命令到统一命令列表"
+        },
+        {
+          "target": "IntegrationCommands",
+          "type": "composes",
+          "description": "注册并聚合外部集成类命令（含插件管理）到统一命令列表"
+        },
+        {
+          "target": "DiagnosticsCommands",
+          "type": "composes",
+          "description": "注册并聚合诊断和用量追踪类命令到统一命令列表"
+        },
+        {
+          "target": "HelpAndMiscCommands",
+          "type": "composes",
+          "description": "注册并聚合帮助、反馈和内部工具类命令到统一命令列表"
+        }
+      ],
+      "codeScope": [
+        "src/commands.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "CommandRegistry"
+      }
+    },
+    {
+      "name": "SessionCommands",
+      "description": "会话生命周期管理命令集。包含：/compact（上下文压缩）、/clear（清屏/清历史）、/context（添加上下文文件）、/resume（恢复历史会话）、/session（会话管理）、/rename（重命名会话）、/rewind（撤销操作）、/thinkback 和 /thinkback-play（推理回放）、/copy（复制输出）、/summary（对话摘要）、/files（列出追踪文件）、/export（导出对话）、/add-dir（添加工作目录）、/memory（管理记忆）、/exit（退出）、/tag（会话标签）。这些命令共同管理用户与 Claude 对话的创建、导航、维护和结束。",
+      "edges": [],
+      "codeScope": [
+        "src/commands/compact/",
+        "src/commands/clear/",
+        "src/commands/context/",
+        "src/commands/resume/",
+        "src/commands/session/",
+        "src/commands/rename/",
+        "src/commands/rewind/",
+        "src/commands/thinkback/",
+        "src/commands/thinkback-play/",
+        "src/commands/copy/",
+        "src/commands/summary/",
+        "src/commands/files/",
+        "src/commands/export/",
+        "src/commands/add-dir/",
+        "src/commands/memory/",
+        "src/commands/exit/",
+        "src/commands/tag/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SessionCommands"
+      }
+    },
+    {
+      "name": "ConfigCommands",
+      "description": "设置与行为配置命令集。包含：/config（编辑配置）、/model（切换模型）、/theme（主题）、/color（Agent 颜色）、/vim（Vim 模式）、/fast（快速模式）、/effort（推理深度）、/output-style（输出风格）、/keybindings（键绑定）、/permissions（权限管理）、/privacy-settings（隐私设置）、/hooks（钩子配置）、/sandbox-toggle（沙盒开关）、/plan（计划模式）、/statusline（状态栏）、/env 和 /remote-env（环境变量）、/rate-limit-options（限速选项）、/passes（多轮执行）、/stickers（贴纸）。这些命令允许用户自定义 Claude Code 的运行时行为和界面。",
+      "edges": [],
+      "codeScope": [
+        "src/commands/config/",
+        "src/commands/model/",
+        "src/commands/theme/",
+        "src/commands/color/",
+        "src/commands/vim/",
+        "src/commands/fast/",
+        "src/commands/effort/",
+        "src/commands/output-style/",
+        "src/commands/keybindings/",
+        "src/commands/permissions/",
+        "src/commands/privacy-settings/",
+        "src/commands/hooks/",
+        "src/commands/sandbox-toggle/",
+        "src/commands/plan/",
+        "src/commands/statusline.tsx",
+        "src/commands/env/",
+        "src/commands/remote-env/",
+        "src/commands/rate-limit-options/",
+        "src/commands/passes/",
+        "src/commands/stickers/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ConfigCommands"
+      }
+    },
+    {
+      "name": "GitAndReviewCommands",
+      "description": "Git 操作与代码审查命令集。包含：/commit（生成提交）、/commit-push-pr（一键提交推送建 PR）、/branch（分支管理）、/diff（查看差异）、/review 和 /ultrareview（PR 代码审查）、/security-review（安全审查）、/pr_comments（PR 评论）、/release-notes（发布说明生成）、/bughunter（Bug 检测）。这些命令为开发者提供完整的 Git 工作流支持，从代码变更到代码审查到发布管理。",
+      "edges": [],
+      "codeScope": [
+        "src/commands/commit.ts",
+        "src/commands/commit-push-pr.ts",
+        "src/commands/branch/",
+        "src/commands/diff/",
+        "src/commands/review.ts",
+        "src/commands/review/",
+        "src/commands/security-review.ts",
+        "src/commands/pr_comments/",
+        "src/commands/release-notes/",
+        "src/commands/bughunter/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "GitAndReviewCommands"
+      }
+    },
+    {
+      "name": "IntegrationCommands",
+      "description": "外部服务集成与环境配置命令集。包含：/mcp（MCP 服务器管理）、/ide（IDE 扩展安装）、/desktop（桌面应用集成）、/mobile（移动端二维码）、/install-github-app（GitHub App 安装向导，含 14 步 OAuth/API 配置流程）、/install-slack-app（Slack 应用安装）、/login 和 /logout（认证管理）、/chrome（Chrome 扩展）、/bridge（远程桥接）、/remote-setup（远程环境配置）、/voice（语音输入）、/upgrade（版本升级）、/agents（Agent 管理）、/terminalSetup（终端配置）、/onboarding（新手引导）、/plugin（插件市场浏览与管理，含 17 个 UI 组件）、/reload-plugins（重载插件）。",
+      "edges": [
+        {
+          "target": "ConfigCommands",
+          "type": "data-flow",
+          "description": "/login、/mcp、/plugin 等命令的执行结果会修改配置状态，影响配置命令的可见选项"
+        }
+      ],
+      "codeScope": [
+        "src/commands/mcp/",
+        "src/commands/ide/",
+        "src/commands/desktop/",
+        "src/commands/mobile/",
+        "src/commands/install-github-app/",
+        "src/commands/install-slack-app/",
+        "src/commands/login/",
+        "src/commands/logout/",
+        "src/commands/chrome/",
+        "src/commands/bridge/",
+        "src/commands/remote-setup/",
+        "src/commands/voice/",
+        "src/commands/upgrade/",
+        "src/commands/agents/",
+        "src/commands/terminalSetup/",
+        "src/commands/onboarding/",
+        "src/commands/plugin/",
+        "src/commands/reload-plugins/",
+        "src/commands/createMovedToPluginCommand.ts",
+        "src/commands/install.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "IntegrationCommands"
+      }
+    },
+    {
+      "name": "DiagnosticsCommands",
+      "description": "诊断调试与用量追踪命令集。包含：/cost（会话费用）、/usage 和 /extra-usage（API 用量）、/stats（统计信息）、/insights（会话分析报告，3200 行懒加载模块）、/status（运行状态）、/doctor（环境诊断）、/heapdump（内存转储）、/mock-limits 和 /reset-limits（限额模拟/重置）、/ant-trace（追踪）、/perf-issue（性能问题报告）、/debug-tool-call（调试工具调用）、/ctx_viz（上下文可视化）、/backfill-sessions（会话回填）、/break-cache（清除缓存）、/version（版本信息）、/oauth-refresh（OAuth 令牌刷新）。这些命令主要服务于开发者和内部维护人员。",
+      "edges": [],
+      "codeScope": [
+        "src/commands/cost/",
+        "src/commands/usage/",
+        "src/commands/extra-usage/",
+        "src/commands/stats/",
+        "src/commands/insights.ts",
+        "src/commands/status/",
+        "src/commands/doctor/",
+        "src/commands/heapdump/",
+        "src/commands/mock-limits/",
+        "src/commands/reset-limits/",
+        "src/commands/ant-trace/",
+        "src/commands/perf-issue/",
+        "src/commands/debug-tool-call/",
+        "src/commands/ctx_viz/",
+        "src/commands/backfill-sessions/",
+        "src/commands/break-cache/",
+        "src/commands/version.ts",
+        "src/commands/oauth-refresh/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "DiagnosticsCommands"
+      }
+    },
+    {
+      "name": "HelpAndMiscCommands",
+      "description": "帮助、反馈与杂项命令集。包含：/help（帮助信息）、/feedback（发送反馈）、/btw（快速备注）、/good-claude（正向反馈）、/tasks（任务列表）、/skills（技能列表）、/advisor（建议）、/issue（Issue 管理）、/autofix-pr（自动修复 PR）、/teleport（传送）、/share（分享会话）、/init 和 /init-verifiers（项目初始化）、/bridge-kick（桥接踢出）。还包含特性门控命令：/brief（简洁模式）、/ultraplan（深度规划）等。这些命令涵盖用户辅助、内部工具和实验性功能。",
+      "edges": [],
+      "codeScope": [
+        "src/commands/help/",
+        "src/commands/feedback/",
+        "src/commands/btw/",
+        "src/commands/good-claude/",
+        "src/commands/tasks/",
+        "src/commands/skills/",
+        "src/commands/advisor.ts",
+        "src/commands/issue/",
+        "src/commands/autofix-pr/",
+        "src/commands/teleport/",
+        "src/commands/share/",
+        "src/commands/init.ts",
+        "src/commands/init-verifiers.ts",
+        "src/commands/bridge-kick.ts",
+        "src/commands/brief.ts",
+        "src/commands/ultraplan.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "HelpAndMiscCommands"
+      }
+    }
+  ]
+}

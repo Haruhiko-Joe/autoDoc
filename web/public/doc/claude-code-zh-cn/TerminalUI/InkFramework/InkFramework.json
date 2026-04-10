@@ -1,0 +1,232 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "a9a2d743-8a8f-4338-ab30-b835656371bb",
+  "description": "深度定制的 Ink 终端渲染框架。包含 React reconciler、Yoga 布局引擎、DOM 抽象、输出优化器、边框/文本渲染管线、事件系统（键盘、鼠标点击、焦点、终端事件）、基础 UI 原语（Box、Text、ScrollBox、Button、Link 等 18 个组件）、以及终端 IO 层（同步输出、光标管理、屏幕查询）。这是整个终端 UI 的底层运行时。",
+  "codeScope": [
+    "src/ink/"
+  ],
+  "nodes": [
+    {
+      "name": "InkOrchestrator",
+      "description": "Ink 主类与渲染入口。ink.tsx（1700+ 行）是整个框架的中枢——管理 React fiber root 生命周期、调度渲染帧（throttled requestAnimationFrame 模式）、协调键盘/鼠标输入分发、驱动双缓冲渲染循环、处理 alt-screen 切换与终端 resize。root.ts 提供 render() 公共 API，instances.ts 管理多实例注册，constants.ts 定义帧率等全局常量。",
+      "edges": [
+        {
+          "target": "ReconcilerDOM",
+          "type": "calls",
+          "description": "创建 React reconciler fiber root，将 React 组件树挂载到虚拟 DOM"
+        },
+        {
+          "target": "RenderPipeline",
+          "type": "calls",
+          "description": "每帧调用 renderer 将 DOM 树渲染为 Screen buffer，再通过 LogUpdate 写入终端"
+        },
+        {
+          "target": "EventSystem",
+          "type": "calls",
+          "description": "接收 stdin 原始输入，解析为键盘/鼠标事件后通过 dispatcher 分发到 DOM 树"
+        },
+        {
+          "target": "TerminalIO",
+          "type": "calls",
+          "description": "使用 Terminal 接口写入 ANSI 序列，管理光标、滚动区域、鼠标追踪等终端模式"
+        },
+        {
+          "target": "ComponentsAndHooks",
+          "type": "composes",
+          "description": "包裹 App 根组件，提供 stdin/stdout/exit 等 Context 给组件树"
+        }
+      ],
+      "codeScope": [
+        "src/ink/ink.tsx",
+        "src/ink/root.ts",
+        "src/ink/instances.ts",
+        "src/ink/constants.ts",
+        "src/ink/warn.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "InkOrchestrator"
+      }
+    },
+    {
+      "name": "ReconcilerDOM",
+      "description": "React reconciler 适配层与虚拟 DOM 实现。reconciler.ts 实现完整的 react-reconciler HostConfig 接口（createInstance、appendChild、commitUpdate 等），将 React 组件操作映射为 DOM 节点变更。dom.ts 定义 DOMElement/TextNode 类型和树操作（创建节点、设置属性、标记脏节点、Yoga 布局节点关联）。focus.ts 实现焦点管理器（Tab 键导航、焦点环）。styles.ts 定义完整的样式类型系统（Flexbox 属性、边框、颜色、文本样式）并转换为 Yoga 布局属性。",
+      "edges": [
+        {
+          "target": "LayoutEngine",
+          "type": "calls",
+          "description": "DOM 节点创建时关联 Yoga 布局节点，样式变更时同步更新 Yoga 属性"
+        },
+        {
+          "target": "EventSystem",
+          "type": "depends",
+          "description": "reconciler 将事件处理器 props 存储到 DOM 节点的 _eventHandlers 字段供 dispatcher 读取"
+        },
+        {
+          "target": "TextProcessing",
+          "type": "calls",
+          "description": "DOM 文本节点使用 measureText、wrapText、expandTabs 等进行文本度量和换行"
+        }
+      ],
+      "codeScope": [
+        "src/ink/reconciler.ts",
+        "src/ink/dom.ts",
+        "src/ink/focus.ts",
+        "src/ink/styles.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ReconcilerDOM"
+      }
+    },
+    {
+      "name": "LayoutEngine",
+      "description": "Yoga 布局引擎封装层。yoga.ts 将 Yoga C++ 绑定适配为 LayoutNode 接口（支持 Flexbox 全属性：direction、wrap、justify、align、padding、margin、border、gap、minmax 约束、百分比尺寸、绝对定位等）。node.ts 定义 LayoutNode 抽象接口和枚举（Display、FlexDirection、MeasureMode 等）。geometry.ts 提供 Point/Size/Rectangle 几何原语。engine.ts 是工厂入口。",
+      "edges": [],
+      "codeScope": [
+        "src/ink/layout/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "LayoutEngine"
+      }
+    },
+    {
+      "name": "RenderPipeline",
+      "description": "多阶段渲染管线，将 DOM 树转换为终端输出。screen.ts（1486 行）实现高性能 Screen buffer（基于 TypedArray 的 cell 矩阵，CharPool/StylePool/HyperlinkPool 字符串池化，行级 diff 算法）。render-node-to-output.ts（1462 行）递归遍历 DOM 树，处理裁剪、滚动、溢出、绝对定位，将内容写入 Output buffer。output.ts 收集渲染操作并合成到 Screen。log-update.ts（773 行）实现终端增量更新（行级 diff、scroll region 优化、hyperlink 合并）。还包括边框渲染、搜索高亮、输出优化器。",
+      "edges": [
+        {
+          "target": "LayoutEngine",
+          "type": "depends",
+          "description": "读取 Yoga 计算后的布局结果（位置、尺寸）来确定每个节点的渲染区域"
+        },
+        {
+          "target": "TextProcessing",
+          "type": "calls",
+          "description": "使用 colorize、stringWidth、wrapAnsi 等处理文本着色、宽度计算、ANSI 截断"
+        },
+        {
+          "target": "TerminalIO",
+          "type": "calls",
+          "description": "LogUpdate 使用 CSI/OSC 序列生成终端 diff 补丁（光标移动、滚动区域、超链接）"
+        }
+      ],
+      "codeScope": [
+        "src/ink/renderer.ts",
+        "src/ink/render-node-to-output.ts",
+        "src/ink/render-border.ts",
+        "src/ink/output.ts",
+        "src/ink/screen.ts",
+        "src/ink/render-to-screen.ts",
+        "src/ink/optimizer.ts",
+        "src/ink/frame.ts",
+        "src/ink/log-update.ts",
+        "src/ink/node-cache.ts",
+        "src/ink/line-width-cache.ts"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "RenderPipeline"
+      }
+    },
+    {
+      "name": "EventSystem",
+      "description": "终端事件系统，实现类浏览器的事件模型。events/ 目录定义事件类型层次（TerminalEvent 基类 → KeyboardEvent/InputEvent/ClickEvent/FocusEvent/TerminalFocusEvent），dispatcher.ts 实现 W3C 风格的 capture/bubble 两阶段事件分发。parse-keypress.ts（800 行）将原始 stdin 字节流解析为结构化按键/鼠标事件（支持 Kitty 键盘协议、xterm 鼠标报告、CSI u 扩展键）。hit-test.ts 将鼠标坐标映射到 DOM 节点。selection.ts（917 行）实现终端文本选择（拖拽选择、双击选词、三击选行、Shift 扩展选区、滚动跟随）。",
+      "edges": [
+        {
+          "target": "TerminalIO",
+          "type": "depends",
+          "description": "parse-keypress 依赖 CSI/DEC 转义序列定义来识别特殊按键和鼠标报告格式"
+        },
+        {
+          "target": "LayoutEngine",
+          "type": "depends",
+          "description": "hit-test 读取节点的 Yoga 布局坐标来判断鼠标点击落在哪个 DOM 节点上"
+        }
+      ],
+      "codeScope": [
+        "src/ink/events/",
+        "src/ink/parse-keypress.ts",
+        "src/ink/hit-test.ts",
+        "src/ink/selection.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "EventSystem"
+      }
+    },
+    {
+      "name": "ComponentsAndHooks",
+      "description": "基础 UI 原语组件和框架级 React Hooks。components/ 包含 18 个核心组件：App（根组件，管理 stdin 监听、鼠标追踪、终端模式）、Box（Flexbox 容器）、Text（文本渲染）、ScrollBox（可滚动容器）、Button（按钮）、Link（超链接）、AlternateScreen（全屏模式）等，以及 Context 提供者（AppContext、StdinContext、ClockContext、TerminalSize/Focus Context、CursorDeclaration）。hooks/ 提供 12 个 Hooks：useInput（键盘输入监听）、useStdin（原始 stdin 访问）、useApp（退出控制）、useSelection（文本选择）、useTerminalViewport（视口信息）、useInterval/useAnimationFrame（定时器）等。",
+      "edges": [
+        {
+          "target": "ReconcilerDOM",
+          "type": "depends",
+          "description": "组件通过 JSX 创建 DOM 节点（ink-box、ink-text 等），样式 props 经 styles.ts 转换"
+        },
+        {
+          "target": "EventSystem",
+          "type": "depends",
+          "description": "组件注册 onClick/onKeyboard 等事件处理器，App 组件驱动 stdin 数据读取和事件解析"
+        },
+        {
+          "target": "TerminalIO",
+          "type": "calls",
+          "description": "useTerminalViewport 查询终端尺寸，useTerminalNotification 写入 OSC 通知序列"
+        }
+      ],
+      "codeScope": [
+        "src/ink/components/",
+        "src/ink/hooks/",
+        "src/ink/useTerminalNotification.ts",
+        "src/ink/measure-element.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ComponentsAndHooks"
+      }
+    },
+    {
+      "name": "TerminalIO",
+      "description": "终端 IO 层，封装所有底层终端通信。termio/ 目录（9 个文件，~2200 行）实现完整的 ANSI/VT 转义序列库：CSI 序列（光标移动、擦除、滚动区域、Kitty 键盘协议）、DEC 私有模式（鼠标追踪、alt screen、光标显隐）、OSC 序列（超链接、剪贴板、Tab 状态、iTerm2 扩展）、SGR 样式（前景/背景色、RGB/256 色、粗体/斜体等修饰）、ESC 序列，以及通用 tokenizer/parser。terminal.ts 封装终端写入（同步写、diff 写入、超链接渲染）和能力检测。terminal-querier.ts 通过 DA2/XTVERSION 查询终端类型。",
+      "edges": [],
+      "codeScope": [
+        "src/ink/termio/",
+        "src/ink/terminal.ts",
+        "src/ink/terminal-querier.ts",
+        "src/ink/terminal-focus-state.ts",
+        "src/ink/termio.ts",
+        "src/ink/clearTerminal.ts",
+        "src/ink/supports-hyperlinks.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TerminalIO"
+      }
+    },
+    {
+      "name": "TextProcessing",
+      "description": "文本处理工具集，提供终端文本的度量、变换和渲染支持。Ansi.tsx（291 行）是 ANSI 转义序列的 React 组件包装。stringWidth.ts 计算终端显示宽度（处理 CJK 全角、emoji、零宽字符）。colorize.ts 实现语法高亮着色（支持多种编程语言的 token 级着色）。bidi.ts 处理双向文本重排序。wrap-text.ts/wrapAnsi.ts 实现 ANSI 感知的文本换行。measure-text.ts 度量文本尺寸。squash-text-nodes.ts 合并相邻文本节点优化渲染。searchHighlight.ts 实现搜索结果高亮。tabstops.ts 处理制表符展开。widest-line.ts/get-max-width.ts 计算最大行宽。",
+      "edges": [],
+      "codeScope": [
+        "src/ink/Ansi.tsx",
+        "src/ink/bidi.ts",
+        "src/ink/colorize.ts",
+        "src/ink/stringWidth.ts",
+        "src/ink/wrapAnsi.ts",
+        "src/ink/wrap-text.ts",
+        "src/ink/measure-text.ts",
+        "src/ink/squash-text-nodes.ts",
+        "src/ink/tabstops.ts",
+        "src/ink/widest-line.ts",
+        "src/ink/searchHighlight.ts",
+        "src/ink/get-max-width.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TextProcessing"
+      }
+    }
+  ]
+}

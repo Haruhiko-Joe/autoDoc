@@ -1,0 +1,179 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "b4709f8e-8721-4fd6-97a0-c5eeec2b0cad",
+  "description": "MCP（Model Context Protocol）客户端实现。管理与外部 MCP 工具服务器的连接生命周期，支持 stdio/SSE/StreamableHTTP 三种传输协议。包含连接管理器、权限控制（channelPermissions/Allowlist）、认证流程（OAuth/XAA）、环境变量展开、claude.ai 集成、官方注册表查询等。",
+  "codeScope": [
+    "src/services/mcp/",
+    "src/services/mcpServerApproval.tsx"
+  ],
+  "nodes": [
+    {
+      "name": "ClientCore",
+      "description": "MCP 客户端核心实现。client.ts 是整个模块的中枢（3300+ 行），负责创建到 MCP 服务器的连接（支持 stdio/SSE/StreamableHTTP/WebSocket 四种传输协议）、初始化 MCP SDK Client 实例、获取工具列表（fetchToolsForClient）、资源列表（fetchResourcesForClient）、命令列表（fetchCommandsForClient）、执行工具调用（callTool）、处理重连逻辑、管理认证状态（needs-auth/step-up-auth）和 elicitation 交互。同时包含两个自定义传输实现：InProcessTransport（同进程双向管道）和 SdkControlTransport（SDK 控制消息桥接）。",
+      "edges": [
+        {
+          "target": "Auth",
+          "type": "calls",
+          "description": "使用 ClaudeAuthProvider 处理 OAuth/XAA 认证流程，调用 wrapFetchWithStepUpDetection 检测 step-up 认证需求"
+        },
+        {
+          "target": "Config",
+          "type": "calls",
+          "description": "调用 getAllMcpConfigs/isMcpServerDisabled 读取服务器配置，决定连接哪些 MCP 服务器"
+        },
+        {
+          "target": "TypesAndUtils",
+          "type": "depends",
+          "description": "依赖 MCPServerConnection/ScopedMcpServerConfig 等类型定义，使用 normalization/mcpStringUtils 等工具函数"
+        },
+        {
+          "target": "Integrations",
+          "type": "calls",
+          "description": "调用 markClaudeAiMcpConnected 标记 claude.ai 服务器已连接，使用 elicitationHandler 处理服务器交互请求"
+        }
+      ],
+      "codeScope": [
+        "src/services/mcp/client.ts",
+        "src/services/mcp/InProcessTransport.ts",
+        "src/services/mcp/SdkControlTransport.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ClientCore"
+      }
+    },
+    {
+      "name": "Auth",
+      "description": "MCP 认证子系统。包含三种认证机制：(1) auth.ts 实现完整的 OAuth 2.0 授权码流程（PKCE），包括 ClaudeAuthProvider、授权服务器发现、令牌存储/刷新/撤销、本地 HTTP 回调服务器、step-up 认证检测；(2) xaa.ts 实现企业级跨应用访问（XAA/SEP-990），通过 RFC 8693 令牌交换和 RFC 7523 JWT Bearer 授权实现无浏览器静默认证；(3) xaaIdpLogin.ts 实现企业 IdP 的 OIDC 登录流程，一次浏览器登录即可认证多个 MCP 服务器。",
+      "edges": [
+        {
+          "target": "TypesAndUtils",
+          "type": "depends",
+          "description": "依赖 McpHTTPServerConfig/McpSSEServerConfig 类型定义和日志工具函数"
+        }
+      ],
+      "codeScope": [
+        "src/services/mcp/auth.ts",
+        "src/services/mcp/xaa.ts",
+        "src/services/mcp/xaaIdpLogin.ts",
+        "src/services/mcp/oauthPort.ts"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "Auth"
+      }
+    },
+    {
+      "name": "Config",
+      "description": "MCP 服务器配置管理。config.ts（1578 行）负责从多个来源加载、合并、验证和持久化 MCP 服务器配置：全局配置（user）、项目配置（project/local）、企业托管配置（enterprise/managed）、claude.ai 远程配置、动态配置和插件配置。支持配置的启用/禁用、作用域过滤、策略限制、环境变量展开（envExpansion.ts），以及 JSON 文件的安全读写（原子写入+文件锁）。",
+      "edges": [
+        {
+          "target": "Integrations",
+          "type": "calls",
+          "description": "调用 fetchClaudeAIMcpConfigsIfEligible 从 claude.ai 获取组织级 MCP 服务器配置"
+        },
+        {
+          "target": "TypesAndUtils",
+          "type": "depends",
+          "description": "依赖 McpJsonConfigSchema/McpServerConfigSchema 等类型定义和 Schema 验证"
+        }
+      ],
+      "codeScope": [
+        "src/services/mcp/config.ts",
+        "src/services/mcp/envExpansion.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Config"
+      }
+    },
+    {
+      "name": "ConnectionLifecycle",
+      "description": "MCP 连接生命周期管理。useManageMCPConnections（1141 行）是核心 React Hook，在应用启动时批量连接所有已配置的 MCP 服务器，监听配置变更并动态增删连接，处理工具/资源/命令列表的变更通知，管理重连和启用/禁用切换。MCPConnectionManager.tsx 提供 React Context 包装，mcpServerApproval.tsx 处理项目级 MCP 服务器的首次信任审批对话框。",
+      "edges": [
+        {
+          "target": "ClientCore",
+          "type": "calls",
+          "description": "调用 getMcpToolsCommandsAndResources/reconnectMcpServerImpl/fetchToolsForClient 等函数执行实际的连接和数据获取"
+        },
+        {
+          "target": "Config",
+          "type": "calls",
+          "description": "调用 getClaudeCodeMcpConfigs/isMcpServerDisabled/setMcpServerEnabled 读取和修改服务器配置状态"
+        },
+        {
+          "target": "Channels",
+          "type": "calls",
+          "description": "在连接建立后注册频道通知监听器和权限中继处理器"
+        }
+      ],
+      "codeScope": [
+        "src/services/mcp/useManageMCPConnections.ts",
+        "src/services/mcp/MCPConnectionManager.tsx",
+        "src/services/mcpServerApproval.tsx"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ConnectionLifecycle"
+      }
+    },
+    {
+      "name": "Channels",
+      "description": "频道通知与权限中继系统。channelNotification.ts 实现 MCP 服务器作为消息频道（Discord/Slack/SMS 等）推送用户消息到对话的机制，包括频道资格验证、消息入队和 XML 标签包装。channelPermissions.ts 实现通过频道进行远程权限审批——当 Claude 遇到权限对话框时，同时通过活跃频道发送审批请求，人类可通过频道回复「yes」批准操作。channelAllowlist.ts 管理已批准的频道插件白名单（通过 GrowthBook 远程控制）。",
+      "edges": [
+        {
+          "target": "TypesAndUtils",
+          "type": "depends",
+          "description": "依赖 ConnectedMCPServer/MCPServerConnection 类型定义"
+        }
+      ],
+      "codeScope": [
+        "src/services/mcp/channelNotification.ts",
+        "src/services/mcp/channelPermissions.ts",
+        "src/services/mcp/channelAllowlist.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Channels"
+      }
+    },
+    {
+      "name": "Integrations",
+      "description": "外部服务集成。claudeai.ts 从 claude.ai 组织配置获取 MCP 服务器列表（使用 OAuth 令牌鉴权），支持去重和连接状态标记。officialRegistry.ts 预加载 Anthropic 官方 MCP 注册表，用于判断某个 URL 是否为官方认证的 MCP 服务器。vscodeSdkMcp.ts 处理 VS Code IDE 扩展的 MCP 服务器集成（通过 SSE/WebSocket 连接 IDE 暴露的 MCP 服务器）。elicitationHandler.ts 处理 MCP 服务器发起的 elicitation 请求（向用户收集输入），管理请求事件的分发和 hook 执行。",
+      "edges": [
+        {
+          "target": "TypesAndUtils",
+          "type": "depends",
+          "description": "依赖 ScopedMcpServerConfig/ConnectedMCPServer 类型定义"
+        }
+      ],
+      "codeScope": [
+        "src/services/mcp/claudeai.ts",
+        "src/services/mcp/officialRegistry.ts",
+        "src/services/mcp/vscodeSdkMcp.ts",
+        "src/services/mcp/elicitationHandler.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "Integrations"
+      }
+    },
+    {
+      "name": "TypesAndUtils",
+      "description": "共享类型定义与工具函数。types.ts 定义 MCP 模块的核心类型体系：ConfigScope（配置作用域枚举）、Transport（传输协议枚举）、各传输协议的配置 Schema（McpStdioServerConfig/McpSSEServerConfig/McpHTTPServerConfig 等）、MCPServerConnection（服务器连接状态）、ConnectedMCPServer 等。utils.ts 提供服务器过滤、状态查询、安全 URL 处理、Agent 信息构建等通用工具。mcpStringUtils.ts/normalization.ts 处理 MCP 工具名称的解析和服务器名称规范化。headersHelper.ts 通过外部脚本动态获取 MCP 服务器请求头。",
+      "edges": [],
+      "codeScope": [
+        "src/services/mcp/types.ts",
+        "src/services/mcp/utils.ts",
+        "src/services/mcp/mcpStringUtils.ts",
+        "src/services/mcp/normalization.ts",
+        "src/services/mcp/headersHelper.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TypesAndUtils"
+      }
+    }
+  ]
+}

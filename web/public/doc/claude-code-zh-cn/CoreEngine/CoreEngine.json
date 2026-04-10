@@ -1,0 +1,124 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "46f0a223-5e3b-4979-bf56-8b0d9fe05cca",
+  "description": "核心对话与查询引擎，包含 QueryEngine（消息流处理与工具编排主循环）、query.ts（消息规范化、Token 预算管理、自动压缩触发）、上下文构建（系统提示词、CLAUDE.md、Git 状态注入）、以及命令注册系统。这是整个应用的\"大脑\"。",
+  "codeScope": [
+    "src/QueryEngine.ts",
+    "src/query.ts",
+    "src/query/",
+    "src/context.ts",
+    "src/commands.ts",
+    "src/commands/",
+    "src/cost-tracker.ts",
+    "src/costHook.ts",
+    "src/history.ts"
+  ],
+  "nodes": [
+    {
+      "name": "QueryEngine",
+      "description": "会话级查询引擎类（QueryEngine class），管理多轮对话的完整生命周期。负责初始化系统提示词、构建 ToolUseContext、封装 canUseTool 权限跟踪、协调模型选择（含 fast mode 和 thinking config）、处理 SDK 消息流（submitMessage async generator）、管理文件状态缓存和会话持久化。每个对话实例对应一个 QueryEngine，是 SDK/Headless 路径的核心入口。",
+      "edges": [
+        {
+          "target": "QueryLoop",
+          "type": "calls",
+          "description": "submitMessage 内部调用 query() 函数执行每一轮的模型交互主循环"
+        },
+        {
+          "target": "ContextBuilder",
+          "type": "calls",
+          "description": "通过 fetchSystemPromptParts 获取系统提示词、用户上下文（CLAUDE.md）和系统上下文（Git 状态）"
+        },
+        {
+          "target": "CommandSystem",
+          "type": "depends",
+          "description": "加载可用的斜杠命令列表，通过 getSlashCommandToolSkills 将命令暴露为工具技能"
+        },
+        {
+          "target": "CostTracking",
+          "type": "depends",
+          "description": "从 cost-tracker 读取 getModelUsage、getTotalCost 等用于 SDK 状态报告"
+        }
+      ],
+      "codeScope": [
+        "src/QueryEngine.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "QueryEngine"
+      }
+    },
+    {
+      "name": "QueryLoop",
+      "description": "单轮查询主循环（query 函数），是模型交互和工具编排的核心状态机。包含：消息规范化与 API 格式转换、流式模型调用与响应解析、工具执行编排（含流式并行执行）、Token 预算管理与自动续写、自动压缩触发（autoCompact/microcompact/reactiveCompact）、stop hooks 执行（任务完成检测、记忆提取、teammate idle 通知）、max_output_tokens 恢复循环、以及查询配置快照（QueryConfig/QueryDeps 依赖注入）。",
+      "edges": [
+        {
+          "target": "CostTracking",
+          "type": "data-flow",
+          "description": "查询循环中的 token 使用数据通过 API 层累计到 cost-tracker 的全局状态"
+        }
+      ],
+      "codeScope": [
+        "src/query.ts",
+        "src/query/config.ts",
+        "src/query/deps.ts",
+        "src/query/stopHooks.ts",
+        "src/query/tokenBudget.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "QueryLoop"
+      }
+    },
+    {
+      "name": "ContextBuilder",
+      "description": "系统提示词上下文构建器。getSystemContext 收集 Git 状态（分支、最近提交、工作区变更）并支持缓存打破注入；getUserContext 加载 CLAUDE.md 配置文件（多目录发现）和当前日期。两者均使用 memoize 缓存，在会话期间只计算一次。结果作为 system prompt 的组成部分注入到每轮查询中。",
+      "edges": [],
+      "codeScope": [
+        "src/context.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ContextBuilder"
+      }
+    },
+    {
+      "name": "CommandSystem",
+      "description": "斜杠命令注册与加载系统。commands.ts 是中央注册表，聚合 80+ 内置命令、技能目录命令、插件命令和工作流命令，支持按可用性（auth provider）和特性门控过滤。src/commands/ 目录包含 200+ 文件，实现各类用户可调用的斜杠命令（/help、/compact、/config、/commit、/mcp、/review 等），涵盖会话管理、Git 操作、配置修改、诊断调试等功能域。",
+      "edges": [],
+      "codeScope": [
+        "src/commands.ts",
+        "src/commands/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "CommandSystem"
+      }
+    },
+    {
+      "name": "CostTracking",
+      "description": "会话费用与 Token 用量追踪系统。cost-tracker.ts 提供 addToTotalSessionCost（按模型累计输入/输出/缓存 token 和 USD 费用）、formatTotalCost（终端友好的费用摘要格式化）、以及会话费用的持久化存储与恢复（saveCurrentSessionCosts/restoreCostStateForSession）。costHook.ts 是一个 React hook，在进程退出时输出费用摘要。",
+      "edges": [],
+      "codeScope": [
+        "src/cost-tracker.ts",
+        "src/costHook.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "CostTracking"
+      }
+    },
+    {
+      "name": "InputHistory",
+      "description": "用户输入历史管理。负责会话间输入历史的持久化（基于 JSONL 的 append-only 存储），支持粘贴内容的引用与还原（将大文本/图片替换为 [Pasted text #N] 引用，通过 hash 引用外部存储的大内容），提供历史条目的读取、写入和文件锁管理。",
+      "edges": [],
+      "codeScope": [
+        "src/history.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "InputHistory"
+      }
+    }
+  ]
+}

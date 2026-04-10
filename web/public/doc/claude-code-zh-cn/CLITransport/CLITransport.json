@@ -1,0 +1,97 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "ef524a1b-4d70-4f90-b8c1-79c0ee4f4b4a",
+  "description": "CLI 通信与 IO 层。cli/ 目录包含命令处理器（handlers/）、输出格式化（print、NDJSON、结构化 IO）、传输协议适配和版本更新检查。负责 CLI 模式下的输入解析、输出序列化和进程间通信。",
+  "codeScope": [
+    "src/cli/"
+  ],
+  "nodes": [
+    {
+      "name": "PrintEngine",
+      "description": "CLI 主输出引擎。print.ts 是整个 CLI 模式的核心控制器（5600+ 行），负责 REPL 循环驱动、消息流处理、工具执行编排、输出格式化和会话状态管理。配合 ndjsonSafeStringify（安全 JSON 序列化）和 exit（退出状态码工具）完成完整的 CLI 输出管道。",
+      "edges": [
+        {
+          "target": "StructuredIO",
+          "type": "depends",
+          "description": "print.ts 导入 StructuredIO 和 RemoteIO，在 SDK/远程模式下委托给结构化 IO 层处理输入输出"
+        },
+        {
+          "target": "CommandHandlers",
+          "type": "calls",
+          "description": "根据 CLI 子命令动态导入对应的 handler 执行"
+        }
+      ],
+      "codeScope": [
+        "src/cli/print.ts",
+        "src/cli/ndjsonSafeStringify.ts",
+        "src/cli/exit.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PrintEngine"
+      }
+    },
+    {
+      "name": "StructuredIO",
+      "description": "SDK 结构化 IO 协议层。StructuredIO 基类（859 行）实现 stdin/stdout 上的 NDJSON 双向通信协议——处理权限请求/响应、工具调用审批、Hook 回调、会话状态同步等 SDK 控制消息。RemoteIO 子类（255 行）扩展为远程传输模式，通过 WebSocket/SSE 连接云端运行时（CCR），支持会话追踪和断线重连。",
+      "edges": [
+        {
+          "target": "Transports",
+          "type": "depends",
+          "description": "RemoteIO 依赖 transports 目录下的传输实现（SSE、WebSocket、CCR Client）建立远程连接"
+        }
+      ],
+      "codeScope": [
+        "src/cli/structuredIO.ts",
+        "src/cli/remoteIO.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "StructuredIO"
+      }
+    },
+    {
+      "name": "Transports",
+      "description": "传输协议适配层。实现三种传输策略：WebSocketTransport（全双工 WS）、SSETransport（SSE 读 + HTTP POST 写）、HybridTransport（WS 读 + HTTP POST 写）。还包含 CCRClient（云端运行时客户端，998 行）、SerialBatchEventUploader（串行批量上传）、WorkerStateUploader（Worker 状态上传）和 transportUtils（传输选择工厂）。",
+      "edges": [],
+      "codeScope": [
+        "src/cli/transports/"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "Transports"
+      }
+    },
+    {
+      "name": "CommandHandlers",
+      "description": "CLI 子命令处理器集合。为 `claude <subcommand>` 提供延迟加载的命令实现：auth（OAuth 登录/登出/状态查询）、agents（Agent 列表展示）、mcp（MCP 服务器配置与健康检查）、plugins（插件市场安装/卸载/管理）、autoMode（自动模式规则导出与校验）、util（通用工具命令）。",
+      "edges": [
+        {
+          "target": "PrintEngine",
+          "type": "depends",
+          "description": "handlers 使用 exit.ts 的 cliError/cliOk 函数返回退出状态码"
+        }
+      ],
+      "codeScope": [
+        "src/cli/handlers/"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "CommandHandlers"
+      }
+    },
+    {
+      "name": "UpdateChecker",
+      "description": "版本更新检查与安装器。实现 `claude update` 命令，检测当前版本与最新版本的差异，支持多种安装方式（npm 全局、本地安装、原生安装器）的自动更新，处理安装诊断、补全缓存重建和更新通道（latest/beta）切换。",
+      "edges": [],
+      "codeScope": [
+        "src/cli/update.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "UpdateChecker"
+      }
+    }
+  ]
+}

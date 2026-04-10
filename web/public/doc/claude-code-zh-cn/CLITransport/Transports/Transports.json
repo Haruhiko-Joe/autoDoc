@@ -1,0 +1,122 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "94f2aeca-74ef-4d71-bd8e-2d6d466dc87d",
+  "description": "传输协议适配层。实现三种传输策略：WebSocketTransport（全双工 WS）、SSETransport（SSE 读 + HTTP POST 写）、HybridTransport（WS 读 + HTTP POST 写）。还包含 CCRClient（云端运行时客户端，998 行）、SerialBatchEventUploader（串行批量上传）、WorkerStateUploader（Worker 状态上传）和 transportUtils（传输选择工厂）。",
+  "codeScope": [
+    "src/cli/transports/"
+  ],
+  "nodes": [
+    {
+      "name": "WebSocketTransport",
+      "description": "全双工 WebSocket 传输实现（800 行）。基础传输策略，通过 WS 同时处理读写。实现自动重连（指数退避 + 睡眠检测）、keep-alive/ping 心跳、消息缓冲（CircularBuffer）、会话活动回调注册。支持 mTLS 和代理配置。定义了传输状态机：connecting → connected → reconnecting → closed。",
+      "edges": [],
+      "codeScope": [
+        "src/cli/transports/WebSocketTransport.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "WebSocketTransport"
+      }
+    },
+    {
+      "name": "SSETransport",
+      "description": "SSE 读 + HTTP POST 写的传输实现（711 行）。通过 Server-Sent Events 流接收服务端消息，通过独立 HTTP POST 发送客户端消息。内含增量 SSE 帧解析器（parseSSEFrames）、自动重连（带 Last-Event-ID 恢复）、活性超时检测（45s 静默判定断线）、POST 重试逻辑（指数退避，最多 10 次）。用于 CCR v2 模式。",
+      "edges": [],
+      "codeScope": [
+        "src/cli/transports/SSETransport.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SSETransport"
+      }
+    },
+    {
+      "name": "HybridTransport",
+      "description": "WebSocket 读 + HTTP POST 写的混合传输实现（282 行）。继承 WebSocketTransport 的 WS 读通道，重写写入路径为 HTTP POST。使用 SerialBatchEventUploader 实现串行化写入，避免并发 POST 导致 Firestore 写冲突。stream_event 消息先在 100ms 延迟缓冲区中累积，减少 POST 频率。",
+      "edges": [
+        {
+          "target": "WebSocketTransport",
+          "type": "extends",
+          "description": "继承 WebSocketTransport，复用其 WS 连接和读通道实现"
+        },
+        {
+          "target": "UploadPrimitives",
+          "type": "depends",
+          "description": "使用 SerialBatchEventUploader 实现串行批量 POST 写入"
+        }
+      ],
+      "codeScope": [
+        "src/cli/transports/HybridTransport.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "HybridTransport"
+      }
+    },
+    {
+      "name": "CCRClient",
+      "description": "云端运行时（Cloud Code Runtime）客户端（998 行）。作为 Worker 端与 CCR 服务端的完整通信客户端：注册 Worker、发送心跳（20s 间隔）、上传事件（stream_event 批量合并 + 文本增量快照累积）、上传 Worker 状态、轮询客户端事件、处理认证刷新和连续 401 熔断。协调 SerialBatchEventUploader 和 WorkerStateUploader 两个上传原语。",
+      "edges": [
+        {
+          "target": "UploadPrimitives",
+          "type": "depends",
+          "description": "使用 SerialBatchEventUploader 上传事件，使用 WorkerStateUploader 上传 Worker 状态"
+        },
+        {
+          "target": "SSETransport",
+          "type": "depends",
+          "description": "引用 SSETransport 的 StreamClientEvent 类型定义"
+        }
+      ],
+      "codeScope": [
+        "src/cli/transports/ccrClient.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "CCRClient"
+      }
+    },
+    {
+      "name": "UploadPrimitives",
+      "description": "上传原语库（共 406 行）。SerialBatchEventUploader（275 行）：通用串行批量上传器，保证最多一个 POST 在途，支持按条数/字节数分批、指数退避重试、背压控制（队列满时阻塞 enqueue）、RetryableError 支持 Retry-After 头。WorkerStateUploader（131 行）：Worker 状态合并上传器，最多 1 在途 + 1 挂起，新 patch 自动合并（RFC 7396 merge），重试时吸收等待中的 patch。",
+      "edges": [],
+      "codeScope": [
+        "src/cli/transports/SerialBatchEventUploader.ts",
+        "src/cli/transports/WorkerStateUploader.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "UploadPrimitives"
+      }
+    },
+    {
+      "name": "TransportFactory",
+      "description": "传输选择工厂（45 行）。getTransportForUrl 函数根据环境变量和 URL 协议选择传输策略：CLAUDE_CODE_USE_CCR_V2 → SSETransport，CLAUDE_CODE_POST_FOR_SESSION_INGRESS_V2 → HybridTransport，默认 → WebSocketTransport。负责 URL 协议转换（wss→https）和 SSE 流路径拼接。",
+      "edges": [
+        {
+          "target": "WebSocketTransport",
+          "type": "calls",
+          "description": "默认情况下创建 WebSocketTransport 实例"
+        },
+        {
+          "target": "SSETransport",
+          "type": "calls",
+          "description": "CCR v2 模式下创建 SSETransport 实例"
+        },
+        {
+          "target": "HybridTransport",
+          "type": "calls",
+          "description": "POST ingress v2 模式下创建 HybridTransport 实例"
+        }
+      ],
+      "codeScope": [
+        "src/cli/transports/transportUtils.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "TransportFactory"
+      }
+    }
+  ]
+}

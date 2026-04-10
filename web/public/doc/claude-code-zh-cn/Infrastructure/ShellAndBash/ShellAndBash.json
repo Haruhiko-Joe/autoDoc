@@ -1,0 +1,132 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "4d474ecd-fb13-4b66-92db-17e26f2aab32",
+  "description": "Shell 执行与 Bash 解析基础设施。Shell.ts/ShellCommand.ts 管理子进程生命周期和命令执行，bash/ 包含完整的 Bash AST 解析器（基于 tree-sitter）、管道命令处理和 Shell 补全，shell/ 管理 Shell 会话状态和环境快照，powershell/ 提供 Windows PowerShell 支持。",
+  "codeScope": [
+    "src/utils/Shell.ts",
+    "src/utils/ShellCommand.ts",
+    "src/utils/shellConfig.ts",
+    "src/utils/bash/",
+    "src/utils/shell/",
+    "src/utils/powershell/"
+  ],
+  "nodes": [
+    {
+      "name": "ShellExecution",
+      "description": "子进程生命周期管理与命令执行核心。Shell.ts 封装子进程 spawn/kill/background 操作和 Shell 选择逻辑（findSuitableShell），ShellCommand.ts 定义 ShellCommand 类型（封装流式输出收集、超时处理、后台化、磁盘输出溢出监控），shellConfig.ts 管理 Shell 配置文件（.bashrc/.zshrc）中的 claude alias 安装和清理",
+      "edges": [
+        {
+          "target": "ShellProviders",
+          "type": "calls",
+          "description": "Shell.ts 根据平台创建 BashShellProvider 或 PowerShellProvider，通过 ShellProvider 接口构建执行命令并获取 spawn 参数"
+        }
+      ],
+      "codeScope": [
+        "src/utils/Shell.ts",
+        "src/utils/ShellCommand.ts",
+        "src/utils/shellConfig.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ShellExecution"
+      }
+    },
+    {
+      "name": "BashParsing",
+      "description": "完整的 Bash 解析管线，从源码到安全分析。bashParser.ts 是纯 TypeScript 实现的 Bash tokenizer/parser（4400+ 行，产出 tree-sitter 兼容 AST），ast.ts 基于 AST 白名单机制提取 argv 用于安全分类（fail-closed 设计），treeSitterAnalysis.ts 提取引号上下文/复合结构/危险模式等安全元数据，commands.ts 处理命令拆分和输出重定向提取，ParsedCommand.ts 定义统一的解析命令接口。还包含 shell 引号处理（shellQuote/shellQuoting）、heredoc 提取恢复、管道命令重排（bashPipeCommand）等字符串操作工具",
+      "edges": [],
+      "codeScope": [
+        "src/utils/bash/bashParser.ts",
+        "src/utils/bash/parser.ts",
+        "src/utils/bash/ast.ts",
+        "src/utils/bash/treeSitterAnalysis.ts",
+        "src/utils/bash/commands.ts",
+        "src/utils/bash/ParsedCommand.ts",
+        "src/utils/bash/heredoc.ts",
+        "src/utils/bash/shellQuote.ts",
+        "src/utils/bash/shellQuoting.ts",
+        "src/utils/bash/bashPipeCommand.ts",
+        "src/utils/bash/shellPrefix.ts"
+      ],
+      "child": {
+        "type": "graph",
+        "ref": "BashParsing"
+      }
+    },
+    {
+      "name": "ShellProviders",
+      "description": "Shell 提供者抽象层与具体实现。shellProvider.ts 定义 ShellProvider 接口（buildExecCommand/getSpawnArgs/getEnvironmentOverrides），bashProvider.ts 实现 Bash 提供者（环境快照加载、extglob 安全禁用、tmux 集成、stdin 重定向、pwd 追踪），powershellProvider.ts 实现 PowerShell 提供者（Base64 编码命令传输、exit code 捕获），ShellSnapshot.ts 创建 Shell 环境快照脚本（内置工具函数覆盖 rg/bfs 等），还包括默认 Shell 解析、输出限制配置和工具启用检测",
+      "edges": [
+        {
+          "target": "BashParsing",
+          "type": "depends",
+          "description": "bashProvider 依赖 bash/ 目录的引号处理（shellQuote）、管道重排（bashPipeCommand）、前缀格式化（shellPrefix）和环境快照（ShellSnapshot）"
+        }
+      ],
+      "codeScope": [
+        "src/utils/shell/shellProvider.ts",
+        "src/utils/shell/bashProvider.ts",
+        "src/utils/shell/powershellProvider.ts",
+        "src/utils/shell/resolveDefaultShell.ts",
+        "src/utils/shell/shellToolUtils.ts",
+        "src/utils/shell/outputLimits.ts",
+        "src/utils/bash/ShellSnapshot.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ShellProviders"
+      }
+    },
+    {
+      "name": "CommandPrefixAndValidation",
+      "description": "命令前缀提取、规格系统和安全验证。registry.ts 加载 Fig(@withfig/autocomplete) 命令规格，specs/ 目录包含自定义命令规格（alias/nohup/timeout/srun 等），prefix.ts 和 specPrefix.ts 通过规格树遍历提取命令前缀（如 'git status'），shell/prefix.ts 通过 Haiku LLM 提取复杂命令前缀，readOnlyCommandValidation.ts（1900 行）定义 Git/gh/外部命令的只读安全标志映射表，shellCompletion.ts 提供 Shell 命令补全（通过执行 compgen/complete 获取候选）",
+      "edges": [
+        {
+          "target": "BashParsing",
+          "type": "depends",
+          "description": "前缀提取依赖 bash parser 解析命令结构和提取命令参数"
+        },
+        {
+          "target": "ShellExecution",
+          "type": "calls",
+          "description": "shellCompletion 调用 Shell.exec 执行 compgen/complete 命令获取补全候选"
+        }
+      ],
+      "codeScope": [
+        "src/utils/bash/prefix.ts",
+        "src/utils/bash/registry.ts",
+        "src/utils/bash/specs/",
+        "src/utils/shell/specPrefix.ts",
+        "src/utils/shell/prefix.ts",
+        "src/utils/shell/readOnlyCommandValidation.ts",
+        "src/utils/bash/shellCompletion.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "CommandPrefixAndValidation"
+      }
+    },
+    {
+      "name": "PowerShell",
+      "description": "Windows PowerShell 解析与安全支持。parser.ts（1800 行）通过调用 pwsh 进程获取 PowerShell AST（JSON 序列化），解析管道元素、命令参数、脚本块等结构；dangerousCmdlets.ts 定义危险 cmdlet 集合（Invoke-Expression、Start-Process 等代码执行类 cmdlet）；staticPrefix.ts 从 PowerShell AST 提取命令前缀用于权限对话框建议；powershellDetection.ts 探测系统中的 pwsh/powershell 路径（处理 Snap 启动器挂起问题）",
+      "edges": [
+        {
+          "target": "CommandPrefixAndValidation",
+          "type": "depends",
+          "description": "PowerShell staticPrefix 复用 specPrefix 的 Fig 规格遍历和 registry 的命令规格加载，处理跨 Shell 的外部命令（git/npm 等）"
+        }
+      ],
+      "codeScope": [
+        "src/utils/powershell/dangerousCmdlets.ts",
+        "src/utils/powershell/parser.ts",
+        "src/utils/powershell/staticPrefix.ts",
+        "src/utils/shell/powershellDetection.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PowerShell"
+      }
+    }
+  ]
+}

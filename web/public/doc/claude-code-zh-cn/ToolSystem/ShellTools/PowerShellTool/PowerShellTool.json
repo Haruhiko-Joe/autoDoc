@@ -1,0 +1,113 @@
+{
+  "status": "done",
+  "retryCount": 0,
+  "sessionId": "543b5200-f19d-41e4-bd2b-fa7335b32a0e",
+  "description": "Windows PowerShell 命令执行工具，结构与 BashTool 类似但针对 PowerShell 语法适配。PowerShellTool.tsx（1000 行）是核心入口，实现命令执行与结果处理。包含 powershellSecurity（1090 行，PowerShell 特有的安全校验）、powershellPermissions（1648 行，cmdlet 级权限匹配）、readOnlyValidation（1823 行，PowerShell 只读命令判定）、pathValidation（2049 行，UNC 路径等 Windows 特有路径校验）、modeValidation（404 行，模式约束检查）、gitSafety（176 行，Git 操作安全规则）、commandSemantics/destructiveCommandWarning、clmTypes/commonParameters 等辅助模块。",
+  "codeScope": [
+    "src/tools/PowerShellTool/"
+  ],
+  "nodes": [
+    {
+      "name": "CoreEntry",
+      "description": "PowerShellTool 核心入口与展示层。PowerShellTool.tsx（1000 行）编排完整的命令执行流程：参数校验、安全检查、权限判定、沙箱执行、输出处理（含图片检测、大结果存储、流式截断）。复用 BashTool 的 shouldUseSandbox 和 UI.BackgroundHint。prompt.ts 生成 PowerShell 特化的工具提示词（含 PowerShell 版本检测）。commandSemantics.ts 处理外部可执行文件（robocopy、grep.exe、findstr）的非零退出码语义解释。UI.tsx 提供命令显示、进度、结果的 React/Ink 渲染组件。toolName.ts 导出工具名称常量以打破循环依赖",
+      "edges": [
+        {
+          "target": "PermissionSystem",
+          "type": "calls",
+          "description": "调用 powershellToolHasPermission 进行 cmdlet 级权限判定，决定命令是否需要用户确认"
+        },
+        {
+          "target": "ReadOnlyValidation",
+          "type": "calls",
+          "description": "调用 isReadOnlyCommand 判断只读命令、hasSyncSecurityConcerns 做同步安全预检、resolveToCanonical 规范化 cmdlet 名称"
+        }
+      ],
+      "codeScope": [
+        "src/tools/PowerShellTool/PowerShellTool.tsx",
+        "src/tools/PowerShellTool/UI.tsx",
+        "src/tools/PowerShellTool/prompt.ts",
+        "src/tools/PowerShellTool/toolName.ts",
+        "src/tools/PowerShellTool/commandSemantics.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "CoreEntry"
+      }
+    },
+    {
+      "name": "SecurityAnalysis",
+      "description": "PowerShell 特有的安全威胁检测层。powershellSecurity.ts（1090 行）基于 AST 分析检测危险模式：代码注入（Invoke-Expression、ScriptBlock 动态执行）、下载摇篮（Invoke-WebRequest 管道执行、Net.WebClient）、提权（Start-Process -Verb RunAs）、COM 对象实例化、模块侧加载、环境变量篡改等。clmTypes.ts（211 行）维护 PowerShell 受约束语言模式（CLM）的 .NET 类型白名单，白名单外的类型字面量触发 ask。destructiveCommandWarning.ts（109 行）通过正则匹配生成破坏性命令警告文案（Remove-Item -Recurse -Force、Format-Volume 等），仅用于权限对话框提示",
+      "edges": [],
+      "codeScope": [
+        "src/tools/PowerShellTool/powershellSecurity.ts",
+        "src/tools/PowerShellTool/clmTypes.ts",
+        "src/tools/PowerShellTool/destructiveCommandWarning.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "SecurityAnalysis"
+      }
+    },
+    {
+      "name": "PermissionSystem",
+      "description": "cmdlet 级权限匹配与模式校验。powershellPermissions.ts（1648 行）是权限判定的核心协调器：解析用户权限规则、执行大小写不敏感的 cmdlet 匹配（支持通配符和模块前缀）、编排安全检查（调用 powershellSecurity）、路径约束检查（调用 pathValidation）、只读判定（调用 readOnlyValidation）、Git 安全检查（调用 gitSafety），最终返回 allow/deny/ask 决策。modeValidation.ts（404 行）处理 acceptEdits 模式下文件系统修改 cmdlet（Set-Content、Remove-Item 等）的自动放行逻辑，包含管道尾部安全性检查和符号链接创建命令识别",
+      "edges": [
+        {
+          "target": "SecurityAnalysis",
+          "type": "calls",
+          "description": "调用 powershellCommandIsSafe 进行 AST 级安全分析，判定命令是否包含注入/提权等危险模式"
+        },
+        {
+          "target": "ReadOnlyValidation",
+          "type": "calls",
+          "description": "调用 isReadOnlyCommand、isAllowlistedCommand、isSafeOutputCommand 等判断命令只读性，用于自动放行决策"
+        },
+        {
+          "target": "PathAndGitSafety",
+          "type": "calls",
+          "description": "调用 checkPathConstraints 验证路径在允许目录内、dangerousRemovalDeny 拒绝危险删除、isDotGitPathPS/isGitInternalPathPS 防止 Git 内部文件操作"
+        }
+      ],
+      "codeScope": [
+        "src/tools/PowerShellTool/powershellPermissions.ts",
+        "src/tools/PowerShellTool/modeValidation.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PermissionSystem"
+      }
+    },
+    {
+      "name": "ReadOnlyValidation",
+      "description": "PowerShell 只读命令判定引擎。readOnlyValidation.ts（1823 行）维护大规模 cmdlet 白名单（Get-*、Test-*、Select-String 等数百个 cmdlet）和外部命令配置（git、docker、gh 的只读子命令），通过 AST 逐语句分析判断整条命令是否为只读。支持管道安全性检查（尾部 cmdlet 不能是写操作）、参数泄漏检测（argLeaksValue 防止 -Command/-ScriptBlock 绕过）、变量赋值分析、.NET 方法调用安全性判定。commonParameters.ts（30 行）定义 PowerShell 通用参数集（-Verbose、-ErrorAction 等），被 pathValidation 和 readOnlyValidation 共享以避免循环依赖",
+      "edges": [],
+      "codeScope": [
+        "src/tools/PowerShellTool/readOnlyValidation.ts",
+        "src/tools/PowerShellTool/commonParameters.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "ReadOnlyValidation"
+      }
+    },
+    {
+      "name": "PathAndGitSafety",
+      "description": "Windows 路径安全校验与 Git 防护。pathValidation.ts（2049 行）从 PowerShell AST 提取文件路径参数，校验路径是否在项目允许目录内：处理 UNC 路径（\\\\server\\share 防止网络凭证泄漏）、Windows 特殊设备路径（CON、NUL、AUX）、通配符路径、符号链接解析、路径遍历攻击（../ 序列）。为每个 cmdlet 维护参数-路径映射配置（CMDLET_PATH_CONFIG），区分读/写/创建操作类型。gitSafety.ts（176 行）防止两类 Git 沙箱逃逸：裸仓库攻击（cwd 被伪造为 bare repo 执行恶意 hooks）和 Git 内部写入攻击（先创建 .git/hooks 再执行 git 触发 hook）",
+      "edges": [
+        {
+          "target": "ReadOnlyValidation",
+          "type": "depends",
+          "description": "调用 resolveToCanonical 将 cmdlet 别名规范化为标准名称，用于路径参数配置查找"
+        }
+      ],
+      "codeScope": [
+        "src/tools/PowerShellTool/pathValidation.ts",
+        "src/tools/PowerShellTool/gitSafety.ts"
+      ],
+      "child": {
+        "type": "page",
+        "ref": "PathAndGitSafety"
+      }
+    }
+  ]
+}
