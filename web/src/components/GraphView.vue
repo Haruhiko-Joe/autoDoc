@@ -19,6 +19,7 @@ let graph: Graph | null = null
 
 const CARD_WIDTH = 468
 const CARD_HEIGHT = 234
+const FOCUS_DIM_OPACITY = 0.1
 
 interface PopoverState {
   visible: boolean
@@ -41,6 +42,7 @@ const popover = ref<PopoverState>({
   description: '',
   detail: '',
 })
+const focusedNodeId = ref<string | null>(null)
 
 function closePopover() {
   popover.value.visible = false
@@ -54,11 +56,135 @@ function escapeHtml(str: string): string {
     .replace(/"/g, '&quot;')
 }
 
-function renderCard(name: string, description: string): string {
-  return `<div class="node-card">
-    <div class="node-card-name">${escapeHtml(name)}</div>
+function renderCard(name: string, description: string, isFocused: boolean): string {
+  const escapedName = escapeHtml(name)
+  return `<div class="node-card" data-node-id="${escapedName}">
+    <div class="node-card-header">
+      <div class="node-card-name">${escapedName}</div>
+      <span
+        class="node-card-focus-trigger${isFocused ? ' is-active' : ''}"
+        data-node-id="${escapedName}"
+      >focus</span>
+    </div>
     <div class="node-card-desc">${escapeHtml(description)}</div>
   </div>`
+}
+
+function getEdgeItems(nodes: GraphNode[]) {
+  return nodes.flatMap((node) =>
+    node.edges.map((edge) => ({
+      id: `${node.name}-${edge.target}-${edge.type}`,
+      source: node.name,
+      target: edge.target,
+    })),
+  )
+}
+
+function getFocusedNodeIds(nodeId: string): Set<string> {
+  const focusedIds = new Set([nodeId])
+
+  for (const node of props.nodes) {
+    if (node.name === nodeId) {
+      for (const edge of node.edges) focusedIds.add(edge.target)
+    }
+
+    if (node.edges.some((edge) => edge.target === nodeId)) {
+      focusedIds.add(node.name)
+    }
+  }
+
+  return focusedIds
+}
+
+function syncFocusButtons() {
+  const container = containerRef.value
+  if (!container) return
+
+  const activeId = focusedNodeId.value
+  const markers = container.querySelectorAll<HTMLElement>('.node-card-focus-trigger')
+  for (const marker of markers) {
+    const isActive = marker.dataset.nodeId === activeId
+    marker.classList.toggle('is-active', isActive)
+  }
+}
+
+async function applyFocusMode() {
+  if (!graph) return
+
+  const nodeIds = props.nodes.map((node) => node.name)
+  if (focusedNodeId.value && !nodeIds.includes(focusedNodeId.value)) {
+    focusedNodeId.value = null
+  }
+
+  const activeId = focusedNodeId.value
+  const focusedIds = activeId ? getFocusedNodeIds(activeId) : null
+  const edgeItems = getEdgeItems(props.nodes)
+
+  graph.updateNodeData(
+    nodeIds.map((id) => ({
+      id,
+      style: {
+        opacity: !focusedIds || focusedIds.has(id) ? 1 : FOCUS_DIM_OPACITY,
+      },
+    })),
+  )
+  graph.updateEdgeData(
+    edgeItems.map(({ id, source, target }) => ({
+      id,
+      style: {
+        opacity: !focusedIds || (focusedIds.has(source) && focusedIds.has(target)) ? 1 : FOCUS_DIM_OPACITY,
+      },
+    })),
+  )
+  await graph.draw()
+  await graph.setElementZIndex(
+    Object.fromEntries([
+      ...nodeIds.map((id) => [id, focusedIds?.has(id) ? 2 : 0] as const),
+      ...edgeItems.map(({ id, source, target }) => [
+        id,
+        focusedIds && focusedIds.has(source) && focusedIds.has(target) ? 1 : 0,
+      ] as const),
+    ]),
+  )
+  syncFocusButtons()
+}
+
+function setFocusMode(nodeId: string | null) {
+  if (focusedNodeId.value === nodeId) return
+  focusedNodeId.value = nodeId
+  closePopover()
+  void applyFocusMode()
+}
+
+function onContainerPointerOverCapture(event: PointerEvent) {
+  const target = event.target
+  if (!(target instanceof Element)) return
+
+  const marker = target.closest('.node-card-focus-trigger')
+  if (!(marker instanceof HTMLElement)) return
+
+  const relatedTarget = event.relatedTarget
+  if (relatedTarget instanceof Element && marker.contains(relatedTarget)) return
+
+  const nodeId = marker.dataset.nodeId
+  if (!nodeId) return
+
+  setFocusMode(nodeId)
+}
+
+function onContainerPointerOutCapture(event: PointerEvent) {
+  const target = event.target
+  if (!(target instanceof Element)) return
+
+  const marker = target.closest('.node-card-focus-trigger')
+  if (!(marker instanceof HTMLElement)) return
+
+  const relatedTarget = event.relatedTarget
+  if (relatedTarget instanceof Element && marker.contains(relatedTarget)) return
+
+  if (marker.dataset.nodeId === focusedNodeId.value) {
+    setFocusMode(null)
+  }
 }
 
 function superellipsePositions(n: number, canvasW: number, canvasH: number) {
@@ -183,7 +309,7 @@ function createGraph() {
         dx: -CARD_WIDTH / 2,
         dy: -CARD_HEIGHT / 2,
         innerHTML: (d: { id: string; data?: { description?: string } }) => {
-          return renderCard(d.id, d.data?.description ?? '')
+          return renderCard(d.id, d.data?.description ?? '', focusedNodeId.value === d.id)
         },
       },
     },
@@ -219,7 +345,11 @@ function createGraph() {
 
   graph.on(NodeEvent.CLICK, (evt) => {
     closePopover()
-    const e = evt as unknown as { target?: { id?: string } }
+    const e = evt as unknown as { target?: { id?: string }; nativeEvent?: { target?: EventTarget | null } }
+    const nativeTarget = e.nativeEvent?.target
+    if (nativeTarget instanceof Element && nativeTarget.closest('.node-card-focus-trigger')) {
+      return
+    }
     const nodeId = e.target?.id
     if (!nodeId) return
     const found = props.nodes.find((n) => n.name === nodeId)
@@ -254,7 +384,7 @@ function createGraph() {
 
   graph.on('canvas:click', closePopover)
 
-  graph.render()
+  void graph.render().then(() => applyFocusMode())
 }
 
 function destroyGraph() {
@@ -282,7 +412,12 @@ watch(isDark, () => {
 </script>
 
 <template>
-  <div ref="containerRef" class="graph-container">
+  <div
+    ref="containerRef"
+    class="graph-container"
+    @pointerover.capture="onContainerPointerOverCapture"
+    @pointerout.capture="onContainerPointerOutCapture"
+  >
     <Transition name="popover">
       <div
         v-if="popover.visible"
@@ -338,6 +473,13 @@ watch(isDark, () => {
   overflow: hidden;
 }
 
+:global(.node-card-header) {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 :global(.node-card:hover) {
   border-color: var(--accent);
   box-shadow: 0 6px 20px var(--accent-shadow);
@@ -348,7 +490,29 @@ watch(isDark, () => {
   font-weight: 600;
   color: var(--text-heading);
   line-height: 1.3;
+  flex: 1;
+  min-width: 0;
+}
+
+:global(.node-card-focus-trigger) {
+  color: var(--text-disabled);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
   flex-shrink: 0;
+}
+
+:global(.node-card-focus-trigger:hover) {
+  color: var(--accent);
+}
+
+:global(.node-card-focus-trigger.is-active) {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 :global(.node-card-desc) {
