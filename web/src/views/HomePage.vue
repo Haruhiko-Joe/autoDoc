@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { fetchTopGraph, startRun, fetchStatus, fetchProjects, subscribeStatus, searchModules, type AgentBackends, type RunStatus, type SearchResult } from '../services/doc'
+import { fetchTopGraph, startRun, fetchStatus, fetchProjects, subscribeStatus, searchModules, pausePipeline, resumePipeline, type AgentBackends, type RunStatus, type SearchResult } from '../services/doc'
 import GraphView from '../components/GraphView.vue'
 import EdgeLegend from '../components/EdgeLegend.vue'
 import DocTree from '../components/DocTree.vue'
@@ -249,7 +249,10 @@ const progressPercent = computed(() => {
   return Math.round((doneNodes.value / totalNodes.value) * 100)
 })
 
+const isPaused = computed(() => status.value.paused === true)
+
 const progressPhaseLabel = computed(() => {
+  if (isPaused.value) return 'Paused'
   const p = progress.value?.phase
   if (p === 'scaffold') return 'Analyzing project structure...'
   if (p === 'processing') return 'Processing modules...'
@@ -257,6 +260,18 @@ const progressPhaseLabel = computed(() => {
   if (p === 'flows') return 'Generating interaction flows...'
   return 'Preparing...'
 })
+
+async function handlePauseToggle() {
+  try {
+    if (isPaused.value) {
+      await resumePipeline()
+    } else {
+      await pausePipeline()
+    }
+  } catch (e) {
+    errorMsg.value = e instanceof Error ? e.message : String(e)
+  }
+}
 </script>
 
 <template>
@@ -355,7 +370,18 @@ const progressPhaseLabel = computed(() => {
 
       <!-- 生成过程中的实时进度 -->
       <div v-if="viewingRunningProject && progress" class="sidebar-progress">
-        <div class="progress-label">{{ progressPhaseLabel }}</div>
+        <div class="progress-header">
+          <div class="progress-label">{{ progressPhaseLabel }}</div>
+          <button class="pause-btn" @click="handlePauseToggle" :title="isPaused ? 'Resume' : 'Pause'">
+            <svg v-if="!isPaused" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <rect x="6" y="4" width="4" height="16" rx="1"/>
+              <rect x="14" y="4" width="4" height="16" rx="1"/>
+            </svg>
+            <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <polygon points="6,4 20,12 6,20"/>
+            </svg>
+          </button>
+        </div>
         <div class="progress-bar-track">
           <div class="progress-bar-fill" :style="{ width: progressPercent + '%' }" />
         </div>
@@ -630,11 +656,37 @@ const progressPhaseLabel = computed(() => {
   border-bottom: 1px solid var(--border);
 }
 
+.progress-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
 .progress-label {
   font-size: 12px;
   color: var(--accent);
   font-weight: 600;
-  margin-bottom: 8px;
+}
+
+.pause-btn {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.pause-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
 }
 
 .progress-bar-track {

@@ -86,6 +86,7 @@ type G6EdgeData = Record<string, unknown> & {
   description: string
   detail: string
   sourceName: string
+  curveOffset: number
 }
 
 function buildData(nodes: GraphNode[], canvasW: number, canvasH: number) {
@@ -118,9 +119,45 @@ function buildData(nodes: GraphNode[], canvasW: number, canvasH: number) {
           description: edge.description,
           detail: edge.detail ?? '',
           sourceName: node.name,
+          curveOffset: 0,
         },
       })
     }
+  }
+
+  // Detect parallel edges between the same pair of nodes and assign curve offsets
+  // Key insight: for reversed edges (A→B vs B→A), G6's curveOffset perpendicular
+  // direction flips with edge direction, so same-sign offsets actually curve to
+  // opposite sides. We must give reversed edges the SAME offset sign, and only
+  // spread same-direction edges with different offsets.
+  const pairMap = new Map<string, typeof g6Edges>()
+  for (const edge of g6Edges) {
+    // Use directed key so A→B and B→A are in the same group but distinguishable
+    const key = [edge.source, edge.target].sort().join('|')
+    const group = pairMap.get(key)
+    if (group) group.push(edge)
+    else pairMap.set(key, [edge])
+  }
+  const CURVE_GAP = 25
+  for (const group of pairMap.values()) {
+    if (group.length < 2) continue
+    // Sort so that edges with the same direction are adjacent
+    const sorted = group.sort((a, b) => {
+      const dirA = `${a.source}->${a.target}`
+      const dirB = `${b.source}->${b.target}`
+      return dirA.localeCompare(dirB)
+    })
+    // Assign offsets: use the canonical direction (source < target) as reference.
+    // Edges matching canonical direction get positive offset, reversed get negative.
+    // Multiple edges in the same direction get incremented offsets.
+    const forwardEdges = sorted.filter((e) => e.source <= e.target)
+    const reverseEdges = sorted.filter((e) => e.source > e.target)
+    forwardEdges.forEach((edge, i) => {
+      edge.data.curveOffset = CURVE_GAP * (i + 1)
+    })
+    reverseEdges.forEach((edge, i) => {
+      edge.data.curveOffset = CURVE_GAP * (i + 1)
+    })
   }
 
   return { nodes: g6Nodes, edges: g6Edges }
@@ -151,15 +188,17 @@ function createGraph() {
       },
     },
     edge: {
-      type: 'line',
-      style: (d: { data?: { edgeType?: EdgeType; description?: string } }) => {
+      type: 'quadratic',
+      style: (d: { data?: { edgeType?: EdgeType; description?: string; curveOffset?: number } }) => {
         const edgeType = d.data?.edgeType ?? 'calls'
         const visual = EDGE_STYLES[edgeType]
         const dark = isDark.value
+        const offset = d.data?.curveOffset ?? 0
         return {
           stroke: visual.stroke,
           lineWidth: edgeType === 'data-flow' ? 3 : 1.5,
           lineDash: visual.lineDash,
+          curveOffset: offset,
           endArrow: true,
           endArrowSize: 8,
           cursor: 'pointer',

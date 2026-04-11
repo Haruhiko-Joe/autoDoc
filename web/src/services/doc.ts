@@ -40,6 +40,7 @@ export interface Progress {
   phase: 'scaffold' | 'processing' | 'assembling' | 'flows' | 'idle'
   counts: Record<string, number>
   nodes: NodeProgress[]
+  paused: boolean
 }
 
 export type AgentBackend = 'claude' | 'codex'
@@ -54,6 +55,7 @@ export interface RunConfig {
 
 export interface RunStatus {
   phase: 'idle' | 'running' | 'done' | 'error'
+  paused?: boolean
   repoPath?: string
   currentProject?: string
   message?: string
@@ -82,6 +84,22 @@ export async function startRun(
   if (!res.ok) {
     const data = await res.json()
     throw new Error(data.error ?? 'Failed to start')
+  }
+}
+
+export async function pausePipeline(): Promise<void> {
+  const res = await fetch(`${API}/pause`, { method: 'POST' })
+  if (!res.ok) {
+    const data = await res.json()
+    throw new Error(data.error ?? 'Failed to pause')
+  }
+}
+
+export async function resumePipeline(): Promise<void> {
+  const res = await fetch(`${API}/resume`, { method: 'POST' })
+  if (!res.ok) {
+    const data = await res.json()
+    throw new Error(data.error ?? 'Failed to resume')
   }
 }
 

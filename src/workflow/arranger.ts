@@ -97,6 +97,7 @@ export interface Progress {
   phase: "scaffold" | "processing" | "assembling" | "flows" | "idle"
   counts: Record<string, number>
   nodes: NodeProgress[]
+  paused: boolean
 }
 
 type ArrangerTask =
@@ -149,6 +150,9 @@ export class Arranger {
   private readonly language: Language;
   private readonly sem: Semaphore;
   private readonly nodeLocks = new Map<string, Promise<void>>();
+  private _paused = false;
+  private _resumeResolve: (() => void) | null = null;
+  private _resumePromise: Promise<void> | null = null;
   private repoPath = "";
   private docDir = "";
   private currentPhase: Progress["phase"] = "idle";
@@ -200,6 +204,38 @@ export class Arranger {
       : new codexFlowAnalyzer(skillDir, this.projectName, this.language);
   }
 
+  get paused(): boolean {
+    return this._paused;
+  }
+
+  pause(): void {
+    if (this._paused) return;
+    this._paused = true;
+    console.log("[Arranger] Paused.");
+    this.notify();
+  }
+
+  resume(): void {
+    if (!this._paused) return;
+    this._paused = false;
+    console.log("[Arranger] Resumed.");
+    if (this._resumeResolve) {
+      this._resumeResolve();
+      this._resumeResolve = null;
+      this._resumePromise = null;
+    }
+    this.notify();
+  }
+
+  private waitForResume(): Promise<void> {
+    if (!this._resumePromise) {
+      this._resumePromise = new Promise<void>((resolve) => {
+        this._resumeResolve = resolve;
+      });
+    }
+    return this._resumePromise;
+  }
+
   onProgress(listener: () => void): () => void {
     this.listeners.add(listener);
     return () => { this.listeners.delete(listener); };
@@ -214,7 +250,7 @@ export class Arranger {
   }
 
   async getProgress(): Promise<Progress> {
-    if (!this.docDir) return { phase: "idle", counts: {}, nodes: [] };
+    if (!this.docDir) return { phase: "idle", counts: {}, nodes: [], paused: false };
     const counts = await this.countStatuses();
     const allNodeIds = await this.scanGraphNodes(this.docDir, "");
     const nodes: NodeProgress[] = [];
@@ -224,7 +260,7 @@ export class Arranger {
         nodes.push({ nodeId, status: graph.status });
       } catch { /* skip */ }
     }
-    return { phase: this.currentPhase, counts, nodes };
+    return { phase: this.currentPhase, counts, nodes, paused: this._paused };
   }
 
   // ─── 唯一公开入口 ───
@@ -358,7 +394,13 @@ export class Arranger {
         running.add(runner);
       }
 
-      if (running.size === 0) break;
+      if (running.size === 0) {
+        if (this._paused) {
+          await this.waitForResume();
+          continue;
+        }
+        break;
+      }
       await Promise.race(running);
     }
   }
@@ -428,6 +470,7 @@ export class Arranger {
   }
 
   private async claimNextTask(): Promise<ArrangerTask | null> {
+    if (this._paused) return null;
     const allNodeIds = await this.scanGraphNodes(this.docDir, "");
     for (const nodeId of allNodeIds) {
       try {

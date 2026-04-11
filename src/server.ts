@@ -115,6 +115,7 @@ interface RunConfig {
 
 interface StatusResponse {
   phase: "idle" | "running" | "done" | "error"
+  paused?: boolean
   repoPath?: string
   currentProject?: string
   docDir?: string
@@ -127,7 +128,7 @@ async function handleStatus(): Promise<StatusResponse> {
   if (state.phase === "running") {
     const progress = await state.arranger.getProgress();
     const config = state.arranger.getConfig();
-    return { phase: "running", repoPath: state.repoPath, currentProject: state.project, docDir: state.docDir, progress, config };
+    return { phase: "running", paused: state.arranger.paused, repoPath: state.repoPath, currentProject: state.project, docDir: state.docDir, progress, config };
   }
   if (state.phase === "done") {
     return { phase: "done", repoPath: state.repoPath, currentProject: state.project, docDir: state.docDir };
@@ -225,6 +226,16 @@ const server = createServer(async (req, res) => {
       };
       const result = await handleRun(body);
       res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(result));
+    } else if (req.method === "POST" && url.pathname === "/api/pause") {
+      if (state.phase !== "running") throw new Error("Not running");
+      state.arranger.pause();
+      broadcastStatus();
+      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true }));
+    } else if (req.method === "POST" && url.pathname === "/api/resume") {
+      if (state.phase !== "running") throw new Error("Not running");
+      state.arranger.resume();
+      broadcastStatus();
+      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true }));
     } else if (req.method === "GET" && url.pathname === "/api/projects") {
       const projects = await listProjects();
       res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ projects }));
