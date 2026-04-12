@@ -27,7 +27,7 @@
 
 ## Why autoDoc?
 
-Unlike DeepWiki, Google Code Wiki, and similar tools that generate docs in a single pass, autoDoc is a **multi-agent documentation factory with a quality feedback loop**.
+Unlike DeepWiki, Google Code Wiki, and similar tools that generate docs in a single pass, autoDoc is a **multi-agent documentation factory with a quality feedback loop**. It is both **the most human-friendly documentation site to read** and **a knowledge base natively tailored for Code Agents**, achieving SOTA across readability, interactivity, and Agent-consumability.
 
 | | autoDoc | DeepWiki | Google Code Wiki |
 |---|:---:|:---:|:---:|

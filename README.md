@@ -27,7 +27,7 @@
 
 ## 为什么选择 autoDoc？
 
-与 DeepWiki、Google Code Wiki 等竞品不同，autoDoc 不只是"单次生成一堆文档"——它是一个**带质量闭环的多 Agent 文档工厂**。
+与 DeepWiki、Google Code Wiki 等竞品不同，autoDoc 不只是"单次生成一堆文档"——它是一个**带质量闭环的多 Agent 文档工厂**。它既是**人类阅读体验最舒适的文档站**，也是**天然适配 Code Agent 的知识底座**，在可读性、交互性、Agent 可消费性等各个维度均达到 SOTA。
 
 | | autoDoc | DeepWiki | Google Code Wiki |
 |---|:---:|:---:|:---:|
