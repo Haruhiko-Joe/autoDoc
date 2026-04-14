@@ -224,4 +224,111 @@ describe("DocRetriever", () => {
     assert.deepEqual(await retriever.rank(PROJECT, ""), []);
     assert.deepEqual(await retriever.rank(PROJECT, "   "), []);
   });
+
+  it("uses the child graph's own description, not the parent node's copy", async () => {
+    // Simulate an MCP `update_graph_meta` edit: overwrite the child graph
+    // file's description with a unique token only it now contains. The
+    // parent still says the old thing. Retrieval must pick up the edit.
+    const childGraphPath = path.join(fx.root, PROJECT, "Backend", "Agents", "Agents.json");
+    const current = JSON.parse(
+      await (await import("node:fs/promises")).readFile(childGraphPath, "utf-8"),
+    );
+    current.description = "Orchestrated via NEWCANONICALWORD arranger state machine.";
+    await writeJson(childGraphPath, current);
+
+    const retriever = new DocRetriever(fx.store);
+    const hits = await retriever.rank(PROJECT, "NEWCANONICALWORD");
+    assert.ok(hits.length > 0, "expected a hit on the new canonical word");
+    assert.equal(hits[0]!.path, "Backend/Agents");
+  });
+
+  it("buildChatContext reuses page bodies without re-reading from disk", async () => {
+    const retriever = new DocRetriever(fx.store);
+    // Prime the corpus cache.
+    const docs = await retriever.collectDocs(PROJECT);
+    const pageEntry = docs.find((d) => d.path === "Backend/Agents/Checker");
+    assert.ok(pageEntry, "expected Checker page to be in the corpus");
+    assert.ok(pageEntry!.body, "expected Checker page body to be preloaded");
+
+    // Count how many times readPage is invoked during buildChatContext.
+    // If the cache is respected, it must NOT fire for any page we already
+    // loaded in collectDocs.
+    let pageReads = 0;
+    const origReadPage = fx.store.readPage.bind(fx.store);
+    fx.store.readPage = (async (...args: Parameters<typeof origReadPage>) => {
+      pageReads += 1;
+      return origReadPage(...args);
+    }) as typeof fx.store.readPage;
+    try {
+      await retriever.buildChatContext(PROJECT, "validates subgraphs");
+      assert.equal(
+        pageReads,
+        0,
+        `buildChatContext re-read ${pageReads} page(s) that were already in the corpus cache`,
+      );
+    } finally {
+      fx.store.readPage = origReadPage;
+    }
+  });
+
+  it("formatContextForPrompt keeps list items on a single line even for long descriptions", () => {
+    // Build a ChatContext directly so we isolate the prompt-formatting
+    // behavior from retrieval state.
+    const ctx = {
+      projectName: "synthetic",
+      topDescription: "demo project",
+      graphHits: [
+        {
+          kind: "graph" as const,
+          path: "A",
+          name: "Alpha",
+          // Long + newline-rich: prior to the truncateInline fix this would
+          // splatter across dozens of lines and break the markdown list.
+          description: "line one\nline two\n".repeat(50),
+          score: 1,
+        },
+        {
+          kind: "graph" as const,
+          path: "B",
+          name: "Beta",
+          description: "short description with no newlines",
+          score: 0.5,
+        },
+      ],
+      pages: [],
+      currentPage: undefined,
+    };
+
+    const prompt = formatContextForPrompt(ctx);
+    // Invariant: one markdown list line per graph hit.
+    const listLines = prompt.split("\n").filter((l) => l.startsWith("- **"));
+    assert.equal(
+      listLines.length,
+      ctx.graphHits.length,
+      `expected ${ctx.graphHits.length} list lines, got ${listLines.length}`,
+    );
+    for (const l of listLines) {
+      assert.ok(l.length < 700, `list line too long: ${l.length}`);
+      assert.ok(!l.includes("\n"), "list line must not contain raw newlines");
+    }
+  });
+
+  it("invalidate() drops the corpus cache", async () => {
+    const retriever = new DocRetriever(fx.store);
+    await retriever.collectDocs(PROJECT);
+    // Mutate a graph after the cache was populated.
+    const childGraphPath = path.join(fx.root, PROJECT, "Frontend", "Frontend.json");
+    const current = JSON.parse(
+      await (await import("node:fs/promises")).readFile(childGraphPath, "utf-8"),
+    );
+    current.description = "Now talks about WEBSOCKETLIVEUPDATES.";
+    await writeJson(childGraphPath, current);
+
+    // Without invalidation, the cache may still be hot (<3s) — result depends
+    // on TTL. Explicit invalidation must guarantee a fresh read.
+    retriever.invalidate(PROJECT);
+    const hits = await retriever.rank(PROJECT, "WEBSOCKETLIVEUPDATES");
+    assert.ok(hits.length > 0, "expected a hit after invalidation");
+    assert.equal(hits[0]!.path, "Frontend");
+  });
 });

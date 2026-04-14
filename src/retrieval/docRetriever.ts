@@ -36,6 +36,7 @@ export interface RetrievalHit {
 export interface ChatContext {
   projectName: string;
   topDescription: string;
+  /** Graph-like hits; may include the project-root entry with an empty path. */
   graphHits: RetrievalHit[];
   pages: { path: string; content: string }[];
   currentPage?: { path: string; content: string };
@@ -51,6 +52,12 @@ const PATH_EXACT_BOOST = 4.0;
 const PATH_DESCENDANT_BOOST = 1.5;
 const PATH_ANCESTOR_BOOST = 1.5;
 
+// Short TTL so multi-turn chat bursts share the collected corpus without
+// serving long-lived stale docs after writes. Invalidated explicitly by
+// callers that know a mutation happened (e.g. after an update_graph_meta
+// round-trip), or simply left to expire.
+const CORPUS_TTL_MS = 3_000;
+
 function splitPagePath(path: string): { nodeId: string; ref: string } {
   const parts = path.split("/").filter(Boolean);
   if (parts.length < 2) throw new Error(`Not a valid page path: "${path}"`);
@@ -60,13 +67,32 @@ function splitPagePath(path: string): { nodeId: string; ref: string } {
 }
 
 export class DocRetriever {
+  private corpusCache = new Map<string, { ts: number; docs: DocEntry[] }>();
+
   constructor(private readonly store: DocStore) {}
+
+  /**
+   * Drop any cached corpus for a project. Call after MCP mutations or when
+   * fresh-reads are required.
+   */
+  invalidate(project?: string): void {
+    if (project === undefined) this.corpusCache.clear();
+    else this.corpusCache.delete(project);
+  }
 
   /**
    * Walk the project's doc tree, emitting one DocEntry per top/graph/page
    * node. Page bodies are loaded inline.
+   *
+   * Graph entries use the child graph file's OWN `description`/`codeScope`
+   * so that edits via MCP `update_graph_meta` are reflected immediately in
+   * retrieval. Parent-view metadata is only used when the child graph file
+   * hasn't been generated yet (mid-scaffold/decompose).
    */
   async collectDocs(project: string): Promise<DocEntry[]> {
+    const cached = this.corpusCache.get(project);
+    if (cached && Date.now() - cached.ts < CORPUS_TTL_MS) return cached.docs;
+
     const out: DocEntry[] = [];
 
     const top = await this.store.readTop(project);
@@ -79,40 +105,68 @@ export class DocRetriever {
     });
 
     for (const scaffold of top.nodes) {
-      out.push({
-        kind: "graph",
-        path: scaffold.name,
-        name: scaffold.name,
-        description: scaffold.description,
-        codeScope: scaffold.codeScope,
-      });
-      await this.walkGraph(project, scaffold.name, out);
+      await this.walkGraph(
+        project,
+        scaffold.name,
+        {
+          name: scaffold.name,
+          description: scaffold.description,
+          codeScope: scaffold.codeScope,
+        },
+        out,
+      );
     }
 
+    this.corpusCache.set(project, { ts: Date.now(), docs: out });
     return out;
   }
 
-  private async walkGraph(project: string, nodeId: string, out: DocEntry[]): Promise<void> {
+  private async walkGraph(
+    project: string,
+    nodeId: string,
+    parentView: { name: string; description: string; codeScope: string[] },
+    out: DocEntry[],
+  ): Promise<void> {
     let graph;
     try {
       graph = await this.store.readGraph(project, nodeId);
     } catch {
-      // Graph file may still be pending during generation. Skip quietly.
+      // Child graph file not yet generated — fall back to the parent's view
+      // so in-progress projects are still searchable.
+      out.push({
+        kind: "graph",
+        path: nodeId,
+        name: parentView.name,
+        description: parentView.description,
+        codeScope: parentView.codeScope,
+      });
       return;
     }
+
+    // Authoritative metadata lives in the child graph file itself; the
+    // parent only owns the node's display `name`.
+    out.push({
+      kind: "graph",
+      path: nodeId,
+      name: parentView.name,
+      description: graph.description,
+      codeScope: graph.codeScope,
+    });
+
     for (const node of graph.nodes) {
       const childPath = `${nodeId}/${node.child.ref}`;
       if (node.child.type === "graph") {
-        out.push({
-          kind: "graph",
-          path: childPath,
-          name: node.name,
-          description: node.description,
-          codeScope: node.codeScope,
-        });
-        await this.walkGraph(project, childPath, out);
+        await this.walkGraph(
+          project,
+          childPath,
+          {
+            name: node.name,
+            description: node.description,
+            codeScope: node.codeScope,
+          },
+          out,
+        );
       } else {
-        const pagePath = childPath;
         let body: string | undefined;
         try {
           const { content } = await this.store.readPage(project, nodeId, node.child.ref);
@@ -122,7 +176,7 @@ export class DocRetriever {
         }
         out.push({
           kind: "page",
-          path: pagePath,
+          path: childPath,
           name: node.name,
           description: node.description,
           codeScope: node.codeScope,
@@ -141,6 +195,16 @@ export class DocRetriever {
     if (queryTokens.length === 0) return [];
 
     const docs = await this.collectDocs(project);
+    return this.rankOverDocs(docs, queryTokens, opts);
+  }
+
+  private rankOverDocs(
+    docs: DocEntry[],
+    queryTokens: string[],
+    opts: RankOptions,
+  ): RetrievalHit[] {
+    if (queryTokens.length === 0) return [];
+
     const raws: RawDoc[] = docs.map((d) => ({
       id: d.path,
       fields: {
@@ -197,6 +261,9 @@ export class DocRetriever {
    * Assemble a bounded context for the chat endpoint: top-level project
    * description, top-K graph hits, top-K page hits with truncated bodies,
    * and optionally the current page the user is viewing.
+   *
+   * Page bodies are read once during corpus collection and reused here, so
+   * a chat turn does not re-read every relevant markdown file from disk.
    */
   async buildChatContext(
     project: string,
@@ -204,30 +271,37 @@ export class DocRetriever {
     currentPath?: string,
   ): Promise<ChatContext> {
     const top = await this.store.readTop(project);
-    const hits = await this.rank(project, query, { topK: 12, currentPath });
+    const queryTokens = tokenize(query);
+    const docs = await this.collectDocs(project);
+    const hits = this.rankOverDocs(docs, queryTokens, { topK: 12, currentPath });
     const graphHits = hits.filter((h) => h.kind === "graph" || h.kind === "top").slice(0, 4);
     const pageHits = hits.filter((h) => h.kind === "page").slice(0, 3);
 
+    const docByPath = new Map(docs.map((d) => [d.path, d]));
+
     const pages: { path: string; content: string }[] = [];
     for (const h of pageHits) {
-      try {
-        const { nodeId, ref } = splitPagePath(h.path);
-        const { content } = await this.store.readPage(project, nodeId, ref);
-        pages.push({ path: h.path, content: truncate(content, 2000) });
-      } catch {
-        // Skip hits whose bodies can't be resolved (e.g. deleted mid-query).
-      }
+      const body = docByPath.get(h.path)?.body;
+      if (body) pages.push({ path: h.path, content: truncateBlock(body, 2000) });
     }
 
     let currentPage: ChatContext["currentPage"];
     const cp = currentPath?.replace(/^\/+|\/+$/g, "");
     if (cp) {
-      try {
-        const { nodeId, ref } = splitPagePath(cp);
-        const { content } = await this.store.readPage(project, nodeId, ref);
-        currentPage = { path: cp, content: truncate(content, 4000) };
-      } catch {
-        // currentPath is a graph or missing — retrieval still boosted it above.
+      const existing = docByPath.get(cp);
+      const body = existing?.body;
+      if (body !== undefined) {
+        currentPage = { path: cp, content: truncateBlock(body, 4000) };
+      } else {
+        // Either `cp` isn't a page (graph path) or it isn't in our corpus
+        // because it was created just now. One-off disk read as a fallback.
+        try {
+          const { nodeId, ref } = splitPagePath(cp);
+          const { content } = await this.store.readPage(project, nodeId, ref);
+          currentPage = { path: cp, content: truncateBlock(content, 4000) };
+        } catch {
+          // Graph paths / missing pages: retrieval still boosts them via rank.
+        }
       }
     }
 
@@ -241,9 +315,17 @@ export class DocRetriever {
   }
 }
 
-function truncate(s: string, maxChars: number): string {
+function truncateBlock(s: string, maxChars: number): string {
   if (s.length <= maxChars) return s;
   return s.slice(0, maxChars).trimEnd() + "\n\n…[truncated]";
+}
+
+// For values interpolated into a single markdown list item / heading line —
+// collapse whitespace so embedded newlines can't fracture the list.
+function truncateInline(s: string, maxChars: number): string {
+  const collapsed = s.replace(/\s+/g, " ").trim();
+  if (collapsed.length <= maxChars) return collapsed;
+  return collapsed.slice(0, Math.max(1, maxChars - 1)).trimEnd() + "…";
 }
 
 /**
@@ -271,7 +353,7 @@ export function formatContextForPrompt(ctx: ChatContext): string {
     lines.push("## Relevant modules");
     for (const h of ctx.graphHits) {
       const display = h.path || "(project root)";
-      lines.push(`- **${display}** — ${h.name}: ${truncate(h.description, 400)}`);
+      lines.push(`- **${display}** — ${truncateInline(h.name, 80)}: ${truncateInline(h.description, 400)}`);
     }
     lines.push("");
   }

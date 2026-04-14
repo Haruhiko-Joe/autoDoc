@@ -48,7 +48,7 @@ export function registerQueryTools(mcp: McpServer, store: DocStore): void {
   const retriever = new DocRetriever(store)
   mcp.tool(
     "semantic_search",
-    "Rank nodes and pages by relevance to a natural-language query using hybrid BM25-lite scoring over names, descriptions, codeScope paths, and markdown bodies. Returns up to `topK` hits with scores and snippets. Pass `currentPath` (a graph or page path) to apply path-aware boosts. Complements the keyword-only `search_nodes` tool.",
+    "Rank top-level project description, graph nodes, and leaf pages by relevance to a natural-language query using hybrid BM25-lite scoring over names, descriptions, codeScope paths, and markdown bodies. Returns up to `topK` hits. Each hit's `kind` is one of `top` | `graph` | `page`; `path` is empty string for the project-root `top` hit, a nodeId for graphs, and `nodeId/ref` for pages. Only `page` hits carry a `snippet`. Pass `currentPath` to apply path-aware boosts. Complements the keyword-only `search_nodes` tool.",
     {
       project: z.string(),
       query: z.string(),
