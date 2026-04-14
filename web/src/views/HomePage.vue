@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { fetchTopGraph, startRun, fetchStatus, fetchProjects, subscribeStatus, searchModules, pausePipeline, resumePipeline, type AgentBackends, type RunStatus, type SearchResult } from '../services/doc'
+import { fetchTopGraph, startRun, fetchStatus, fetchProjects, subscribeStatus, searchModules, pausePipeline, resumePipeline, type AgentBackends, type RunStatus, type SearchResult, type ProjectListEntry } from '../services/doc'
 import GraphView from '../components/GraphView.vue'
 import EdgeLegend from '../components/EdgeLegend.vue'
 import DocTree from '../components/DocTree.vue'
@@ -13,7 +13,7 @@ const { isDark, toggle: toggleTheme } = useTheme()
 const route = useRoute()
 const router = useRouter()
 const topGraph = ref<TopGraph | null>(null)
-const repoPath = ref('')
+const gitUrl = ref('')
 const maxConcurrency = ref(8)
 const agentBackends = reactive<AgentBackends>({
   scaffold: 'claude',
@@ -21,10 +21,12 @@ const agentBackends = reactive<AgentBackends>({
   writer: 'claude',
   checker: 'codex',
   flowAnalyzer: 'claude',
+  updater: 'claude',
 })
 const language = ref<'zh' | 'en'>('zh')
 const showConfigDialog = ref(false)
-const projects = ref<string[]>([])
+const projectEntries = ref<ProjectListEntry[]>([])
+const projects = computed(() => projectEntries.value.map((p) => p.name))
 const selectedProject = ref('')
 const status = ref<RunStatus>({ phase: 'idle' })
 const errorMsg = ref('')
@@ -37,6 +39,7 @@ const agentBackendFields: Array<{ key: keyof AgentBackends; label: string }> = [
   { key: 'writer', label: 'Writer' },
   { key: 'checker', label: 'Checker' },
   { key: 'flowAnalyzer', label: 'Flow Analyzer' },
+  { key: 'updater', label: 'Updater' },
 ]
 
 function getRouteProject(): string {
@@ -45,24 +48,52 @@ function getRouteProject(): string {
   return Array.isArray(p) ? (p[0] ?? '') : p
 }
 
-function getProjectName(repoPathValue: string): string {
-  const normalized = repoPathValue.trim().replace(/[/\\]+$/, '')
-  const parts = normalized.split(/[/\\]/).filter(Boolean)
-  return parts[parts.length - 1] ?? ''
+function getProjectName(gitUrlValue: string): string {
+  const trimmed = gitUrlValue.trim().replace(/\.git$/i, '')
+  if (!trimmed) return ''
+  // Handles git@host:owner/repo, https://host/owner/repo, ssh://...
+  const lastSlash = trimmed.lastIndexOf('/')
+  const lastColon = trimmed.lastIndexOf(':')
+  const cut = Math.max(lastSlash, lastColon)
+  return cut >= 0 ? trimmed.slice(cut + 1) : trimmed
 }
 
-function mergeProjects(nextProjects: string[]) {
-  const merged = new Set(nextProjects)
-  if (status.value.currentProject) merged.add(status.value.currentProject)
-  projects.value = [...merged].filter(Boolean).sort()
+function mergeProjectEntries(next: ProjectListEntry[]) {
+  const map = new Map<string, ProjectListEntry>()
+  for (const entry of next) map.set(entry.name, entry)
+  // Preserve currently-running project even if it isn't in the new list yet.
+  const current = status.value.currentProject
+  if (current && !map.has(current)) {
+    map.set(current, {
+      name: current,
+      hasDoc: false,
+      sourceUrl: status.value.gitUrl ?? '',
+      branch: '',
+      head: '',
+      lastUpdated: '',
+    })
+  }
+  projectEntries.value = [...map.values()]
+    .filter((e) => e.name)
+    .sort((a, b) => a.name.localeCompare(b.name))
 }
 
 async function refreshProjects() {
   try {
-    mergeProjects(await fetchProjects())
+    mergeProjectEntries(await fetchProjects())
   } catch {
-    mergeProjects([])
+    mergeProjectEntries([])
   }
+}
+
+function gitUrlForProject(name: string): string {
+  return projectEntries.value.find((p) => p.name === name)?.sourceUrl ?? ''
+}
+
+function syncGitUrlFromSelection() {
+  if (status.value.phase === 'running') return
+  const url = gitUrlForProject(selectedProject.value)
+  if (url) gitUrl.value = url
 }
 
 onMounted(async () => {
@@ -71,8 +102,8 @@ onMounted(async () => {
     fetchProjects().catch(() => []),
   ])
   status.value = s
-  mergeProjects(existingProjects)
-  if (s.repoPath) repoPath.value = s.repoPath
+  mergeProjectEntries(existingProjects)
+  if (s.gitUrl) gitUrl.value = s.gitUrl
   if (s.config) {
     maxConcurrency.value = s.config.maxConcurrency
     Object.assign(agentBackends, s.config.agentBackends)
@@ -87,6 +118,7 @@ onMounted(async () => {
   }
 
   if (selectedProject.value) {
+    syncGitUrlFromSelection()
     await loadGraph(selectedProject.value)
   }
 
@@ -104,20 +136,42 @@ watch(() => route.params.project, async () => {
   errorMsg.value = ''
   topGraph.value = null
   if (routeProject) {
+    syncGitUrlFromSelection()
     await loadGraph(routeProject)
   }
 })
 
 async function handleRun() {
-  if (!repoPath.value.trim()) return
+  if (!gitUrl.value.trim()) return
   errorMsg.value = ''
   topGraph.value = null
   try {
-    const project = getProjectName(repoPath.value)
-    await startRun(repoPath.value.trim(), maxConcurrency.value, { ...agentBackends }, language.value)
-    status.value = { phase: 'running', repoPath: repoPath.value.trim(), currentProject: project }
+    const project = getProjectName(gitUrl.value)
+    const { mode } = await startRun(gitUrl.value.trim(), maxConcurrency.value, { ...agentBackends }, language.value)
+    if (mode === 'noop') {
+      // no-op: nothing to do, just refresh status
+      status.value = { phase: 'done', mode: 'noop', gitUrl: gitUrl.value.trim(), currentProject: project }
+      await refreshProjects()
+      if (project) {
+        selectedProject.value = project
+        await router.replace({ name: 'project', params: { project } })
+        await loadGraph(project)
+      }
+      return
+    }
+    status.value = { phase: 'running', mode, gitUrl: gitUrl.value.trim(), currentProject: project }
     selectedProject.value = project
-    mergeProjects([...projects.value, project])
+    mergeProjectEntries([
+      ...projectEntries.value,
+      {
+        name: project,
+        hasDoc: false,
+        sourceUrl: gitUrl.value.trim(),
+        branch: '',
+        head: '',
+        lastUpdated: '',
+      },
+    ])
     await router.replace({ name: 'project', params: { project } })
     startSSE()
   } catch (e) {
@@ -129,7 +183,6 @@ function startSSE() {
   stopSSE()
   unsubscribeSSE = subscribeStatus(async (s) => {
     status.value = s
-    mergeProjects(projects.value)
     if (s.phase === 'running') {
       if (selectedProject.value === s.currentProject) {
         await tryLoadGraph(selectedProject.value)
@@ -183,6 +236,7 @@ async function handleProjectChange() {
     await router.replace({ name: 'home' })
     return
   }
+  syncGitUrlFromSelection()
   await router.replace({ name: 'project', params: { project: selectedProject.value } })
   await loadGraph(selectedProject.value)
 }
@@ -251,8 +305,21 @@ const progressPercent = computed(() => {
 
 const isPaused = computed(() => status.value.paused === true)
 
+const runModeLabel = computed(() => {
+  const m = status.value.mode
+  if (m === 'initial') return 'Initial generation'
+  if (m === 'incremental') return 'Incremental update'
+  if (m === 'noop') return 'No changes'
+  return ''
+})
+
 const progressPhaseLabel = computed(() => {
   if (isPaused.value) return 'Paused'
+  if (status.value.mode === 'incremental') {
+    if (status.value.step === 'fetching') return 'Fetching latest commits...'
+    if (status.value.step === 'updating') return 'Updater agent applying diff...'
+    return 'Incremental update in progress...'
+  }
   const p = progress.value?.phase
   if (p === 'scaffold') return 'Analyzing project structure...'
   if (p === 'processing') return 'Processing modules...'
@@ -290,12 +357,12 @@ async function handlePauseToggle() {
         </button>
       </div>
       <div class="sidebar-input">
-        <label class="input-label">Project Path</label>
+        <label class="input-label">Git SSH URL</label>
         <div class="input-row">
           <input
-            v-model="repoPath"
+            v-model="gitUrl"
             class="path-input"
-            placeholder="/path/to/repo"
+            placeholder="git@github.com:owner/repo.git"
             :disabled="status.phase === 'running'"
             @keydown.enter="handleRun"
           />
@@ -309,7 +376,7 @@ async function handlePauseToggle() {
           </button>
           <button
             class="run-btn"
-            :disabled="status.phase === 'running' || !repoPath.trim()"
+            :disabled="status.phase === 'running' || !gitUrl.trim()"
             @click="handleRun"
           >
             {{ status.phase === 'running' ? '...' : 'Run' }}

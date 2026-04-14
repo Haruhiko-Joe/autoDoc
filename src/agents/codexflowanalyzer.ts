@@ -12,12 +12,12 @@ export class codexFlowAnalyzer implements IFlowAnalyzer {
   private thread: Thread | null = null;
   private threadId: string | undefined;
   private cwd: string | undefined;
-  private readonly skillDir: string;
+  private readonly docDir: string;
   private readonly project: string;
   private readonly language: Language;
 
-  constructor(skillDir: string, project: string, language: Language = "zh") {
-    this.skillDir = skillDir;
+  constructor(docDir: string, project: string, language: Language = "zh") {
+    this.docDir = docDir;
     this.project = project;
     this.language = language;
   }
@@ -32,7 +32,7 @@ export class codexFlowAnalyzer implements IFlowAnalyzer {
   private getInstruction(): string {
     const base = this.language === "en" ? flowAnalyzerInstructionEn : flowAnalyzerInstruction;
     return base
-      .replaceAll("{{SKILL_DIR}}", this.skillDir)
+      .replaceAll("{{DOC_DIR}}", this.docDir)
       .replaceAll("{{PROJECT}}", this.project);
   }
 
