@@ -11,7 +11,7 @@
     "proxy:claude:setup": "zsh scripts/setup-claude-proxy.sh",
     "docs:scan-md-json": "node scripts/unwrap-md-json.mjs",
     "docs:fix-md-json": "node scripts/unwrap-md-json.mjs --write",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --import tsx --test --test-reporter=spec src/retrieval/__tests__/*.test.ts"
   },
   "keywords": [],
   "author": "",

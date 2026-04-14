@@ -1,6 +1,7 @@
 import { z } from "zod"
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import type { DocStore } from "../docStore.js"
+import { DocRetriever } from "../../retrieval/docRetriever.js"
 
 function json(data: unknown) {
   return {
@@ -39,9 +40,23 @@ export function registerQueryTools(mcp: McpServer, store: DocStore): void {
 
   mcp.tool(
     "search_nodes",
-    "Full-text search over node names and descriptions across every level of a project. Use when you don't know which module to drill into.",
+    "Keyword substring search over node names and descriptions across every level of a project. Fast and exact — prefer this when you know a specific module name. For open-ended natural-language questions use `semantic_search` instead.",
     { project: z.string(), query: z.string() },
     async ({ project, query }) => json({ results: await store.search(project, query) }),
+  )
+
+  const retriever = new DocRetriever(store)
+  mcp.tool(
+    "semantic_search",
+    "Rank nodes and pages by relevance to a natural-language query using hybrid BM25-lite scoring over names, descriptions, codeScope paths, and markdown bodies. Returns up to `topK` hits with scores and snippets. Pass `currentPath` (a graph or page path) to apply path-aware boosts. Complements the keyword-only `search_nodes` tool.",
+    {
+      project: z.string(),
+      query: z.string(),
+      topK: z.number().int().min(1).max(25).optional(),
+      currentPath: z.string().optional(),
+    },
+    async ({ project, query, topK, currentPath }) =>
+      json({ results: await retriever.rank(project, query, { topK, currentPath }) }),
   )
 
   mcp.tool(
