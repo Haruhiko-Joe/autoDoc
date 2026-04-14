@@ -4,12 +4,21 @@ import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import { sendChat, type ChatEvent, type ChatMessage } from '../services/doc'
 
+interface DisplayMessage extends ChatMessage {
+  citations?: string[]
+}
+
 const props = defineProps<{
   open: boolean
+  project?: string
+  currentPath?: string
 }>()
-const emit = defineEmits<{ close: [] }>()
+const emit = defineEmits<{
+  close: []
+  navigate: [path: string]
+}>()
 
-const messages = ref<ChatMessage[]>([])
+const messages = ref<DisplayMessage[]>([])
 const input = ref('')
 const loading = ref(false)
 const listRef = ref<HTMLDivElement>()
@@ -22,6 +31,20 @@ function scrollToBottom() {
 
 watch(() => props.open, (v) => { if (v) scrollToBottom() })
 
+const REF_RE = /\[ref:([A-Za-z0-9_\-\/.]+)\]/g
+
+function extractCitationsFromText(text: string): string[] {
+  const found = new Set<string>()
+  for (const m of text.matchAll(REF_RE)) found.add(m[1]!)
+  return Array.from(found)
+}
+
+function mergeCitations(existing: string[] | undefined, extra: string[]): string[] {
+  const set = new Set(existing ?? [])
+  for (const p of extra) set.add(p)
+  return Array.from(set)
+}
+
 async function send() {
   const text = input.value.trim()
   if (!text || loading.value) return
@@ -31,25 +54,44 @@ async function send() {
   loading.value = true
   scrollToBottom()
 
-  const assistantMsg: ChatMessage = { role: 'assistant', content: '' }
+  const assistantMsg: DisplayMessage = { role: 'assistant', content: '' }
   messages.value.push(assistantMsg)
 
-  // 发送完整对话历史（不含当前空的 assistant 占位）
-  const history = messages.value.slice(0, -1)
+  // Send full history without the current empty assistant placeholder.
+  const history = messages.value.slice(0, -1).map(({ role, content }) => ({ role, content }))
 
   try {
-    await sendChat(history, (event: ChatEvent) => {
-      if (event.type === 'text' && event.text) {
-        assistantMsg.content += event.text
-        scrollToBottom()
-      }
-      if (event.type === 'error' && event.text) {
-        assistantMsg.content += `\n\n**Error:** ${event.text}`
-        scrollToBottom()
-      }
-    })
+    await sendChat(
+      history,
+      (event: ChatEvent) => {
+        if (event.type === 'sources' && event.paths) {
+          assistantMsg.citations = mergeCitations(assistantMsg.citations, event.paths)
+          scrollToBottom()
+        }
+        if (event.type === 'text' && event.text) {
+          assistantMsg.content += event.text
+          scrollToBottom()
+        }
+        if (event.type === 'warning' && event.text) {
+          // Non-fatal: the backend couldn't attach doc context this round.
+          assistantMsg.content = `> ⚠ ${event.text}\n\n` + assistantMsg.content
+        }
+        if (event.type === 'error' && event.text) {
+          assistantMsg.content += `\n\n**Error:** ${event.text}`
+          scrollToBottom()
+        }
+      },
+      { project: props.project, currentPath: props.currentPath },
+    )
   } catch (e) {
     assistantMsg.content = `**Error:** ${e instanceof Error ? e.message : String(e)}`
+  }
+
+  // Parse any inline [ref:PATH] citations the model wrote into its answer and
+  // merge them with server-supplied ones so the chip list is complete.
+  const inline = extractCitationsFromText(assistantMsg.content)
+  if (inline.length > 0) {
+    assistantMsg.citations = mergeCitations(assistantMsg.citations, inline)
   }
 
   if (!assistantMsg.content) {
@@ -60,8 +102,35 @@ async function send() {
   scrollToBottom()
 }
 
+function escapeAttr(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
 function renderMd(md: string): string {
-  return DOMPurify.sanitize(marked.parse(md) as string)
+  // Turn `[ref:PATH]` into inline chips before markdown parsing so they
+  // survive marked's escaping. Path tokens accept slashes and common symbols
+  // but no spaces.
+  const withChips = md.replace(
+    REF_RE,
+    (_m, p: string) =>
+      `<span class="citation-inline" role="button" tabindex="0" data-ref="${escapeAttr(p)}">${escapeHtml(p)}</span>`,
+  )
+  return DOMPurify.sanitize(marked.parse(withChips) as string, {
+    ADD_ATTR: ['data-ref', 'tabindex'],
+  })
+}
+
+function onBubbleClick(e: MouseEvent) {
+  const target = e.target as HTMLElement | null
+  const chip = target?.closest('.citation-inline, .citation-chip') as HTMLElement | null
+  if (chip && chip.dataset.ref) emit('navigate', chip.dataset.ref)
 }
 </script>
 
@@ -82,8 +151,27 @@ function renderMd(md: string): string {
           class="chat-msg"
           :class="msg.role"
         >
-          <div v-if="msg.role === 'user'" class="msg-bubble user-bubble">{{ msg.content }}</div>
-          <div v-else class="msg-bubble assistant-bubble" v-html="renderMd(msg.content)" />
+          <template v-if="msg.role === 'user'">
+            <div class="msg-bubble user-bubble">{{ msg.content }}</div>
+          </template>
+          <template v-else>
+            <div class="assistant-stack">
+              <div class="msg-bubble assistant-bubble" @click="onBubbleClick" v-html="renderMd(msg.content)" />
+              <div v-if="msg.citations && msg.citations.length > 0" class="citation-row">
+                <span class="citation-label">Sources:</span>
+                <button
+                  v-for="p in msg.citations"
+                  :key="p"
+                  class="citation-chip"
+                  :data-ref="p"
+                  :title="p"
+                  @click="emit('navigate', p)"
+                >
+                  {{ p }}
+                </button>
+              </div>
+            </div>
+          </template>
         </div>
         <div v-if="loading && messages[messages.length - 1]?.content === ''" class="chat-typing">
           <span class="dot" /><span class="dot" /><span class="dot" />
@@ -181,6 +269,13 @@ function renderMd(md: string): string {
   justify-content: flex-start;
 }
 
+.assistant-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 85%;
+}
+
 .msg-bubble {
   max-width: 85%;
   padding: 10px 14px;
@@ -201,6 +296,7 @@ function renderMd(md: string): string {
   background: var(--chat-assistant-bg);
   color: var(--text-primary);
   border-bottom-left-radius: 4px;
+  max-width: 100%;
 }
 
 .assistant-bubble :deep(p) {
@@ -228,6 +324,60 @@ function renderMd(md: string): string {
   background: var(--chat-assistant-code-inline);
   padding: 1px 4px;
   border-radius: 3px;
+}
+
+.assistant-bubble :deep(.citation-inline) {
+  display: inline-block;
+  padding: 1px 6px;
+  margin: 0 1px;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  vertical-align: 1px;
+  line-height: 1.4;
+}
+
+.assistant-bubble :deep(.citation-inline:hover) {
+  background: var(--accent-hover);
+}
+
+.citation-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  padding: 0 2px;
+}
+
+.citation-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-right: 2px;
+}
+
+.citation-chip {
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  color: var(--text-primary);
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  cursor: pointer;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+}
+
+.citation-chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .chat-typing {

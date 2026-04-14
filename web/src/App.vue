@@ -8,14 +8,49 @@
       <path d="M18 6 6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
   </button>
-  <ChatPanel :open="chatOpen" @close="chatOpen = false" />
+  <ChatPanel
+    :open="chatOpen"
+    :project="currentProject"
+    :current-path="currentDocPath"
+    @close="chatOpen = false"
+    @navigate="onNavigate"
+  />
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { RouterView } from 'vue-router'
+import { ref, computed } from 'vue'
+import { RouterView, useRoute, useRouter } from 'vue-router'
 import ChatPanel from './components/ChatPanel.vue'
+
 const chatOpen = ref(false)
+const route = useRoute()
+const router = useRouter()
+
+const currentProject = computed(() => {
+  const p = route.params.project
+  return typeof p === 'string' ? p : Array.isArray(p) ? p[0] : undefined
+})
+
+// When the user is viewing a specific graph/page the route param `path`
+// carries the slash-separated node path. Home and Flows routes don't set it.
+const currentDocPath = computed(() => {
+  const p = route.params.path
+  if (typeof p === 'string' && p.length > 0) return p
+  if (Array.isArray(p) && p.length > 0) return p.join('/')
+  return undefined
+})
+
+function onNavigate(path: string) {
+  const project = currentProject.value
+  if (!project) return
+  // Citations can point at the project root (empty path) — treat that as
+  // navigating back to the project home.
+  if (!path) {
+    router.push({ name: 'project', params: { project } })
+    return
+  }
+  router.push({ name: 'doc', params: { project, path } })
+}
 </script>
 
 <style scoped>

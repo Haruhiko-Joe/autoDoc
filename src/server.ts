@@ -20,10 +20,12 @@ import { claudeUpdater } from "./agents/claudeupdater.js";
 import { codexUpdater } from "./agents/codexupdater.js";
 import { DocStore } from "./mcp/docStore.js";
 import { buildMcpServer } from "./mcp/server.js";
+import { DocRetriever, formatContextForPrompt } from "./retrieval/docRetriever.js";
 
 const PORT = Number(process.env.PORT ?? 3100);
 
 const docStore = new DocStore(DOC_ROOT);
+const docRetriever = new DocRetriever(docStore);
 
 // ─── Run state ───────────────────────────────────────────────
 
@@ -463,6 +465,8 @@ const server = createServer(async (req, res) => {
     } else if (req.method === "POST" && url.pathname === "/api/chat") {
       const body = (await parseBody(req)) as {
         messages: { role: "user" | "assistant"; content: string }[]
+        project?: string
+        currentPath?: string
       };
 
       res.writeHead(200, {
@@ -479,9 +483,37 @@ const server = createServer(async (req, res) => {
           baseURL: process.env.OPENAI_BASE_URL,
         });
 
+        // Build context from the generated docs when a project is supplied.
+        // If no project is given, fall back to the legacy passthrough so any
+        // existing callers keep working.
+        const userMessages = body.messages ?? [];
+        const chatMessages: { role: "system" | "user" | "assistant"; content: string }[] = [];
+        const citedPaths: string[] = [];
+
+        if (body.project) {
+          try {
+            const latestUser = [...userMessages].reverse().find((m) => m.role === "user");
+            const query = latestUser?.content ?? "";
+            const ctx = await docRetriever.buildChatContext(body.project, query, body.currentPath);
+            citedPaths.push(
+              ...ctx.graphHits.map((h) => h.path).filter(Boolean),
+              ...ctx.pages.map((p) => p.path),
+            );
+            if (ctx.currentPage) citedPaths.push(ctx.currentPage.path);
+            chatMessages.push({ role: "system", content: formatContextForPrompt(ctx) });
+            // Tell the client which paths the model was shown so the UI can
+            // render citation chips even when the stream aborts.
+            send({ type: "sources", paths: Array.from(new Set(citedPaths)) });
+          } catch (err) {
+            console.warn(`[chat] failed to build context for project "${body.project}":`, err);
+            send({ type: "warning", text: "Failed to load doc context; answering without it." });
+          }
+        }
+        chatMessages.push(...userMessages);
+
         const stream = await openai.chat.completions.create({
           model: process.env.OPENAI_MODEL ?? "gpt-4o",
-          messages: body.messages,
+          messages: chatMessages,
           stream: true,
         });
 

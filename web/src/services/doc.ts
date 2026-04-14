@@ -157,18 +157,25 @@ export interface ChatMessage {
 }
 
 export interface ChatEvent {
-  type: 'text' | 'done' | 'error'
+  type: 'text' | 'done' | 'error' | 'sources' | 'warning'
   text?: string
+  paths?: string[]
+}
+
+export interface ChatOptions {
+  project?: string
+  currentPath?: string
 }
 
 export async function sendChat(
   messages: ChatMessage[],
   onEvent: (event: ChatEvent) => void,
+  options: ChatOptions = {},
 ): Promise<void> {
   const res = await fetch(`${API}/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages }),
+    body: JSON.stringify({ messages, ...options }),
   })
 
   if (!res.ok || !res.body) throw new Error(await res.text())
