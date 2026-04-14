@@ -2,7 +2,7 @@
 import { ref, nextTick, watch } from 'vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
-import { sendChat, type ChatEvent, type ChatMessage } from '../services/doc'
+import { sendChat, isSafeRefPath, type ChatEvent, type ChatMessage } from '../services/doc'
 
 interface DisplayMessage extends ChatMessage {
   citations?: string[]
@@ -31,12 +31,32 @@ function scrollToBottom() {
 
 watch(() => props.open, (v) => { if (v) scrollToBottom() })
 
+// Clear the transcript when the user switches between projects — otherwise
+// the next turn would send the previous project's history together with a
+// different retrieval context, producing cross-project answers. Initial
+// mount (prev === undefined) does not clear.
+watch(
+  () => props.project,
+  (next, prev) => {
+    if (prev !== undefined && prev !== next) {
+      messages.value = []
+    }
+  },
+)
+
 const REF_RE = /\[ref:([A-Za-z0-9_\-\/.]+)\]/g
 
 function extractCitationsFromText(text: string): string[] {
   const found = new Set<string>()
-  for (const m of text.matchAll(REF_RE)) found.add(m[1]!)
+  for (const m of text.matchAll(REF_RE)) {
+    const ref = m[1]!
+    if (isSafeRefPath(ref)) found.add(ref)
+  }
   return Array.from(found)
+}
+
+function tryNavigate(ref: string | undefined) {
+  if (isSafeRefPath(ref)) emit('navigate', ref)
 }
 
 function mergeCitations(existing: string[] | undefined, extra: string[]): string[] {
@@ -114,23 +134,33 @@ function escapeHtml(s: string): string {
 }
 
 function renderMd(md: string): string {
-  // Turn `[ref:PATH]` into inline chips before markdown parsing so they
-  // survive marked's escaping. Path tokens accept slashes and common symbols
-  // but no spaces.
+  // Turn `[ref:PATH]` into inline <button> chips before markdown parsing so
+  // they survive marked's escaping. Using <button> (not <span role="button">)
+  // gives us native keyboard activation (Enter/Space) + screen-reader support
+  // for free. Refs that fail path validation render as plain text so we
+  // never expose an unchecked click target.
   const withChips = md.replace(
     REF_RE,
-    (_m, p: string) =>
-      `<span class="citation-inline" role="button" tabindex="0" data-ref="${escapeAttr(p)}">${escapeHtml(p)}</span>`,
+    (match, p: string) => {
+      if (!isSafeRefPath(p)) return escapeHtml(match)
+      return (
+        `<button type="button" class="citation-inline" data-ref="${escapeAttr(p)}">` +
+        `${escapeHtml(p)}</button>`
+      )
+    },
   )
   return DOMPurify.sanitize(marked.parse(withChips) as string, {
-    ADD_ATTR: ['data-ref', 'tabindex'],
+    ADD_ATTR: ['data-ref'],
   })
 }
 
 function onBubbleClick(e: MouseEvent) {
   const target = e.target as HTMLElement | null
   const chip = target?.closest('.citation-inline, .citation-chip') as HTMLElement | null
-  if (chip && chip.dataset.ref) emit('navigate', chip.dataset.ref)
+  if (!chip) return
+  // Prevent <button type="button"> from triggering any enclosing form / link.
+  e.preventDefault()
+  tryNavigate(chip.dataset.ref)
 }
 </script>
 
@@ -162,10 +192,11 @@ function onBubbleClick(e: MouseEvent) {
                 <button
                   v-for="p in msg.citations"
                   :key="p"
+                  type="button"
                   class="citation-chip"
                   :data-ref="p"
                   :title="p"
-                  @click="emit('navigate', p)"
+                  @click="tryNavigate(p)"
                 >
                   {{ p }}
                 </button>
@@ -332,7 +363,9 @@ function onBubbleClick(e: MouseEvent) {
   margin: 0 1px;
   background: var(--accent);
   color: #fff;
+  border: none;
   border-radius: 6px;
+  font-family: inherit;
   font-size: 11px;
   font-weight: 500;
   cursor: pointer;
@@ -340,8 +373,10 @@ function onBubbleClick(e: MouseEvent) {
   line-height: 1.4;
 }
 
-.assistant-bubble :deep(.citation-inline:hover) {
+.assistant-bubble :deep(.citation-inline:hover),
+.assistant-bubble :deep(.citation-inline:focus-visible) {
   background: var(--accent-hover);
+  outline: none;
 }
 
 .citation-row {

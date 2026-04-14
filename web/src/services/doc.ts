@@ -167,6 +167,21 @@ export interface ChatOptions {
   currentPath?: string
 }
 
+// Citation paths come from the LLM, so we must validate them before using
+// them as route params or rendering them as clickable chips — otherwise a
+// hallucinated `[ref:../../../etc/passwd]` turns into a path-traversal probe.
+// autoDoc node refs are ASCII alphanumerics + underscore / dash / dot,
+// joined by single forward slashes. Leading slash, backslash, `..` segments,
+// and consecutive slashes are all disallowed.
+const SAFE_REF_RE = /^[A-Za-z0-9_.\-]+(?:\/[A-Za-z0-9_.\-]+)*$/
+
+export function isSafeRefPath(p: string | undefined | null): p is string {
+  if (p == null) return false
+  if (p === '') return true // project root
+  if (p.includes('..') || p.includes('\\')) return false
+  return SAFE_REF_RE.test(p)
+}
+
 export async function sendChat(
   messages: ChatMessage[],
   onEvent: (event: ChatEvent) => void,

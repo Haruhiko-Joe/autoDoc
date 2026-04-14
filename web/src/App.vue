@@ -21,6 +21,7 @@
 import { ref, computed } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 import ChatPanel from './components/ChatPanel.vue'
+import { isSafeRefPath } from './services/doc'
 
 const chatOpen = ref(false)
 const route = useRoute()
@@ -43,8 +44,11 @@ const currentDocPath = computed(() => {
 function onNavigate(path: string) {
   const project = currentProject.value
   if (!project) return
-  // Citations can point at the project root (empty path) — treat that as
-  // navigating back to the project home.
+  // Defense in depth: the emitting component already validates, but citation
+  // paths originate from the LLM so double-check before routing — a bad ref
+  // would otherwise flow into /api/doc/... requests.
+  if (!isSafeRefPath(path)) return
+  // Empty path = project root.
   if (!path) {
     router.push({ name: 'project', params: { project } })
     return
