@@ -19,26 +19,29 @@ Your task is to supplement the documentation site's missing **runtime perspectiv
 
 ## Tools Available
 
-### browse.mjs — Progressive Documentation Browsing
+### Read / Glob / Grep — Directly Read Documentation Files
 
-Use the Bash tool to run the following commands to browse documentation:
+The documentation site has been generated at the local directory \`{{DOC_DIR}}\`, with this layout:
 
-\`\`\`bash
-# Get top-level overview (all top-level modules + edges)
-node {{SKILL_DIR}}/scripts/browse.mjs {{SKILL_DIR}}/docs {{PROJECT}}
-
-# Drill into a module (view child nodes + internal edges)
-node {{SKILL_DIR}}/scripts/browse.mjs {{SKILL_DIR}}/docs {{PROJECT}} {ModuleName}
-
-# Continue drilling into sub-modules
-node {{SKILL_DIR}}/scripts/browse.mjs {{SKILL_DIR}}/docs {{PROJECT}} {Module}/{SubModule}
-
-# Read leaf document
-node {{SKILL_DIR}}/scripts/browse.mjs {{SKILL_DIR}}/docs {{PROJECT}} {Module}/{Leaf} --read
-
-# Search nodes by keyword
-node {{SKILL_DIR}}/scripts/browse.mjs {{SKILL_DIR}}/docs {{PROJECT}} --search {keyword}
 \`\`\`
+{{DOC_DIR}}/
+├── top.json                          # top graph: description + top-level modules + edges
+├── {Module}/
+│   ├── {Module}.json                 # sub-graph: description + codeScope + child nodes
+│   ├── {Leaf}.md                     # leaf page: detailed technical doc
+│   └── {SubModule}/
+│       ├── {SubModule}.json
+│       └── ...
+\`\`\`
+
+Use the Read tool directly on these JSON and Markdown files. Progressive drill flow:
+
+1. \`Read {{DOC_DIR}}/top.json\` — top-level overview
+2. \`Read {{DOC_DIR}}/{Module}/{Module}.json\` — drill into a module
+3. \`Read {{DOC_DIR}}/{Module}/{SubModule}/{SubModule}.json\` — go deeper
+4. \`Read {{DOC_DIR}}/{Module}/{Leaf}.md\` — read a leaf page
+
+To locate nodes by keyword, use \`Grep\` under \`{{DOC_DIR}}\` against the name / description fields.
 
 ### Read / Glob / Grep — Source Code Verification
 
@@ -48,7 +51,7 @@ You can also use Read, Glob, and Grep tools to directly read the **target reposi
 
 ### Step 1: Understand the Global Architecture
 
-Use browse.mjs to get the top-level overview. Carefully read:
+Use the documentation files to get the top-level overview. Carefully read:
 - Each top-level module's description and codeScope
 - Inter-module edges (types, directions, descriptions)
 - Which modules are entry points (least called / call others most)
@@ -68,7 +71,7 @@ For each selected case:
 
 1. **Determine entry point**: Which module does this action start from?
 2. **Follow edges**: Based on the top-level graph's edges, determine the call/data flow direction between modules
-3. **Drill into sub-modules as needed**: If a top-level module's internal flow is critical to understanding this case, use browse.mjs to drill into the subgraph for details
+3. **Drill into sub-modules as needed**: If a top-level module's internal flow is critical to understanding this case, use the documentation files to drill into the subgraph for details
 4. **Source code verification**: For key call relationships, verify in source code using Grep (search function names, import paths, etc.)
 5. **Record each step**: from → to, action description, detailed explanation, edge type, source code reference
 

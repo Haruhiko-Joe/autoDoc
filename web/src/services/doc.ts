@@ -44,7 +44,7 @@ export interface Progress {
 }
 
 export type AgentBackend = 'claude' | 'codex'
-export type AgentRole = 'scaffold' | 'decomposer' | 'writer' | 'checker' | 'flowAnalyzer'
+export type AgentRole = 'scaffold' | 'decomposer' | 'writer' | 'checker' | 'flowAnalyzer' | 'updater'
 export type AgentBackends = Record<AgentRole, AgentBackend>
 
 export interface RunConfig {
@@ -53,38 +53,55 @@ export interface RunConfig {
   language: 'zh' | 'en'
 }
 
+export type RunMode = 'initial' | 'incremental' | 'noop'
+export type IncrementalStep = 'fetching' | 'updating'
+
 export interface RunStatus {
   phase: 'idle' | 'running' | 'done' | 'error'
+  mode?: RunMode
+  step?: IncrementalStep
   paused?: boolean
-  repoPath?: string
+  gitUrl?: string
   currentProject?: string
+  repoDir?: string
+  docDir?: string
   message?: string
   progress?: Progress
   config?: RunConfig
 }
 
-export async function fetchProjects(): Promise<string[]> {
+export interface ProjectListEntry {
+  name: string
+  hasDoc: boolean
+  sourceUrl: string
+  branch: string
+  head: string
+  lastUpdated: string
+}
+
+export async function fetchProjects(): Promise<ProjectListEntry[]> {
   const res = await fetch(`${API}/projects`)
   if (!res.ok) throw new Error(await res.text())
-  const data = await res.json() as { projects?: string[] }
+  const data = await res.json() as { projects?: ProjectListEntry[] }
   return data.projects ?? []
 }
 
 export async function startRun(
-  repoPath: string,
+  gitUrl: string,
   maxConcurrency?: number,
   agentBackends?: Partial<AgentBackends>,
   language?: 'zh' | 'en',
-): Promise<void> {
+): Promise<{ ok: boolean; mode: RunMode }> {
   const res = await fetch(`${API}/run`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ repoPath, maxConcurrency, agentBackends, language }),
+    body: JSON.stringify({ gitUrl, maxConcurrency, agentBackends, language }),
   })
   if (!res.ok) {
     const data = await res.json()
     throw new Error(data.error ?? 'Failed to start')
   }
+  return res.json()
 }
 
 export async function pausePipeline(): Promise<void> {

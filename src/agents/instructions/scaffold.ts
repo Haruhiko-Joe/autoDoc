@@ -128,7 +128,7 @@ edges 反映模块间的**真实关系**，基于你在代码中观察到的 imp
 字段说明：
 - \`description\`：项目整体介绍，展示在文档站首页，使用中文
 - \`nodes[].name\`：模块名称，简洁明了，将作为图节点的标签和后续文件路径的一部分（使用合法标识符，不含空格和特殊字符）
-- \`nodes[].description\`：模块职责描述，约 100 字
+- \`nodes[].description\`：模块职责描述，约 100 字，使用中文
 - \`nodes[].codeScope\`：该模块对应的代码文件/目录路径数组（相对于仓库根目录），必须是实际存在的路径
 - \`nodes[].edges[].type\`：边类型，取值为 calls / depends / data-flow / event / extends / composes
 - \`nodes[].edges[].target\`：边指向的目标节点名称，必须是同一张图中存在的另一个节点的 name

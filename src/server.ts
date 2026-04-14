@@ -1,24 +1,64 @@
 import "dotenv/config";
-import { createServer } from "node:http";
-import { readFile, readdir, stat } from "node:fs/promises";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { readFile, readdir, stat, rm } from "node:fs/promises";
 import path from "node:path";
 process.setMaxListeners(0);
-import { query } from "@anthropic-ai/claude-agent-sdk";
 import OpenAI from "openai";
-import { Arranger, type Progress, type AgentBackend, type AgentBackends, type CheckerType } from "./workflow/arranger.js";
-import type { Language } from "./agents/schemas/schema.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+
+import { Arranger, type Progress, type AgentBackend, type AgentBackends } from "./workflow/arranger.js";
+import type { Language, IUpdater } from "./agents/schemas/schema.js";
+import {
+  REPO_ROOT,
+  DOC_ROOT,
+  readRegistry,
+  upsertProject,
+  type ProjectMeta,
+} from "./souko/registry.js";
+import * as git from "./git/repoManager.js";
+import { claudeUpdater } from "./agents/claudeupdater.js";
+import { codexUpdater } from "./agents/codexupdater.js";
+import { DocStore } from "./mcp/docStore.js";
+import { buildMcpServer } from "./mcp/server.js";
 
 const PORT = Number(process.env.PORT ?? 3100);
-const DOC_ROOT = path.resolve("web/doc");
+
+const docStore = new DocStore(DOC_ROOT);
+
+// ─── Run state ───────────────────────────────────────────────
+
+type RunMode = "initial" | "incremental" | "noop";
+type IncrementalStep = "fetching" | "updating";
 
 type RunState =
   | { phase: "idle" }
-  | { phase: "running"; repoPath: string; project: string; docDir: string; arranger: Arranger }
-  | { phase: "done"; repoPath: string; project: string; docDir: string }
-  | { phase: "error"; repoPath: string; project: string; message: string };
+  | {
+      phase: "running";
+      mode: RunMode;
+      gitUrl: string;
+      project: string;
+      repoDir: string;
+      docDir: string;
+      arranger?: Arranger;
+      step?: IncrementalStep;
+    }
+  | {
+      phase: "done";
+      mode: RunMode;
+      gitUrl: string;
+      project: string;
+      repoDir: string;
+      docDir: string;
+    }
+  | {
+      phase: "error";
+      gitUrl: string;
+      project: string;
+      message: string;
+    };
 
 let state: RunState = { phase: "idle" };
-const sseClients = new Set<import("node:http").ServerResponse>();
+const sseClients = new Set<ServerResponse>();
 
 function broadcastStatus(): void {
   if (sseClients.size === 0) return;
@@ -40,104 +80,246 @@ function debouncedBroadcast(): void {
   }, 500);
 }
 
-function getProjectName(repoPath: string): string {
-  return path.basename(path.resolve(repoPath));
+// ─── Run handler ─────────────────────────────────────────────
+
+interface RunBody {
+  gitUrl: string;
+  maxConcurrency?: number;
+  agentBackend?: AgentBackend;
+  agentBackends?: Partial<AgentBackends>;
+  language?: Language;
 }
 
-function getProjectDocDir(project: string): string {
-  if (!project || project.includes("/") || project.includes("\\")) {
-    throw new Error("Invalid project");
-  }
-  return path.join(DOC_ROOT, project);
-}
-
-async function listProjects(): Promise<string[]> {
-  const entries = await readdir(DOC_ROOT, { withFileTypes: true }).catch(() => []);
-  const projects = await Promise.all(
-    entries
-      .filter((entry) => entry.isDirectory())
-      .map(async (entry) => {
-        const topGraph = await stat(path.join(DOC_ROOT, entry.name, "top.json")).catch(() => null);
-        return topGraph?.isFile() ? entry.name : null;
-      }),
-  );
-  return projects.filter((project): project is string => Boolean(project)).sort();
-}
-
-async function handleRun(body: {
-  repoPath: string
-  maxConcurrency?: number
-  agentBackend?: AgentBackend
-  agentBackends?: Partial<AgentBackends>
-  checkerType?: CheckerType
-  language?: Language
-}): Promise<{ ok: boolean }> {
+async function handleRun(body: RunBody): Promise<{ ok: boolean; mode: RunMode }> {
   if (state.phase === "running") {
     throw new Error("Already running");
   }
-  const repoPath = body.repoPath;
-  const project = getProjectName(repoPath);
-  const docDir = getProjectDocDir(project);
-  const s = await stat(repoPath).catch(() => null);
-  if (!s?.isDirectory()) {
-    throw new Error("Invalid path: not a directory");
+  if (!body.gitUrl || typeof body.gitUrl !== "string") {
+    throw new Error("Missing gitUrl");
   }
+
+  const gitUrl = body.gitUrl.trim();
+  const project = git.projectNameFromUrl(gitUrl);
+  const repoDir = path.join(REPO_ROOT, project);
+  const docDir = path.join(DOC_ROOT, project);
+
+  const registry = await readRegistry();
+  const prev = registry.projects[project];
+  const repoExists = await stat(repoDir).then((s) => s.isDirectory()).catch(() => false);
+
+  if (!prev || !repoExists) {
+    await runInitial({ body, gitUrl, project, repoDir, docDir });
+    return { ok: true, mode: "initial" };
+  }
+
+  return await runIncremental({ body, gitUrl, project, repoDir, docDir, prev });
+}
+
+interface RunArgs {
+  body: RunBody;
+  gitUrl: string;
+  project: string;
+  repoDir: string;
+  docDir: string;
+}
+
+async function runInitial(args: RunArgs): Promise<void> {
+  const { body, gitUrl, project, repoDir, docDir } = args;
+
+  // Clean any half-state from a previous attempt before cloning fresh.
+  await rm(repoDir, { recursive: true, force: true });
+  await rm(docDir, { recursive: true, force: true });
+
+  console.log(`[Run] initial: cloning ${gitUrl} → ${repoDir}`);
+  await git.clone(gitUrl, repoDir);
+  const head = await git.getHead(repoDir);
+  const branch = await git.getCurrentBranch(repoDir);
 
   const arranger = new Arranger({
     maxConcurrency: body.maxConcurrency,
     agentBackend: body.agentBackend,
     agentBackends: body.agentBackends,
-    checkerType: body.checkerType,
     language: body.language,
   });
-  state = { phase: "running", repoPath, project, docDir, arranger };
+  state = { phase: "running", mode: "initial", gitUrl, project, repoDir, docDir, arranger };
   arranger.onProgress(debouncedBroadcast);
 
-  arranger.run(repoPath, docDir).then(
-    () => {
-      state = { phase: "done", repoPath, project, docDir };
+  arranger.run(repoDir, docDir).then(
+    async () => {
+      await upsertProject(project, {
+        sourceUrl: gitUrl,
+        branch,
+        head,
+        lastUpdated: new Date().toISOString(),
+      });
+      state = { phase: "done", mode: "initial", gitUrl, project, repoDir, docDir };
       broadcastStatus();
     },
     (err) => {
-      state = { phase: "error", repoPath, project, message: String(err) };
+      state = { phase: "error", gitUrl, project, message: String(err) };
+      broadcastStatus();
+    },
+  );
+}
+
+async function runIncremental(args: RunArgs & { prev: ProjectMeta }): Promise<{ ok: boolean; mode: RunMode }> {
+  const { body, gitUrl, project, repoDir, docDir, prev } = args;
+
+  // Phase 1: fetch — show "fetching" immediately so the UI doesn't look frozen.
+  state = { phase: "running", mode: "incremental", gitUrl, project, repoDir, docDir, step: "fetching" };
+  broadcastStatus();
+  console.log(`[Run] incremental: fetching ${repoDir}`);
+  await git.fetchAndPull(repoDir);
+  const newHead = await git.getHead(repoDir);
+
+  if (newHead === prev.head) {
+    console.log(`[Run] incremental: no commit change (${newHead.slice(0, 8)}), noop`);
+    state = { phase: "done", mode: "noop", gitUrl, project, repoDir, docDir };
+    broadcastStatus();
+    return { ok: true, mode: "noop" };
+  }
+
+  const changedFiles = await git.diffNameOnly(repoDir, prev.head, newHead);
+  const diffPatch = await git.diffPatch(repoDir, prev.head, newHead, changedFiles);
+  console.log(`[Run] incremental: ${prev.head.slice(0, 8)} → ${newHead.slice(0, 8)} (${changedFiles.length} files)`);
+
+  const language = body.language ?? "zh";
+  const backend: AgentBackend = body.agentBackends?.updater ?? body.agentBackend ?? "claude";
+  const updater: IUpdater =
+    backend === "codex"
+      ? new codexUpdater(project, { docDir, repoDir, prevCommit: prev.head, newCommit: newHead, changedFiles, diffPatch }, language)
+      : new claudeUpdater(project, { docDir, repoDir, prevCommit: prev.head, newCommit: newHead, changedFiles, diffPatch }, language);
+
+  const prompt =
+    `项目 ${project} 在 ${prev.head.slice(0, 8)} → ${newHead.slice(0, 8)} 之间发生了 ${changedFiles.length} 个文件改动。` +
+    `请按 SOP 局部更新文档树，使其与新代码一致。`;
+
+  // Phase 2: hand off to Updater agent.
+  state = { phase: "running", mode: "incremental", gitUrl, project, repoDir, docDir, step: "updating" };
+  broadcastStatus();
+  console.log(`[Run] incremental: invoking ${backend} Updater`);
+
+  updater.run(prompt, repoDir).then(
+    async ({ result }) => {
+      console.log(`[Updater] ${result.summary}`);
+      console.log(`[Updater] touched ${result.touched.length} files`);
+      await upsertProject(project, {
+        ...prev,
+        head: newHead,
+        lastUpdated: new Date().toISOString(),
+      });
+      state = { phase: "done", mode: "incremental", gitUrl, project, repoDir, docDir };
+      broadcastStatus();
+    },
+    (err) => {
+      state = { phase: "error", gitUrl, project, message: String(err) };
       broadcastStatus();
     },
   );
 
-  return { ok: true };
+  return { ok: true, mode: "incremental" };
 }
 
+// ─── Status ──────────────────────────────────────────────────
+
 interface RunConfig {
-  maxConcurrency: number
-  agentBackends: AgentBackends
-  language: Language
+  maxConcurrency: number;
+  agentBackends: AgentBackends;
+  language: Language;
 }
 
 interface StatusResponse {
-  phase: "idle" | "running" | "done" | "error"
-  paused?: boolean
-  repoPath?: string
-  currentProject?: string
-  docDir?: string
-  message?: string
-  progress?: Progress
-  config?: RunConfig
+  phase: "idle" | "running" | "done" | "error";
+  mode?: RunMode;
+  step?: IncrementalStep;
+  paused?: boolean;
+  gitUrl?: string;
+  currentProject?: string;
+  repoDir?: string;
+  docDir?: string;
+  message?: string;
+  progress?: Progress;
+  config?: RunConfig;
 }
 
 async function handleStatus(): Promise<StatusResponse> {
   if (state.phase === "running") {
-    const progress = await state.arranger.getProgress();
-    const config = state.arranger.getConfig();
-    return { phase: "running", paused: state.arranger.paused, repoPath: state.repoPath, currentProject: state.project, docDir: state.docDir, progress, config };
+    const progress = state.arranger ? await state.arranger.getProgress() : undefined;
+    const config = state.arranger?.getConfig();
+    return {
+      phase: "running",
+      mode: state.mode,
+      step: state.step,
+      paused: state.arranger?.paused ?? false,
+      gitUrl: state.gitUrl,
+      currentProject: state.project,
+      repoDir: state.repoDir,
+      docDir: state.docDir,
+      progress,
+      config,
+    };
   }
   if (state.phase === "done") {
-    return { phase: "done", repoPath: state.repoPath, currentProject: state.project, docDir: state.docDir };
+    return {
+      phase: "done",
+      mode: state.mode,
+      gitUrl: state.gitUrl,
+      currentProject: state.project,
+      repoDir: state.repoDir,
+      docDir: state.docDir,
+    };
   }
   if (state.phase === "error") {
-    return { phase: "error", repoPath: state.repoPath, currentProject: state.project, message: state.message };
+    return {
+      phase: "error",
+      gitUrl: state.gitUrl,
+      currentProject: state.project,
+      message: state.message,
+    };
   }
   return { phase: "idle" };
 }
+
+// ─── Project listing (registry-driven) ───────────────────────
+
+interface ProjectListEntry extends ProjectMeta {
+  name: string;
+  hasDoc: boolean;
+}
+
+async function listProjects(): Promise<ProjectListEntry[]> {
+  const reg = await readRegistry();
+  const out: ProjectListEntry[] = [];
+  for (const [name, meta] of Object.entries(reg.projects)) {
+    const hasDoc = await stat(path.join(DOC_ROOT, name, "top.json"))
+      .then((s) => s.isFile())
+      .catch(() => false);
+    out.push({ name, hasDoc, ...meta });
+  }
+  // Also surface doc directories that exist but aren't in the registry yet
+  // (e.g. legacy migrated docs). They appear with empty meta so the UI can
+  // still browse them.
+  const dirs = await readdir(DOC_ROOT, { withFileTypes: true }).catch(() => []);
+  for (const d of dirs) {
+    if (!d.isDirectory()) continue;
+    if (reg.projects[d.name]) continue;
+    const hasDoc = await stat(path.join(DOC_ROOT, d.name, "top.json"))
+      .then((s) => s.isFile())
+      .catch(() => false);
+    if (!hasDoc) continue;
+    out.push({
+      name: d.name,
+      hasDoc: true,
+      sourceUrl: "",
+      branch: "",
+      head: "",
+      lastUpdated: "",
+    });
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// ─── Doc file passthrough ────────────────────────────────────
 
 async function handleDocFile(docDir: string, filePath: string): Promise<{ content: string; type: string }> {
   const full = path.resolve(docDir, filePath);
@@ -147,11 +329,20 @@ async function handleDocFile(docDir: string, filePath: string): Promise<{ conten
   return { content, type };
 }
 
+function getProjectDocDir(project: string): string {
+  if (!project || project.includes("/") || project.includes("\\")) {
+    throw new Error("Invalid project");
+  }
+  return path.join(DOC_ROOT, project);
+}
+
+// ─── Search (unchanged behavior, just new DOC_ROOT) ──────────
+
 interface SearchResult {
-  name: string
-  description: string
-  path: string
-  type: "graph" | "page"
+  name: string;
+  description: string;
+  path: string;
+  type: "graph" | "page";
 }
 
 async function searchModules(project: string, query: string): Promise<SearchResult[]> {
@@ -177,7 +368,7 @@ async function searchModules(project: string, query: string): Promise<SearchResu
       } catch { /* skip invalid */ }
     }
     for (const entry of entries) {
-      if (entry.isDirectory() && entry.name !== "_pending") {
+      if (entry.isDirectory() && entry.name !== "_pending" && !entry.name.startsWith(".")) {
         await scanDir(path.join(dir, entry.name), prefix ? `${prefix}/${entry.name}` : entry.name);
       }
     }
@@ -187,7 +378,9 @@ async function searchModules(project: string, query: string): Promise<SearchResu
   return results;
 }
 
-function parseBody(req: import("node:http").IncomingMessage): Promise<Record<string, unknown>> {
+// ─── HTTP plumbing ───────────────────────────────────────────
+
+function parseBody(req: IncomingMessage): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     req.on("data", (c: Buffer) => chunks.push(c));
@@ -202,12 +395,24 @@ function parseBody(req: import("node:http").IncomingMessage): Promise<Record<str
   });
 }
 
+async function handleMcp(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = await parseBody(req);
+  const mcp = buildMcpServer(docStore);
+  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+  res.on("close", () => {
+    transport.close().catch(() => {});
+    mcp.close().catch(() => {});
+  });
+  await mcp.connect(transport);
+  await transport.handleRequest(req, res, body);
+}
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
 
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, mcp-session-id");
 
   if (req.method === "OPTIONS") {
     res.writeHead(204).end();
@@ -215,24 +420,26 @@ const server = createServer(async (req, res) => {
   }
 
   try {
+    if (req.method === "POST" && url.pathname === "/mcp") {
+      await handleMcp(req, res);
+      return;
+    }
+    if (url.pathname === "/mcp") {
+      res.writeHead(405).end("Method Not Allowed");
+      return;
+    }
+
     if (req.method === "POST" && url.pathname === "/api/run") {
-      const body = await parseBody(req) as {
-        repoPath: string
-        maxConcurrency?: number
-        agentBackend?: AgentBackend
-        agentBackends?: Partial<AgentBackends>
-        checkerType?: AgentBackend
-        language?: Language
-      };
+      const body = (await parseBody(req)) as unknown as RunBody;
       const result = await handleRun(body);
       res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(result));
     } else if (req.method === "POST" && url.pathname === "/api/pause") {
-      if (state.phase !== "running") throw new Error("Not running");
+      if (state.phase !== "running" || !state.arranger) throw new Error("Not running");
       state.arranger.pause();
       broadcastStatus();
       res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true }));
     } else if (req.method === "POST" && url.pathname === "/api/resume") {
-      if (state.phase !== "running") throw new Error("Not running");
+      if (state.phase !== "running" || !state.arranger) throw new Error("Not running");
       state.arranger.resume();
       broadcastStatus();
       res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true }));
@@ -248,7 +455,6 @@ const server = createServer(async (req, res) => {
         "Cache-Control": "no-cache",
         Connection: "keep-alive",
       });
-      // 立即推送当前状态
       const initial = JSON.stringify(await handleStatus());
       res.write(`data: ${initial}\n\n`);
       sseClients.add(res);
@@ -301,7 +507,6 @@ const server = createServer(async (req, res) => {
       const results = await searchModules(project, q);
       res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ results }));
     } else if (req.method === "GET" && url.pathname.startsWith("/api/doc/")) {
-      // running 时也能读已完成的 doc 文件（即时渲染）
       let docDir: string | undefined;
       const project = url.searchParams.get("project");
       if (project) docDir = getProjectDocDir(project);
@@ -323,5 +528,7 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`[Server] Listening on http://localhost:${PORT}`);
+  console.log(`[Server] HTTP + MCP on http://localhost:${PORT}`);
+  console.log(`[Server] DOC_ROOT=${DOC_ROOT}`);
+  console.log(`[Server] REPO_ROOT=${REPO_ROOT}`);
 });

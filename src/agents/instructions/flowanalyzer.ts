@@ -19,26 +19,29 @@ autoDoc 已为目标仓库生成了完整的渐进式文档站，包括：
 
 ## 你拥有的工具
 
-### browse.mjs — 文档渐进式浏览
+### Read / Glob / Grep — 直接读取文档站文件
 
-使用 Bash 工具运行以下命令来浏览文档：
+文档站已生成在本地目录 \`{{DOC_DIR}}\`，结构如下：
 
-\`\`\`bash
-# 获取顶层总览（所有顶层模块 + edges）
-node {{SKILL_DIR}}/scripts/browse.mjs {{SKILL_DIR}}/docs {{PROJECT}}
-
-# 钻入某个模块（查看子节点 + 内部 edges）
-node {{SKILL_DIR}}/scripts/browse.mjs {{SKILL_DIR}}/docs {{PROJECT}} {ModuleName}
-
-# 继续钻入子模块
-node {{SKILL_DIR}}/scripts/browse.mjs {{SKILL_DIR}}/docs {{PROJECT}} {Module}/{SubModule}
-
-# 读取叶子文档
-node {{SKILL_DIR}}/scripts/browse.mjs {{SKILL_DIR}}/docs {{PROJECT}} {Module}/{Leaf} --read
-
-# 按关键词搜索节点
-node {{SKILL_DIR}}/scripts/browse.mjs {{SKILL_DIR}}/docs {{PROJECT}} --search {keyword}
 \`\`\`
+{{DOC_DIR}}/
+├── top.json                          # 顶层图：description + 顶层模块列表 + 模块间 edges
+├── {Module}/
+│   ├── {Module}.json                 # 子图：description + codeScope + 子节点
+│   ├── {Leaf}.md                     # 叶子页面：详细技术文档
+│   └── {SubModule}/
+│       ├── {SubModule}.json
+│       └── ...
+\`\`\`
+
+用 Read 工具直接读取这些 JSON 和 Markdown 文件。渐进式钻取流程：
+
+1. \`Read {{DOC_DIR}}/top.json\` —— 顶层总览
+2. \`Read {{DOC_DIR}}/{Module}/{Module}.json\` —— 钻入某个模块
+3. \`Read {{DOC_DIR}}/{Module}/{SubModule}/{SubModule}.json\` —— 继续深入
+4. \`Read {{DOC_DIR}}/{Module}/{Leaf}.md\` —— 读取叶子页面
+
+按关键词定位节点时，用 \`Grep\` 在 \`{{DOC_DIR}}\` 下搜索 name / description 字段。
 
 ### Read / Glob / Grep — 源码验证
 
@@ -48,7 +51,7 @@ node {{SKILL_DIR}}/scripts/browse.mjs {{SKILL_DIR}}/docs {{PROJECT}} --search {k
 
 ### 第一步：理解全局架构
 
-用 browse.mjs 获取顶层总览。仔细阅读：
+用 文档文件 获取顶层总览。仔细阅读：
 - 每个顶层模块的 description 和 codeScope
 - 模块间的 edges（类型、方向、描述）
 - 哪些模块是入口点（被调用最少 / 调用别人最多）
@@ -68,7 +71,7 @@ node {{SKILL_DIR}}/scripts/browse.mjs {{SKILL_DIR}}/docs {{PROJECT}} --search {k
 
 1. **确定入口点**：这个操作从哪个模块开始？
 2. **沿 edges 追踪**：根据顶层图的 edges，确定模块间的调用/数据流方向
-3. **按需钻入子模块**：如果某个顶层模块内部的流转对理解该 case 至关重要，用 browse.mjs 钻入子图获取细节
+3. **按需钻入子模块**：如果某个顶层模块内部的流转对理解该 case 至关重要，用 文档文件 钻入子图获取细节
 4. **源码验证**：对关键的调用关系，用 Grep 在源码中验证（搜索函数名、import 路径等）
 5. **记录每一步**：from → to、动作描述、详细说明、edge 类型、源码引用
 

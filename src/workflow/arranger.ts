@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir, readdir, access, copyFile, cp } from "node:fs/promises";
+import { readFile, writeFile, mkdir, readdir, access, copyFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { claudeScaffold } from "../agents/claudescaffold.js";
@@ -131,7 +131,7 @@ class Semaphore {
 }
 
 export type AgentBackend = "claude" | "codex";
-export type AgentRole = "scaffold" | "decomposer" | "writer" | "checker" | "flowAnalyzer";
+export type AgentRole = "scaffold" | "decomposer" | "writer" | "checker" | "flowAnalyzer" | "updater";
 export type AgentBackends = Record<AgentRole, AgentBackend>;
 /** @deprecated Use AgentBackend instead */
 export type CheckerType = AgentBackend;
@@ -142,6 +142,7 @@ const DEFAULT_AGENT_BACKENDS: AgentBackends = {
   writer: "claude",
   checker: "codex",
   flowAnalyzer: "claude",
+  updater: "claude",
 };
 
 export class Arranger {
@@ -173,6 +174,7 @@ export class Arranger {
       writer: options?.agentBackends?.writer ?? fallback ?? DEFAULT_AGENT_BACKENDS.writer,
       checker: options?.agentBackends?.checker ?? fallback ?? DEFAULT_AGENT_BACKENDS.checker,
       flowAnalyzer: options?.agentBackends?.flowAnalyzer ?? fallback ?? DEFAULT_AGENT_BACKENDS.flowAnalyzer,
+      updater: options?.agentBackends?.updater ?? fallback ?? DEFAULT_AGENT_BACKENDS.updater,
     };
     this.language = options?.language ?? "zh";
     this.sem = new Semaphore(this.maxConcurrency);
@@ -198,10 +200,10 @@ export class Arranger {
     return this.getBackend("writer") === "claude" ? new claudeWriter(this.language) : new codexWriter(this.language);
   }
 
-  private makeFlowAnalyzer(skillDir: string): IFlowAnalyzer {
+  private makeFlowAnalyzer(): IFlowAnalyzer {
     return this.getBackend("flowAnalyzer") === "claude"
-      ? new claudeFlowAnalyzer(skillDir, this.projectName, this.language)
-      : new codexFlowAnalyzer(skillDir, this.projectName, this.language);
+      ? new claudeFlowAnalyzer(this.docDir, this.projectName, this.language)
+      : new codexFlowAnalyzer(this.docDir, this.projectName, this.language);
   }
 
   get paused(): boolean {
@@ -265,7 +267,7 @@ export class Arranger {
 
   // ─── 唯一公开入口 ───
 
-  async run(repoPath: string, docDir = path.resolve("web/doc", path.basename(path.resolve(repoPath)))): Promise<void> {
+  async run(repoPath: string, docDir = path.resolve("src/souko/doc", path.basename(path.resolve(repoPath)))): Promise<void> {
     this.repoPath = repoPath;
     this.docDir = docDir;
 
@@ -288,11 +290,11 @@ export class Arranger {
 
     this.currentPhase = "assembling";
     this.notify();
-    const skillDir = await this.assembleSkill();
+    await this.assembleSkill();
 
     this.currentPhase = "flows";
     this.notify();
-    await this.runFlowAnalysis(skillDir);
+    await this.runFlowAnalysis();
 
     this.currentPhase = "idle";
     this.notify();
@@ -867,24 +869,34 @@ export class Arranger {
     const skillDir = path.join(this.repoPath, ".claude", "skills", "doc-drill");
 
     console.log(`[Arranger] Assembling doc-drill skill at ${skillDir}...`);
-    await mkdir(path.join(skillDir, "scripts"), { recursive: true });
-    await mkdir(path.join(skillDir, "docs"), { recursive: true });
+    await mkdir(skillDir, { recursive: true });
 
-    await copyFile(
-      path.join(SKILL_TEMPLATE_DIR, "scripts", "browse.mjs"),
-      path.join(skillDir, "scripts", "browse.mjs"),
-    );
     await copyFile(
       path.join(SKILL_TEMPLATE_DIR, "SKILL.md"),
       path.join(skillDir, "SKILL.md"),
     );
-    await cp(this.docDir, path.join(skillDir, "docs", this.projectName), { recursive: true });
 
-    console.log("[Arranger] Skill assembled.");
+    // Register the autodoc MCP server in the target repo's .mcp.json so
+    // Claude Code picks it up automatically. MCP_PUBLIC_URL lets ops override
+    // the endpoint at deploy time (e.g. a central server behind a reverse proxy).
+    const mcpUrl = process.env.MCP_PUBLIC_URL ?? "http://localhost:3200/mcp";
+    const mcpConfigPath = path.join(this.repoPath, ".mcp.json");
+    let existing: Record<string, unknown> = {};
+    try {
+      existing = JSON.parse(await readFile(mcpConfigPath, "utf-8"));
+    } catch {
+      // no existing config; start fresh
+    }
+    const servers = (existing.mcpServers as Record<string, unknown> | undefined) ?? {};
+    servers.autodoc = { type: "http", url: mcpUrl };
+    existing.mcpServers = servers;
+    await writeFile(mcpConfigPath, JSON.stringify(existing, null, 2));
+
+    console.log(`[Arranger] Skill assembled. Registered MCP server autodoc → ${mcpUrl}`);
     return skillDir;
   }
 
-  private async runFlowAnalysis(skillDir: string): Promise<void> {
+  private async runFlowAnalysis(): Promise<void> {
     const flowsPath = path.join(this.docDir, "flows.json");
     if (await this.fileExists(flowsPath)) {
       console.log("[Arranger] flows.json already exists, skipping flow analysis.");
@@ -892,7 +904,7 @@ export class Arranger {
     }
 
     console.log("[Arranger] Running flow analysis...");
-    const analyzer = this.makeFlowAnalyzer(skillDir);
+    const analyzer = this.makeFlowAnalyzer();
     const prompt = `Analyze the documented codebase and produce 3-7 typical business interaction flows.\nRepository root: ${this.repoPath}`;
     const { result } = await analyzer.run(prompt, this.repoPath);
 

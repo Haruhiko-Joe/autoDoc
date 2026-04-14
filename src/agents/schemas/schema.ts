@@ -132,6 +132,21 @@ export const FlowAnalyzerOutput = z.object({
   flows: z.array(FlowCase),
 })
 
+// --- Updater (incremental documentation updater) ---
+
+export const UpdaterAction = z.enum(["created", "updated", "deleted"])
+
+export const UpdaterTouched = z.object({
+  path: z.string(),
+  action: UpdaterAction,
+  reason: z.string(),
+})
+
+export const UpdaterOutput = z.object({
+  summary: z.string(),
+  touched: z.array(UpdaterTouched),
+})
+
 // --- AncestorContext (passed to Decomposer & Writer from depth ≥ 2) ---
 
 export const AncestorSibling = z.object({
@@ -222,6 +237,13 @@ export interface IFlowAnalyzer {
   continue(prompt: string): Promise<AgentResult<FlowAnalyzerOutput>>
 }
 
+export interface IUpdater {
+  getSessionId(): string | undefined
+  restore(sessionId: string, workpath: string): void
+  run(prompt: string, workpath: string): Promise<AgentResult<UpdaterOutput>>
+  continue(prompt: string): Promise<AgentResult<UpdaterOutput>>
+}
+
 // --- Inferred types ---
 
 export type EdgeType = z.infer<typeof EdgeType>
@@ -250,6 +272,9 @@ export type FlowParticipant = z.infer<typeof FlowParticipant>
 export type FlowStep = z.infer<typeof FlowStep>
 export type FlowCase = z.infer<typeof FlowCase>
 export type FlowAnalyzerOutput = z.infer<typeof FlowAnalyzerOutput>
+export type UpdaterAction = z.infer<typeof UpdaterAction>
+export type UpdaterTouched = z.infer<typeof UpdaterTouched>
+export type UpdaterOutput = z.infer<typeof UpdaterOutput>
 
 export type Language = "zh" | "en";
 
