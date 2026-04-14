@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, nextTick, watch } from 'vue'
-import { marked } from 'marked'
+import { Marked } from 'marked'
 import DOMPurify from 'dompurify'
 import { sendChat, isSafeRefPath, type ChatEvent, type ChatMessage } from '../services/doc'
 
@@ -46,9 +46,58 @@ watch(
 
 const REF_RE = /\[ref:([A-Za-z0-9_\-\/.]+)\]/g
 
+function escapeAttr(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+// Marked inline extension: only fires in non-code contexts, so [ref:PATH]
+// tokens inside fenced ``` blocks or inline `code` are preserved verbatim
+// instead of being corrupted into literal <button> tags.
+const markedInstance = new Marked({
+  extensions: [
+    {
+      name: 'citation',
+      level: 'inline',
+      start(src: string) {
+        const idx = src.indexOf('[ref:')
+        return idx >= 0 ? idx : undefined
+      },
+      tokenizer(src: string) {
+        const m = /^\[ref:([A-Za-z0-9_.\-/]+)\]/.exec(src)
+        if (!m) return undefined
+        return {
+          type: 'citation',
+          raw: m[0],
+          ref: m[1]!,
+        }
+      },
+      renderer(token: { raw: string; ref: string }) {
+        if (!isSafeRefPath(token.ref)) return escapeHtml(token.raw)
+        return (
+          `<button type="button" class="citation-inline" data-ref="${escapeAttr(token.ref)}">` +
+          `${escapeHtml(token.ref)}</button>`
+        )
+      },
+    },
+  ],
+})
+
 function extractCitationsFromText(text: string): string[] {
+  // Strip fenced + inline code before matching so citations that appear only
+  // inside code examples (e.g. the model showing the `[ref:...]` syntax) do
+  // not bleed into the Sources list.
+  const withoutCode = text
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/`[^`]*`/g, '')
   const found = new Set<string>()
-  for (const m of text.matchAll(REF_RE)) {
+  for (const m of withoutCode.matchAll(REF_RE)) {
     const ref = m[1]!
     if (isSafeRefPath(ref)) found.add(ref)
   }
@@ -57,12 +106,6 @@ function extractCitationsFromText(text: string): string[] {
 
 function tryNavigate(ref: string | undefined) {
   if (isSafeRefPath(ref)) emit('navigate', ref)
-}
-
-function mergeCitations(existing: string[] | undefined, extra: string[]): string[] {
-  const set = new Set(existing ?? [])
-  for (const p of extra) set.add(p)
-  return Array.from(set)
 }
 
 async function send() {
@@ -84,10 +127,12 @@ async function send() {
     await sendChat(
       history,
       (event: ChatEvent) => {
-        if (event.type === 'sources' && event.paths) {
-          assistantMsg.citations = mergeCitations(assistantMsg.citations, event.paths)
-          scrollToBottom()
-        }
+        // NOTE: the server also emits a `sources` event listing every path
+        // it injected into the prompt. We deliberately do NOT surface those
+        // as "Sources:" chips — that would be attribution for context the
+        // model may never have cited. The chip list below is built from
+        // citations the model actually wrote inline. `sources` is kept on
+        // the wire for tooling / logging only.
         if (event.type === 'text' && event.text) {
           assistantMsg.content += event.text
           scrollToBottom()
@@ -107,12 +152,8 @@ async function send() {
     assistantMsg.content = `**Error:** ${e instanceof Error ? e.message : String(e)}`
   }
 
-  // Parse any inline [ref:PATH] citations the model wrote into its answer and
-  // merge them with server-supplied ones so the chip list is complete.
   const inline = extractCitationsFromText(assistantMsg.content)
-  if (inline.length > 0) {
-    assistantMsg.citations = mergeCitations(assistantMsg.citations, inline)
-  }
+  if (inline.length > 0) assistantMsg.citations = inline
 
   if (!assistantMsg.content) {
     assistantMsg.content = '(No response)'
@@ -122,34 +163,8 @@ async function send() {
   scrollToBottom()
 }
 
-function escapeAttr(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-}
-
 function renderMd(md: string): string {
-  // Turn `[ref:PATH]` into inline <button> chips before markdown parsing so
-  // they survive marked's escaping. Using <button> (not <span role="button">)
-  // gives us native keyboard activation (Enter/Space) + screen-reader support
-  // for free. Refs that fail path validation render as plain text so we
-  // never expose an unchecked click target.
-  const withChips = md.replace(
-    REF_RE,
-    (match, p: string) => {
-      if (!isSafeRefPath(p)) return escapeHtml(match)
-      return (
-        `<button type="button" class="citation-inline" data-ref="${escapeAttr(p)}">` +
-        `${escapeHtml(p)}</button>`
-      )
-    },
-  )
-  return DOMPurify.sanitize(marked.parse(withChips) as string, {
+  return DOMPurify.sanitize(markedInstance.parse(md) as string, {
     ADD_ATTR: ['data-ref'],
   })
 }

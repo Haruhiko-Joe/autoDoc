@@ -171,15 +171,18 @@ export interface ChatOptions {
 // them as route params or rendering them as clickable chips — otherwise a
 // hallucinated `[ref:../../../etc/passwd]` turns into a path-traversal probe.
 // autoDoc node refs are ASCII alphanumerics + underscore / dash / dot,
-// joined by single forward slashes. Leading slash, backslash, `..` segments,
-// and consecutive slashes are all disallowed.
+// joined by single forward slashes. Leading slash, backslash, empty
+// segments (`a//b`), and path segments equal to `.` or `..` are disallowed.
+// Note: substrings like `a..b` inside a single segment are fine — we only
+// reject traversal segments, matching how `DocStore` resolves paths.
 const SAFE_REF_RE = /^[A-Za-z0-9_.\-]+(?:\/[A-Za-z0-9_.\-]+)*$/
 
 export function isSafeRefPath(p: string | undefined | null): p is string {
   if (p == null) return false
   if (p === '') return true // project root
-  if (p.includes('..') || p.includes('\\')) return false
-  return SAFE_REF_RE.test(p)
+  if (p.includes('\\')) return false
+  if (!SAFE_REF_RE.test(p)) return false
+  return p.split('/').every((seg) => seg !== '' && seg !== '.' && seg !== '..')
 }
 
 export async function sendChat(
