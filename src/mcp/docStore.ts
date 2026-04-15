@@ -1,12 +1,8 @@
-import { readFile, writeFile, mkdir, readdir, stat, rm } from "node:fs/promises"
+import { readFile, writeFile, mkdir, readdir, stat, rm, open } from "node:fs/promises"
 import path from "node:path"
-import {
-  Graph,
-  TopGraph,
-  type GraphT,
-  type TopGraphT,
-  type GraphNodeT,
-} from "./schema.js"
+import ignore, { type Ignore } from "ignore"
+import { Graph, TopGraph, type GraphT, type TopGraphT } from "./schema.js"
+import { repoDirOf } from "../souko/registry.js"
 
 export class VersionMismatchError extends Error {
   constructor(
@@ -21,12 +17,26 @@ export class VersionMismatchError extends Error {
   }
 }
 
-export interface SearchHit {
-  name: string
-  description: string
+export interface SourceReadRequest {
   path: string
-  type: "graph" | "page"
+  start: number
+  end: number
 }
+
+export interface SourceFileContent {
+  path: string
+  start: number
+  end: number
+  content: string
+}
+
+export interface DocFileContent {
+  path: string
+  content: string
+}
+
+const MAX_SOURCE_FILE_BYTES = 1024 * 1024 // 1 MB
+const BINARY_SNIFF_BYTES = 8 * 1024
 
 export class DocStore {
   constructor(public readonly docRoot: string) {}
@@ -96,17 +106,6 @@ export class DocStore {
   async readGraph(project: string, nodeId: string): Promise<GraphT> {
     const raw = JSON.parse(await readFile(this.graphFilePath(project, nodeId), "utf-8"))
     return Graph.parse(raw)
-  }
-
-  async readPage(
-    project: string,
-    nodeId: string,
-    ref: string,
-  ): Promise<{ content: string; version: number }> {
-    const content = await readFile(this.pageFilePath(project, nodeId, ref), "utf-8")
-    const graph = await this.readGraph(project, nodeId)
-    const version = graph.pageVersions?.[ref] ?? 0
-    return { content, version }
   }
 
   // ─── Snapshot ──────────────────────────────────────────────
@@ -257,29 +256,6 @@ export class DocStore {
 
   // ─── History ────────────────────────────────────────────────
 
-  async listHistory(
-    project: string,
-    relPath: string,
-  ): Promise<{ version: number; mtime: string }[]> {
-    const full = this.resolveWithin(project, relPath)
-    const dir = this.historyDir(full)
-    const base = path.basename(full)
-    const ext = path.extname(base)
-    const stem = base.slice(0, base.length - ext.length)
-    const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])
-    const escapedExt = ext.replace(/\./g, "\\.")
-    const re = new RegExp(`^${escapeRegex(stem)}\\.v(\\d+)${escapedExt}$`)
-    const out: { version: number; mtime: string }[] = []
-    for (const e of entries) {
-      if (!e.isFile()) continue
-      const m = e.name.match(re)
-      if (!m) continue
-      const s = await stat(path.join(dir, e.name))
-      out.push({ version: Number(m[1]), mtime: s.mtime.toISOString() })
-    }
-    return out.sort((a, b) => a.version - b.version)
-  }
-
   async readHistorySnapshot(
     project: string,
     relPath: string,
@@ -335,82 +311,243 @@ export class DocStore {
     throw new Error(`Unsupported revert target: ${relPath}`)
   }
 
-  // ─── Search ─────────────────────────────────────────────────
+  // ─── Source code access ─────────────────────────────────────
 
-  async search(project: string, query: string): Promise<SearchHit[]> {
-    const q = query.toLowerCase()
-    const base = this.projectDir(project)
-    const results: SearchHit[] = []
+  private repoDir(project: string): string {
+    if (!project || project.includes("..") || project.includes("/") || project.includes("\\")) {
+      throw new Error(`Invalid project: ${project}`)
+    }
+    return repoDirOf(project)
+  }
 
-    const scan = async (dir: string, prefix: string): Promise<void> => {
+  private resolveWithinRepo(project: string, rel: string): string {
+    const base = this.repoDir(project)
+    const full = path.resolve(base, rel)
+    if (full !== base && !full.startsWith(base + path.sep)) {
+      throw new Error(`Path escapes repo: ${rel}`)
+    }
+    return full
+  }
+
+  private async loadGitignore(repoRoot: string): Promise<Ignore> {
+    const ig = ignore()
+    ig.add(".git")
+    try {
+      const raw = await readFile(path.join(repoRoot, ".gitignore"), "utf-8")
+      ig.add(raw)
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e
+    }
+    return ig
+  }
+
+  private async listRepoCandidates(project: string): Promise<string[]> {
+    const repoRoot = this.repoDir(project)
+    try {
+      await stat(repoRoot)
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === "ENOENT") return []
+      throw e
+    }
+    const ig = await this.loadGitignore(repoRoot)
+    const results: string[] = []
+
+    const recurse = async (dir: string, relDir: string): Promise<void> => {
       const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])
       for (const e of entries) {
-        if (
-          !e.isFile() ||
-          !e.name.endsWith(".json") ||
-          e.name === "flows.json" ||
-          e.name === "top.json"
-        ) continue
-        try {
-          const raw = JSON.parse(await readFile(path.join(dir, e.name), "utf-8"))
-          const nodes = (raw?.nodes ?? []) as GraphNodeT[]
-          for (const n of nodes) {
-            if (
-              n.name?.toLowerCase().includes(q) ||
-              n.description?.toLowerCase().includes(q)
-            ) {
-              const childType = (n.child?.type ?? "graph") as "graph" | "page"
-              const ref = n.child?.ref ?? n.name
-              const nodePath = prefix ? `${prefix}/${ref}` : ref
-              results.push({
-                name: n.name,
-                description: n.description,
-                path: nodePath,
-                type: childType,
-              })
-            }
-          }
-        } catch {
-          // skip malformed
-        }
-      }
-      for (const e of entries) {
-        if (
-          e.isDirectory() &&
-          !e.name.startsWith("_") &&
-          !e.name.startsWith(".")
-        ) {
-          await scan(
-            path.join(dir, e.name),
-            prefix ? `${prefix}/${e.name}` : e.name,
-          )
+        const rel = relDir ? `${relDir}/${e.name}` : e.name
+        if (e.isDirectory()) {
+          if (ig.ignores(`${rel}/`)) continue
+          await recurse(path.join(dir, e.name), rel)
+        } else if (e.isFile() || e.isSymbolicLink()) {
+          if (ig.ignores(rel)) continue
+          const full = path.join(dir, e.name)
+          if (await isBinaryFile(full)) continue
+          results.push(rel)
         }
       }
     }
 
-    // also search top.json nodes
+    await recurse(repoRoot, "")
+    results.sort()
+    return results
+  }
+
+  async listSourceFiles(
+    project: string,
+    patterns: string[],
+  ): Promise<{ pattern: string; files: string[] }[]> {
+    if (patterns.length === 0) return []
+    const candidates = await this.listRepoCandidates(project)
+    return patterns.map((pattern) => {
+      const re = new RegExp(pattern)
+      return { pattern, files: candidates.filter((f) => re.test(f)) }
+    })
+  }
+
+  async readSourceFiles(
+    project: string,
+    requests: SourceReadRequest[],
+  ): Promise<SourceFileContent[]> {
+    const out: SourceFileContent[] = []
+    for (const req of requests) {
+      let full: string
+      try {
+        full = this.resolveWithinRepo(project, req.path)
+      } catch {
+        continue
+      }
+      let fileStat
+      try {
+        fileStat = await stat(full)
+      } catch {
+        continue
+      }
+      if (!fileStat.isFile()) continue
+      if (fileStat.size > MAX_SOURCE_FILE_BYTES) continue
+      if (await isBinaryFile(full)) continue
+
+      const raw = await readFile(full, "utf-8")
+      const lines = raw.split("\n")
+      const totalLines = lines.length
+      const resolvedStart = req.start <= 0 ? 1 : req.start
+      const resolvedEnd = req.end === -1 ? totalLines : req.end
+      let content = ""
+      if (resolvedStart <= totalLines && resolvedStart <= resolvedEnd) {
+        const sliceEnd = Math.min(resolvedEnd, totalLines)
+        content = lines.slice(resolvedStart - 1, sliceEnd).join("\n")
+      }
+      out.push({
+        path: req.path,
+        start: resolvedStart,
+        end: resolvedEnd,
+        content,
+      })
+    }
+    return out
+  }
+
+  // ─── Doc batch access ───────────────────────────────────────
+
+  private async listDocNodeIds(project: string): Promise<string[]> {
+    const base = this.projectDir(project)
     try {
-      const top = await this.readTop(project)
-      for (const n of top.nodes) {
-        if (
-          n.name.toLowerCase().includes(q) ||
-          n.description.toLowerCase().includes(q)
-        ) {
-          results.push({
-            name: n.name,
-            description: n.description,
-            path: n.name,
-            type: "graph",
-          })
+      await stat(base)
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === "ENOENT") return []
+      throw e
+    }
+    const results: string[] = []
+
+    try {
+      await stat(path.join(base, "top.json"))
+      results.push("")
+    } catch {
+      // no top.json
+    }
+
+    const recurse = async (dir: string, prefix: string): Promise<void> => {
+      const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])
+      for (const e of entries) {
+        if (e.name.startsWith(".") || e.name.startsWith("_")) continue
+        if (e.isFile()) {
+          if (e.name.endsWith(".md")) {
+            const stem = e.name.slice(0, -3)
+            results.push(prefix ? `${prefix}/${stem}` : stem)
+          } else if (e.name.endsWith(".json")) {
+            const stem = e.name.slice(0, -5)
+            if (prefix && stem === path.basename(dir)) {
+              results.push(prefix)
+            }
+          }
+        } else if (e.isDirectory()) {
+          const childPrefix = prefix ? `${prefix}/${e.name}` : e.name
+          await recurse(path.join(dir, e.name), childPrefix)
         }
       }
-    } catch {}
+    }
 
-    await scan(base, "")
+    await recurse(base, "")
+    results.sort()
     return results
+  }
+
+  async listDocs(
+    project: string,
+    patterns: string[],
+  ): Promise<{ pattern: string; docs: string[] }[]> {
+    if (patterns.length === 0) return []
+    const candidates = await this.listDocNodeIds(project)
+    return patterns.map((pattern) => {
+      const re = new RegExp(pattern)
+      return { pattern, docs: candidates.filter((id) => re.test(id)) }
+    })
+  }
+
+  async readDocs(project: string, paths: string[]): Promise<DocFileContent[]> {
+    const out: DocFileContent[] = []
+    for (const nodeId of paths) {
+      const resolved = await this.resolveDocFile(project, nodeId)
+      if (!resolved) continue
+      try {
+        const content = await readFile(resolved, "utf-8")
+        out.push({ path: nodeId, content })
+      } catch {
+        // skip unreadable
+      }
+    }
+    return out
+  }
+
+  private async resolveDocFile(project: string, nodeId: string): Promise<string | null> {
+    if (nodeId === "") {
+      const p = this.topFilePath(project)
+      return (await fileExists(p)) ? p : null
+    }
+    const parts = nodeId.split("/").filter(Boolean)
+    if (parts.length === 0) return null
+    // Prefer leaf page .md; fall back to subgraph .json
+    let pageFile: string
+    try {
+      pageFile = this.resolveWithin(project, path.join(...parts) + ".md")
+    } catch {
+      return null
+    }
+    if (await fileExists(pageFile)) return pageFile
+    let graphFile: string
+    try {
+      const last = parts[parts.length - 1]
+      graphFile = this.resolveWithin(project, path.join(...parts, `${last}.json`))
+    } catch {
+      return null
+    }
+    if (await fileExists(graphFile)) return graphFile
+    return null
   }
 }
 
-function escapeRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+async function fileExists(p: string): Promise<boolean> {
+  try {
+    const s = await stat(p)
+    return s.isFile()
+  } catch {
+    return false
+  }
+}
+
+async function isBinaryFile(filePath: string): Promise<boolean> {
+  let fh
+  try {
+    fh = await open(filePath, "r")
+    const buf = Buffer.alloc(BINARY_SNIFF_BYTES)
+    const { bytesRead } = await fh.read(buf, 0, BINARY_SNIFF_BYTES, 0)
+    for (let i = 0; i < bytesRead; i++) {
+      if (buf[i] === 0) return true
+    }
+    return false
+  } catch {
+    return true
+  } finally {
+    await fh?.close()
+  }
 }
