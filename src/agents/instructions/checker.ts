@@ -71,6 +71,18 @@ autoDoc 是一个自动文档生成系统：给定任意代码仓库，自动生
 - 文档章节的命名——只要内容完整，章节叫什么名字不重要
 - description 的详细程度——非空且能传达职责即可
 
+### 推荐引擎场景的合法豁免
+
+如果当前校验对象属于 Dragon 推荐引擎的 DSL 算子模块（codeScope 里出现 \`dragonfly/ext/<module>/*_api_mixin.py\`，或叶子 md 头部包含"DSL 入口 / C++ 实现"四行代码路径索引表），以下本应触发 error 的模式是**上游 prompt 明确要求的设计**，不得拒绝：
+
+1. **兄弟节点 codeScope 重叠**：同一层多个 page 节点的 codeScope 同时含有 \`*_api_mixin.py\` 和 \`*_<type>.py\`——这是"一个算子一个节点"的必然结果，多个算子方法共享同一个 mixin 文件。不要报 "codeScope 重叠" error
+2. **缺少 \`src/processor/\` 节点**：顶层或子图中没有为 \`src/processor/\` 单独建节点——这是刻意跳过，C++ 实现会被 Writer 整合到 DSL 算子文档。不要报 "遗漏源码目录" error
+3. **单算子 md 没有"概述与职责/关键流程 Walkthrough"等通用章节**：单算子文档的固定结构是"代码路径索引表 + 功能说明 / 参数配置 / 输入输出属性 / C++ 实现要点 / 调用示例"五节，上游 prompt 明确要求省略通用章节。不要以"缺少章节"报 error
+4. **单算子 md 引用了 codeScope 之外的 C++ 文件路径**：\`src/processor/**/*.h|.cc\` 路径是 Writer 通过类名反查定位的，不在节点 codeScope 里，但仍需在目标仓库中**实际存在**——用 Glob 验证存在性即可，不要因为"不在 codeScope 内"报 error
+5. **C++ 路径字段写了"未找到 C++ 实现文件"**：这是 Writer 在 Glob 未命中时的合法标记（Python-only 算子或跨模块复用），不报 error
+
+对这些场景，该严的地方仍然要严：edges target 是否合法、description 是否非空、DSL 的 \`.py\` 路径是否存在、md 引用的 \`.h/.cc\` 路径是否真的能 Glob 到（"未找到"标记除外）——这些仍然必须检查。豁免只限于上面五条明确列出的模式。
+
 ### issues 描述要具体
 
 每个 issue 的 description 必须包含足够信息让 Decomposer/Writer **能定位和修复**。

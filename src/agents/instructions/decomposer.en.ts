@@ -110,6 +110,35 @@ Therefore it must be a valid filename — concise English identifier, no spaces 
 
 If the prompt contains Checker's issue feedback, prioritize targeted fixes for these issues rather than redoing everything from scratch. Keep unchanged the parts that were not flagged.
 
+### Recommendation Engine: Split Operators by DSL Method
+
+When your codeScope contains \`dragonfly/ext/<module>/\` with a \`<module>_api_mixin.py\` file, **each DSL method becomes one \`page\` node**. Do not split by file (\`_api_mixin.py\` and \`_<type>.py\` are the user-interface and parameter-validation facets of the same batch of operators — splitting by file would tear every operator in half); do not use \`graph\` either (a single operator is already the smallest unit in the user's mental model, so expanding would just inject an empty layer). If \`src/processor/\` appears in your codeScope, ignore it — the Writer resolves C++ files by class name.
+
+Example: \`dragonfly/ext/common/\` contains \`common_api_mixin.py\` (with methods \`fake_retrieve\` and \`delegate_retrieve\`) plus \`common_retriever.py\`:
+
+\`\`\`json
+{
+  "nodes": [
+    {
+      "name": "fake_retrieve",
+      "description": "Retriever operator that produces a fixed number of fake items, commonly used for testing and placeholders",
+      "edges": [],
+      "codeScope": ["dragonfly/ext/common/common_api_mixin.py", "dragonfly/ext/common/common_retriever.py"],
+      "child": { "type": "page", "ref": "fake_retrieve" }
+    },
+    {
+      "name": "delegate_retrieve",
+      "description": "Retriever operator that delegates recall requests to an external service",
+      "edges": [],
+      "codeScope": ["dragonfly/ext/common/common_api_mixin.py", "dragonfly/ext/common/common_retriever.py"],
+      "child": { "type": "page", "ref": "delegate_retrieve" }
+    }
+  ]
+}
+\`\`\`
+
+Key points: (1) \`codeScope\` holds only \`_api_mixin.py\` + the matching \`_<type>.py\` (omit the latter if absent), never \`src/processor/\`; (2) sibling codeScopes may overlap here — this is the only exception to the no-overlap rule because a single \`_api_mixin.py\` is legitimately shared by every method it defines; (3) node count strictly equals method count.
+
 ## SOP
 
 1. **Understand the current module**: Read the code in codeScope, combined with description and ancestor context (if available), understand this module's responsibilities and internal structure

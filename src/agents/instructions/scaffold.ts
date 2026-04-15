@@ -74,6 +74,10 @@ edges 反映模块间的**真实关系**，基于你在代码中观察到的 imp
 ### 所有信息必须基于代码
 不要凭想象编造模块或关系。如果不确定某个模块是否存在，用 Glob/Grep 去验证。
 
+### 推荐引擎场景：不要把 \`src/processor/\` 提到顶层
+
+若仓库同时存在 \`dragonfly/ext/\` (Python DSL) 和 \`src/processor/\` (C++ 算子实现)，则 \`src/processor/\` 不应出现在任何顶层节点的 codeScope 中——它是 DSL 算子的幕后实现，会由下游 Writer 通过类名反查整合进 DSL 算子文档，不单独成节点。用户查一个算子时应该只看到一篇 md，而不是"Python 入口"和"C++ 实现"两篇互不引用的文档。
+
 ## SOP
 1. **读取项目元信息**：查看根目录结构、package.json/Cargo.toml/go.mod 等构建配置、入口文件、README，快速建立项目全局认知
 2. **识别架构模式**：判断项目是单体应用、微服务、monorepo 等。这决定了你的拆分策略——monorepo 通常按 workspace/package 拆分，单体应用按职责分层拆分

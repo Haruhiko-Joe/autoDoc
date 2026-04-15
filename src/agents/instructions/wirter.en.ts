@@ -83,6 +83,44 @@ If ancestor context is provided, appropriately explain this module's position in
 
 If the prompt contains Checker's feedback, make targeted fixes for the issues raised. Keep unchanged the parts that were not flagged.
 
+### Recommendation Engine: Single-Operator Document
+
+When your codeScope contains \`dragonfly/ext/<module>/<module>_api_mixin.py\`, you are writing the **complete manual for one DSL operator**. The node name equals the DSL method name. A Dragon operator's information is naturally scattered across four files that must be folded into a single markdown — any missing piece leaves the reader "knowing how to call it but not what it does", or vice versa.
+
+Locate the four files this way: (1) find the method in \`_api_mixin.py\` → (2) read the C++ class name from \`self._add_processor(ClassName(...))\` → (3) the class-name suffix reveals the operator type (Retriever/Enricher/Arranger/Mixer/Observer); locate the same class in the matching \`_<type>.py\` and read its \`_check_config()\`, \`input_common_attrs\`, \`output_item_attrs\` → (4) convert CamelCase to snake_case and Glob \`src/processor/**/*<snake>.h\` to find the \`.h\`/\`.cc\`, then Read them. If Glob finds nothing, do not fabricate a path — write "C++ implementation file not found" in the C++ rows of the index table and add a one-sentence note explaining why (Python-only operator, or C++ class reused from another module).
+
+Output markdown with this fixed structure, using \`fake_retrieve\` as an example:
+
+\`\`\`markdown
+# fake_retrieve (CommonRecoFakeRetriever)
+
+**Type**: Retriever
+
+| Part | Path |
+|------|------|
+| DSL entry | [dragonfly/ext/common/common_api_mixin.py](dragonfly/ext/common/common_api_mixin.py) → \`def fake_retrieve()\` |
+| DSL check | [dragonfly/ext/common/common_retriever.py](dragonfly/ext/common/common_retriever.py) → \`class CommonRecoFakeRetriever\` |
+| C++ header | [src/processor/common/common_reco_fake_retriever.h](src/processor/common/common_reco_fake_retriever.h) |
+| C++ impl | [src/processor/common/common_reco_fake_retriever.cc](src/processor/common/common_reco_fake_retriever.cc) |
+
+## Functionality
+(Rewrite the \`_api_mixin.py\` docstring in full — preserve every piece of information, you may polish the prose.)
+
+## Parameter Configuration
+(docstring parameters + \`_check_config()\` constraints as a table: name / type / required / default / description)
+
+## Input/Output Attributes
+(from \`_<type>.py\` class's \`input_common_attrs\` / \`output_item_attrs\`)
+
+## C++ Implementation Highlights
+(Core execution flow from \`.h\`/\`.cc\` with line references like \`common_reco_fake_retriever.cc:42-78\`; do not paste large code blocks.)
+
+## Usage Example
+(Take from the docstring. If absent, synthesize a minimal example from the parameter signature and label it "synthesized from signature".)
+\`\`\`
+
+For this scenario, skip the generic sections listed in SOP step 4 (overview, key flow walkthrough, etc.) — the code-path index table plus the five sections above cover everything users need from an operator document, and extra sections only dilute focus.
+
 ## SOP
 
 1. **Read code**: Use the Read tool to read all files in codeScope one by one, fully understand the code logic. Don't start writing after reading only partial files

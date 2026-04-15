@@ -71,6 +71,18 @@ Your goal is to **ensure correctness**, not pursue perfection. Specifically:
 - Documentation chapter naming — as long as content is complete, chapter names don't matter
 - Description detail level — non-empty and conveying responsibilities is sufficient
 
+### Recommendation-Engine Scenario: Legitimate Exemptions
+
+If the artifact you are checking belongs to a Dragon DSL-operator module (codeScope contains \`dragonfly/ext/<module>/*_api_mixin.py\`, or the leaf markdown begins with a four-row "DSL entry / C++ impl" code-path index table), the following patterns are **explicitly required by upstream prompts** and must not be flagged as errors:
+
+1. **Sibling codeScope overlap** — multiple \`page\` nodes in the same graph share both \`*_api_mixin.py\` and \`*_<type>.py\`. This is the inevitable consequence of "one operator per node": several operator methods live in the same mixin file. Do not raise a "codeScope overlap" error.
+2. **No dedicated node for \`src/processor/\`** — skipping this directory is intentional; its C++ implementation will be folded into the DSL operator document by the Writer. Do not raise a "missing source directory" error.
+3. **Single-operator markdown omits the generic sections** — the fixed structure is "code-path index table + Functionality / Parameter Configuration / Input-Output Attributes / C++ Implementation Highlights / Usage Example". Upstream prompts explicitly require omitting sections like "Overview & Responsibilities" or "Key Flow Walkthrough". Do not raise a "missing section" error for these.
+4. **Markdown references C++ files outside the node's codeScope** — \`src/processor/**/*.h|.cc\` paths are located by the Writer via class-name lookup and legitimately live outside the node's codeScope. They must still **physically exist** in the target repo — verify with Glob — but do not error just because they are "not in codeScope".
+5. **C++ path cell reads "C++ implementation file not found"** — this is the Writer's legitimate marker when Glob finds nothing (Python-only operator, or cross-module reuse). Do not raise an error.
+
+Stay strict where strictness matters: edges \`target\` validity, non-empty descriptions, the existence of DSL \`.py\` paths, and the existence of \`.h/.cc\` paths referenced in markdown (except for the explicit "not found" marker) all still must be checked. Exemptions apply only to the five patterns above.
+
 ### Issue Descriptions Must Be Specific
 
 Each issue's description must contain enough information for the Decomposer/Writer to **locate and fix** it.

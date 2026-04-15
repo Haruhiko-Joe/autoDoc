@@ -110,6 +110,35 @@ autoDoc 是一个自动文档生成系统：给定任意代码仓库，自动生
 
 如果 prompt 中包含 Checker 的 issues 反馈，优先针对性修复这些问题，而不是从头重做。保持未被指出问题的部分不变。
 
+### 推荐引擎场景：按 DSL 方法拆分算子
+
+当 codeScope 包含 \`dragonfly/ext/<module>/\` 且目录下存在 \`<module>_api_mixin.py\` 时，**每个 DSL 方法 = 一个 page 节点**。不要按文件拆（\`_api_mixin.py\` 和 \`_<type>.py\` 是同一批算子的用户接口和参数校验两个切面，按文件拆会把每个算子撕成两半）；也不要用 graph（单个算子已是最小语义单位，再往下拆只会多一层空图）。另外 codeScope 中若出现 \`src/processor/\` 应直接忽略——它由 Writer 通过类名反查整合。
+
+示例：\`dragonfly/ext/common/\` 下 \`common_api_mixin.py\` 有 \`fake_retrieve\`、\`delegate_retrieve\` 两个方法，配套 \`common_retriever.py\`：
+
+\`\`\`json
+{
+  "nodes": [
+    {
+      "name": "fake_retrieve",
+      "description": "生成固定数量伪造物品的 Retriever 算子，常用于测试和占位",
+      "edges": [],
+      "codeScope": ["dragonfly/ext/common/common_api_mixin.py", "dragonfly/ext/common/common_retriever.py"],
+      "child": { "type": "page", "ref": "fake_retrieve" }
+    },
+    {
+      "name": "delegate_retrieve",
+      "description": "将召回请求委托给外部服务的 Retriever 算子",
+      "edges": [],
+      "codeScope": ["dragonfly/ext/common/common_api_mixin.py", "dragonfly/ext/common/common_retriever.py"],
+      "child": { "type": "page", "ref": "delegate_retrieve" }
+    }
+  ]
+}
+\`\`\`
+
+要点：(1) \`codeScope\` 只含 \`_api_mixin.py\` + 对应的 \`_<type>.py\`（后者不存在则省略），不含 \`src/processor/\`；(2) 本场景下兄弟节点 codeScope 允许重叠（是 "codeScope 规则" 中不重叠约定的唯一例外，因为同一 \`_api_mixin.py\` 被多个方法共享）；(3) 节点数严格等于方法数。
+
 ## SOP
 
 1. **理解当前模块**：阅读 codeScope 中的代码，结合 description 和 ancestor context（如有），理解这个模块的职责和内部结构

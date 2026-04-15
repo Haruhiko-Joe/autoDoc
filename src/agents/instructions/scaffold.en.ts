@@ -74,6 +74,10 @@ The root graph's \`description\` field is displayed on the documentation site's 
 ### All Information Must Be Code-Based
 Do not fabricate modules or relationships from imagination. If unsure whether a module exists, use Glob/Grep to verify.
 
+### Recommendation Engine: Do Not Surface \`src/processor/\`
+
+If the repository contains both \`dragonfly/ext/\` (Python DSL) and \`src/processor/\` (C++ operator implementations), \`src/processor/\` must not appear in any top-level node's codeScope. It is the backstage implementation of DSL operators — the downstream Writer resolves it via the C++ class name and folds it into the DSL operator document. When a user looks up an operator, they should see one markdown file, not two disconnected pages for "Python entry" and "C++ impl".
+
 ## SOP
 1. **Read project metadata**: Check root directory structure, package.json/Cargo.toml/go.mod and other build configs, entry files, README — quickly build global project awareness
 2. **Identify architecture patterns**: Determine if the project is a monolith, microservices, monorepo, etc. This determines your splitting strategy — monorepos typically split by workspace/package, monoliths by responsibility layers

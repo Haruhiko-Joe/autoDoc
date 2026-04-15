@@ -83,6 +83,44 @@ autoDoc 是一个自动文档生成系统：给定任意代码仓库，自动生
 
 如果 prompt 中包含 Checker 的反馈，针对性修复指出的问题。保持未被指出问题的部分不变。
 
+### 推荐引擎场景：单算子文档
+
+当 codeScope 包含 \`dragonfly/ext/<module>/<module>_api_mixin.py\` 时，你写的是**一个 DSL 算子的完整手册**，节点名 = 该算子在 \`_api_mixin.py\` 中的方法名。一个 Dragon 算子的信息天然分布在四份文件里，必须整合进同一篇 md——任何一份缺失都会让读者"知道怎么调却不知道它做什么"，或反过来。
+
+定位四份文件的套路：(1) 在 \`_api_mixin.py\` 里找到方法 → (2) 从方法体 \`self._add_processor(ClassName(...))\` 读出 C++ 类名 → (3) 类名后缀即算子类型（Retriever/Enricher/Arranger/Mixer/Observer），在对应的 \`_<type>.py\` 里找到同名类，读其 \`_check_config()\`、\`input_common_attrs\`、\`output_item_attrs\` → (4) 驼峰转下划线后 Glob \`src/processor/**/*<snake>.h\` 定位 \`.h\`/\`.cc\` 并 Read。Glob 未命中时不要编造路径，在索引表 C++ 两行写"未找到 C++ 实现文件"并在正文一两句说明原因。
+
+产出的 md 结构固定如下，以 \`fake_retrieve\` 为例：
+
+\`\`\`markdown
+# fake_retrieve（CommonRecoFakeRetriever）
+
+**类型**：Retriever
+
+| 部分 | 路径 |
+|------|------|
+| DSL 入口 | [dragonfly/ext/common/common_api_mixin.py](dragonfly/ext/common/common_api_mixin.py) → \`def fake_retrieve()\` |
+| DSL 校验 | [dragonfly/ext/common/common_retriever.py](dragonfly/ext/common/common_retriever.py) → \`class CommonRecoFakeRetriever\` |
+| C++ 头文件 | [src/processor/common/common_reco_fake_retriever.h](src/processor/common/common_reco_fake_retriever.h) |
+| C++ 实现 | [src/processor/common/common_reco_fake_retriever.cc](src/processor/common/common_reco_fake_retriever.cc) |
+
+## 功能说明
+（基于 \`_api_mixin.py\` 方法的 docstring 完整重写）
+
+## 参数配置
+（docstring 参数 + \`_check_config()\` 校验约束，表格列：名称/类型/必填/默认值/说明）
+
+## 输入输出属性
+（来自 \`_<type>.py\` 类的 \`input_common_attrs\` / \`output_item_attrs\`）
+
+## C++ 实现要点
+（\`.h\`/\`.cc\` 核心执行流程，带行号引用如 \`common_reco_fake_retriever.cc:42-78\`，不粘大段代码）
+
+## 调用示例
+（docstring 中的示例；若无则基于参数签名合成最小示例并标注"基于签名推断"）
+\`\`\`
+
+本场景下不需要上面 SOP 第 4 步里列出的"概述与职责 / 关键流程 Walkthrough"等通用章节——代码路径索引表 + 上述 5 节已覆盖算子文档的全部诉求，保持聚焦。
+
 ## SOP
 
 1. **阅读代码**：使用 Read 工具逐一阅读 codeScope 中的所有文件，完整理解代码逻辑。不要只看部分文件就开始写
