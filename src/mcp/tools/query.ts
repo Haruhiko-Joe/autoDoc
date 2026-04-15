@@ -17,50 +17,52 @@ export function registerQueryTools(mcp: McpServer, store: DocStore): void {
   )
 
   mcp.tool(
-    "get_top",
-    "Fetch the top-level graph (top.json) of a project — the entry point for progressive disclosure. Returns description, top-level modules, and a `version` field needed for any future write to top.json.",
-    { project: z.string() },
-    async ({ project }) => json(await store.readTop(project)),
-  )
-
-  mcp.tool(
-    "get_graph",
-    "Fetch a subgraph by slash-separated nodeId (e.g. 'MobileApps/IOSApp'). Returns the graph's description, codeScope, child nodes, `version` (for graph-level writes) and `pageVersions` map (for writing individual leaf pages).",
-    { project: z.string(), nodeId: z.string() },
-    async ({ project, nodeId }) => json(await store.readGraph(project, nodeId)),
-  )
-
-  mcp.tool(
-    "get_page",
-    "Read a leaf markdown page. `nodeId` is the parent graph's path, `ref` is the child entry's ref. Returns content plus its current `version` (use this as baseVersion when calling update_page).",
-    { project: z.string(), nodeId: z.string(), ref: z.string() },
-    async ({ project, nodeId, ref }) => json(await store.readPage(project, nodeId, ref)),
-  )
-
-  mcp.tool(
-    "search_nodes",
-    "Full-text search over node names and descriptions across every level of a project. Use when you don't know which module to drill into.",
-    { project: z.string(), query: z.string() },
-    async ({ project, query }) => json({ results: await store.search(project, query) }),
-  )
-
-  mcp.tool(
-    "list_history",
-    "List version snapshots stored under `.history/` for a given file. `relPath` is relative to the project root, e.g. 'top.json', 'MobileApps/MobileApps.json', or 'MobileApps/IOSApp/VoiceSystem.md'.",
-    { project: z.string(), relPath: z.string() },
-    async ({ project, relPath }) =>
-      json({ versions: await store.listHistory(project, relPath) }),
-  )
-
-  mcp.tool(
-    "get_history",
-    "Read the raw content of a specific historical version of a file.",
+    "list_source_files",
+    "List source files in a project's repo clone by regex patterns. Each pattern in `patterns` is tested (RegExp.test) against every file's POSIX repo-relative path (e.g. 'src/agents/writer.ts'). Returns one result group per input pattern, in the same order: `results[i] = { pattern, files }`. A file matching multiple patterns appears in multiple groups. `.gitignore` is respected; `.git/` and binary files are skipped. Pass `['.*']` to list everything.",
     {
       project: z.string(),
-      relPath: z.string(),
-      version: z.number().int().min(0),
+      patterns: z.array(z.string()),
     },
-    async ({ project, relPath, version }) =>
-      json({ content: await store.readHistorySnapshot(project, relPath, version) }),
+    async ({ project, patterns }) =>
+      json({ results: await store.listSourceFiles(project, patterns) }),
+  )
+
+  mcp.tool(
+    "read_source_files",
+    "Read exact source files from a project's repo clone by repo-relative path, with optional line-range slicing. Each request is `{ path, start, end }` where `start`/`end` are 1-indexed inclusive line numbers. Sentinels: `start=0` means 'from the start of the file' (equivalent to 1); `end=-1` means 'to the end of file'. So `{start:0, end:-1}` returns the whole file. Missing, out-of-repo, binary, and >1MB files are silently skipped. Returned `start`/`end` are the resolved concrete line numbers.",
+    {
+      project: z.string(),
+      requests: z.array(
+        z.object({
+          path: z.string(),
+          start: z.number().int(),
+          end: z.number().int(),
+        }),
+      ),
+    },
+    async ({ project, requests }) =>
+      json({ files: await store.readSourceFiles(project, requests) }),
+  )
+
+  mcp.tool(
+    "list_docs",
+    "List documentation nodeIds in a project by regex patterns. Each pattern in `patterns` is tested against every doc's nodeId — the same slash-separated, extension-less path the frontend uses (e.g. 'FlaskApp/AppFactory'). The project root graph (top.json) has nodeId ''. Returns one group per input pattern: `results[i] = { pattern, docs }`. Pass `['.*']` to list everything.",
+    {
+      project: z.string(),
+      patterns: z.array(z.string()),
+    },
+    async ({ project, patterns }) =>
+      json({ results: await store.listDocs(project, patterns) }),
+  )
+
+  mcp.tool(
+    "read_docs",
+    "Batch-read documentation files by nodeId. Each path is a slash-separated, extension-less id; '' maps to top.json; non-empty ids are resolved to the leaf page `.md` if present, otherwise to the subgraph `.json`. Returns `docs: [{ path, content }]` where `content` is the raw file text (JSON text for graphs, Markdown for pages). Missing ids are skipped.",
+    {
+      project: z.string(),
+      paths: z.array(z.string()),
+    },
+    async ({ project, paths }) =>
+      json({ docs: await store.readDocs(project, paths) }),
   )
 }
