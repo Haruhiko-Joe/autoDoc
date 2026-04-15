@@ -14,8 +14,8 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
-  "author": "",
-  "license": "Apache-2.0",
+  "author": "joeyanbo608@gmail.com",
+  "license": "AGPL-3.0-only",
   "packageManager": "pnpm@10.33.0",
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.81",
