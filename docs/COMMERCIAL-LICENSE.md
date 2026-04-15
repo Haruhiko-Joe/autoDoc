@@ -2,7 +2,7 @@
 
 autoDoc is dual-licensed:
 
-1. **Open-source license** — [GNU AGPL-3.0-only](./LICENSE). Free to use, modify and
+1. **Open-source license** — [GNU AGPL-3.0-only](../LICENSE). Free to use, modify and
    (re)distribute, provided that **any modified or derivative version, including
    network-accessible services built on top of it, must release its complete
    corresponding source code under AGPL-3.0 to every user of that service**
@@ -66,7 +66,7 @@ A quote and draft agreement will be sent back within a few business days.
 - SPDX identifier of the open-source license: `AGPL-3.0-only`.
 - The commercial license is a **separate bilateral agreement** between you and
   the copyright holder; it does not modify, replace, or reinterpret the AGPL-3.0
-  text shipped in [`LICENSE`](./LICENSE) for other users.
+  text shipped in [`LICENSE`](../LICENSE) for other users.
 - The Licensor is the sole copyright holder of the original work. External
   contributions are only accepted under the project's Contributor License
   Agreement (see [`CLA.md`](./CLA.md)), which preserves the author's right to

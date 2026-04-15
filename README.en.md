@@ -65,7 +65,7 @@ pnpm install && cd web && pnpm install && cd ..
 pnpm start
 ```
 
-Paste a git URL in the frontend and generation begins. **For the full onboarding walkthrough — prerequisites, first generation, incremental updates, MCP wiring — see [USAGE.md](USAGE.md).**
+Paste a git URL in the frontend and generation begins. **For the full onboarding walkthrough — prerequisites, first generation, incremental updates, MCP wiring — see [USAGE.md](docs/USAGE.md).**
 
 ### Codex Profile Configuration
 
@@ -362,4 +362,40 @@ pnpm docs:fix-md-json
 
 ## Contributing
 
+autoDoc is currently in a rapid prototyping phase and may ship breaking changes frequently. If you'd like to propose a new feature, please open an Issue first so we can align on the roadmap. Individual developers are welcome to fork and build on this project, subject to the terms of the [LICENSE](LICENSE) (AGPL-3.0).
+
+Because this project uses a dual-licensing model ("AGPL-3.0 open source + commercial license"), every external contribution must be covered by the [Contributor License Agreement](docs/CLA.md) before it can be merged. CLA Assistant will walk you through signing on your first PR; a single signature covers all of your future contributions.
+
+**All Issues must be submitted in Chinese (中文).** Issues in any other language will be closed without a response.
+
 Issues and Pull Requests welcome! If autoDoc helps you, please consider giving it a Star.
+
+## License & Commercial Licensing
+
+autoDoc is offered under a dual-licensing model:
+
+- **Open-source license**: [GNU AGPL-3.0-only](LICENSE). Free to use, modify, and redistribute — but **any modified version or derivative work, including deployments that expose functionality over a network, must release its complete corresponding source code to every user of that service under AGPL-3.0** (AGPL-3.0 §13).
+- **Commercial license**: if you cannot or do not wish to comply with AGPL-3.0's copyleft obligations (for example, integrating autoDoc into a closed-source product, or operating it as a SaaS without disclosing your modifications), you must obtain a written commercial license from the author in advance. See [COMMERCIAL-LICENSE.md](docs/COMMERCIAL-LICENSE.md).
+
+### How to obtain a commercial license
+
+Commercial licenses are granted in two tiers, based on the size of the using entity:
+
+**Tier 1 — Companies with market capitalization or latest valuation below RMB 1 billion**
+
+Have employees of the company Star this repository as a public acknowledgement of the project. **Every 5 GitHub Stars from identifiable employees of the company grants that company one (1) year of commercial license.** Stars must come from GitHub accounts that can be identified as employees of the company (through public profile information naming the employer, or through verification via a company email). The license term runs from the date of the most recent qualifying Star; it must be re-accumulated after expiration.
+
+**Tier 2 — Companies with market capitalization or latest valuation at or above RMB 1 billion**
+
+Extend a formal employment offer to the author. Internship offers (including part-time / 日常实习) are equally valid. The rules:
+
+1. **If the author accepts employment with the company in any form, the company automatically receives a perpetual commercial license** covering all past and future use, modification, distribution, and derivative works.
+2. **The author not accepting the offer does not mean the license is denied.** The author will evaluate factors such as position, base compensation, and location before deciding whether to join; even if the author ultimately does not join, a perpetual commercial license will still be granted as long as the offer is **sincere, commercially reasonable, and explicitly acknowledges the value of this project**.
+3. The author reserves the right of final interpretation. Offers that are substantially below market rates or attached to unreasonable conditions do not constitute valid consideration.
+
+### Contact
+
+- **Commercial licensing & offers**: `joeyanbo608@gmail.com`
+- **Suggested subject line**: `[autoDoc Commercial License] <your company>` or `[autoDoc Offer] <your company>`
+
+In your first message, please include the company name, size, intended use case, and expected deployment scope so the applicable tier and next steps can be determined.

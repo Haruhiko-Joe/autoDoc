@@ -65,7 +65,7 @@ pnpm install && cd web && pnpm install && cd ..
 pnpm start
 ```
 
-启动后在前端粘贴 git URL 即可生成文档。**详细的环境要求、首次生成 / 增量更新 / MCP 接入等完整上手步骤，请看 [USAGE.md](USAGE.md)。**
+启动后在前端粘贴 git URL 即可生成文档。**详细的环境要求、首次生成 / 增量更新 / MCP 接入等完整上手步骤，请看 [USAGE.md](docs/USAGE.md)。**
 
 ### Codex Profile 配置
 
@@ -366,7 +366,9 @@ pnpm docs:fix-md-json
 
 本项目目前处于原型阶段的快速迭代期，版本可能频繁出现不兼容更新。如果你希望引入新的功能，烦请先通过 Issue 进行沟通，以便与项目 Roadmap 对齐。欢迎个人开发者基于本项目进行二次开发，请遵守 [LICENSE](LICENSE)（AGPL-3.0）的约束。
 
-由于本项目采用"AGPL-3.0 开源 + 商业许可"双轨模式，所有外部贡献在合并前需签署 [CLA.md](CLA.md)。CLA Assistant 会在你首次提交 PR 时自动引导你完成签署，单次签署覆盖后续全部贡献。
+由于本项目采用"AGPL-3.0 开源 + 商业许可"双轨模式，所有外部贡献在合并前需签署 [CLA.md](docs/CLA.md)。CLA Assistant 会在你首次提交 PR 时自动引导你完成签署，单次签署覆盖后续全部贡献。
+
+**所有 Issue 必须使用中文提交**。非中文 Issue 将被直接关闭，不作回复。
 
 欢迎提交 Issue 和 Pull Request！如果 autoDoc 对你有帮助，请给一个 Star 支持。
 
@@ -375,7 +377,7 @@ pnpm docs:fix-md-json
 autoDoc 在法律层面采用双许可模式：
 
 - **开源许可**：[GNU AGPL-3.0-only](LICENSE)。免费使用、修改、再分发，但**任何修改版本或衍生作品——包括以网络服务形式对外提供的部署——都必须以 AGPL-3.0 向其用户完整公开对应的源代码**（AGPL-3.0 §13）。
-- **商业许可**：若你无法或不愿履行 AGPL-3.0 的开源义务（例如将 autoDoc 集成进闭源产品、或作为 SaaS 对外提供而不公开衍生源码），则必须事先获得作者的书面商业许可。详见 [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md)。
+- **商业许可**：若你无法或不愿履行 AGPL-3.0 的开源义务（例如将 autoDoc 集成进闭源产品、或作为 SaaS 对外提供而不公开衍生源码），则必须事先获得作者的书面商业许可。详见 [COMMERCIAL-LICENSE.md](docs/COMMERCIAL-LICENSE.md)。
 
 ### 商业许可的获取方式
 
