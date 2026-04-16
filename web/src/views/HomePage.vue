@@ -548,7 +548,7 @@ async function handleRetryErrors() {
         <div class="canvas-loading">
           <div class="spinner"></div>
           <p>{{ progressPhaseLabel }}</p>
-          <p class="sub">Analyzing {{ status.repoPath }}</p>
+          <p class="sub">Analyzing {{ status.gitUrl }}</p>
         </div>
       </template>
       <template v-else-if="selectedProject">
