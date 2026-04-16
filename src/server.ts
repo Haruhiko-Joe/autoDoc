@@ -54,7 +54,10 @@ type RunState =
       phase: "error";
       gitUrl: string;
       project: string;
+      repoDir: string;
+      docDir: string;
       message: string;
+      arranger?: Arranger;
     };
 
 let state: RunState = { phase: "idle" };
@@ -156,7 +159,7 @@ async function runInitial(args: RunArgs): Promise<void> {
       broadcastStatus();
     },
     (err) => {
-      state = { phase: "error", gitUrl, project, message: String(err) };
+      state = { phase: "error", gitUrl, project, repoDir, docDir, message: String(err), arranger };
       broadcastStatus();
     },
   );
@@ -212,7 +215,7 @@ async function runIncremental(args: RunArgs & { prev: ProjectMeta }): Promise<{ 
       broadcastStatus();
     },
     (err) => {
-      state = { phase: "error", gitUrl, project, message: String(err) };
+      state = { phase: "error", gitUrl, project, repoDir, docDir, message: String(err) };
       broadcastStatus();
     },
   );
@@ -272,11 +275,15 @@ async function handleStatus(): Promise<StatusResponse> {
     };
   }
   if (state.phase === "error") {
+    const progress = state.arranger ? await state.arranger.getProgress() : undefined;
     return {
       phase: "error",
       gitUrl: state.gitUrl,
       currentProject: state.project,
+      repoDir: state.repoDir,
+      docDir: state.docDir,
       message: state.message,
+      progress,
     };
   }
   return { phase: "idle" };
@@ -446,7 +453,7 @@ const server = createServer(async (req, res) => {
       broadcastStatus();
       res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true }));
     } else if (req.method === "POST" && url.pathname === "/api/retry-errors") {
-      if (state.phase !== "done" || !state.arranger) throw new Error("No completed run with arranger to retry");
+      if ((state.phase !== "done" && state.phase !== "error") || !state.arranger) throw new Error("No completed run with arranger to retry");
       const arranger = state.arranger;
       const { gitUrl, project, repoDir, docDir } = state;
       state = { phase: "running", mode: "initial", gitUrl, project, repoDir, docDir, arranger };
@@ -459,7 +466,7 @@ const server = createServer(async (req, res) => {
           broadcastStatus();
         },
         (err) => {
-          state = { phase: "error", gitUrl, project, message: String(err) };
+          state = { phase: "error", gitUrl, project, repoDir, docDir, message: String(err), arranger };
           broadcastStatus();
         },
       );

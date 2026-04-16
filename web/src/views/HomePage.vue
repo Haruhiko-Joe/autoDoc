@@ -345,7 +345,9 @@ const hasErrors = computed(() => {
   return c && (c.error ?? 0) > 0
 })
 
-const viewingDoneProject = computed(() => status.value.phase === 'done' && selectedProject.value === status.value.currentProject)
+const canRetry = computed(() =>
+  (status.value.phase === 'done' || status.value.phase === 'error') && selectedProject.value === status.value.currentProject
+)
 
 async function handleRetryErrors() {
   try {
@@ -487,7 +489,7 @@ async function handleRetryErrors() {
         </div>
       </div>
 
-      <div v-if="viewingDoneProject && hasErrors" class="sidebar-retry">
+      <div v-if="canRetry && hasErrors" class="sidebar-retry">
         <button class="retry-btn" @click="handleRetryErrors">
           Retry {{ progress?.counts?.error ?? 0 }} failed node(s)
         </button>

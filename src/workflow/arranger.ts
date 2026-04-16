@@ -264,6 +264,14 @@ export class Arranger {
     this.notify();
     await this.processLoop();
 
+    const counts = await this.countStatuses();
+    if ((counts.error ?? 0) > 0) {
+      console.log(`[Arranger] ${counts.error} node(s) in error state. Stopping — use retry-errors to resume.`);
+      this.currentPhase = "idle";
+      this.notify();
+      throw new Error(`${counts.error} node(s) failed. Use "Retry failed nodes" to reprocess.`);
+    }
+
     this.currentPhase = "assembling";
     this.notify();
     await this.assembleSkill();
