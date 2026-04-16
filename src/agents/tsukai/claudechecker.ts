@@ -1,8 +1,8 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import { CheckerOutput, toOutputSchema } from "./schemas/schema.js";
-import type { AgentResult, Language } from "./schemas/schema.js";
-import { checkerInstruction } from "./instructions/checker.js";
-import { checkerInstructionEn } from "./instructions/checker.en.js";
+import { CheckerOutput, toOutputSchema } from "../schemas/schema.js";
+import type { AgentResult, Language } from "../schemas/schema.js";
+import { checkerInstruction } from "../instructions/cn/checker.js";
+import { checkerInstructionEn } from "../instructions/en/checker.js";
 
 const outputFormat = {
   type: "json_schema" as const,

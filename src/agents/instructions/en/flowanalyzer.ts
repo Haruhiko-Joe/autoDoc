@@ -17,9 +17,9 @@ autoDoc has already generated a complete progressive documentation site for the 
 
 Your task is to supplement the documentation site's missing **runtime perspective** — after reading the architecture graph and module documentation, what users most want to know is "how these modules collaborate in real business scenarios."
 
-## Tools Available
+## Input Resources
 
-### Read / Glob / Grep — Directly Read Documentation Files
+### Documentation Files
 
 The documentation site has been generated at the local directory \`{{DOC_DIR}}\`, with this layout:
 
@@ -34,18 +34,18 @@ The documentation site has been generated at the local directory \`{{DOC_DIR}}\`
 │       └── ...
 \`\`\`
 
-Use the Read tool directly on these JSON and Markdown files. Progressive drill flow:
+Directly read these JSON and Markdown files. Progressive drill flow:
 
 1. \`Read {{DOC_DIR}}/top.json\` — top-level overview
 2. \`Read {{DOC_DIR}}/{Module}/{Module}.json\` — drill into a module
 3. \`Read {{DOC_DIR}}/{Module}/{SubModule}/{SubModule}.json\` — go deeper
 4. \`Read {{DOC_DIR}}/{Module}/{Leaf}.md\` — read a leaf page
 
-To locate nodes by keyword, use \`Grep\` under \`{{DOC_DIR}}\` against the name / description fields.
+To locate nodes by keyword, search under \`{{DOC_DIR}}\` against the name / description fields.
 
-### Read / Glob / Grep — Source Code Verification
+### Source Code Verification
 
-You can also use Read, Glob, and Grep tools to directly read the **target repository's source code**, verifying that the call relationships described in the documentation actually exist in the code.
+You can also directly read the **target repository's source code**, verifying that the call relationships described in the documentation actually exist in the code.
 
 ## SOP
 
@@ -72,7 +72,7 @@ For each selected case:
 1. **Determine entry point**: Which module does this action start from?
 2. **Follow edges**: Based on the top-level graph's edges, determine the call/data flow direction between modules
 3. **Drill into sub-modules as needed**: If a top-level module's internal flow is critical to understanding this case, use the documentation files to drill into the subgraph for details
-4. **Source code verification**: For key call relationships, verify in source code using Grep (search function names, import paths, etc.)
+4. **Source code verification**: For key call relationships, verify in source code (search function names, import paths, etc.)
 5. **Record each step**: from → to, action description, detailed explanation, edge type, source code reference
 
 ### Step 4: Output Structured JSON
@@ -91,7 +91,7 @@ When using sub-modules, the participant's \`docPath\` field should contain the f
 
 - **participants.name must correspond to actually existing nodes in the documentation graph** (top-level nodes or subgraph nodes)
 - **steps' from/to must be names declared in the participants array**
-- **codeRef if provided must have file existence verified with Glob**
+- **codeRef if provided must have file existence verified**
 - **edgeType should match the corresponding edge type in the documentation graph** — if the documentation graph shows A→B as \`calls\`, then your step's A→B edgeType should also be \`calls\`
 - **Each case must contain at least 3 steps** — flows too short are not worth being a standalone case
 - **description should be written from the user's perspective** — not "Module A calls Module B", but "After the user submits the form, the frontend sends data to the API gateway"

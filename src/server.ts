@@ -16,8 +16,7 @@ import {
   type ProjectMeta,
 } from "./souko/registry.js";
 import * as git from "./git/repoManager.js";
-import { claudeUpdater } from "./agents/claudeupdater.js";
-import { codexUpdater } from "./agents/codexupdater.js";
+import { claudeUpdater, codexUpdater } from "./agents/tsukai/index.js";
 import { DocStore } from "./mcp/docStore.js";
 import { buildMcpServer } from "./mcp/server.js";
 
@@ -49,6 +48,7 @@ type RunState =
       project: string;
       repoDir: string;
       docDir: string;
+      arranger?: Arranger;
     }
   | {
       phase: "error";
@@ -152,7 +152,7 @@ async function runInitial(args: RunArgs): Promise<void> {
         head,
         lastUpdated: new Date().toISOString(),
       });
-      state = { phase: "done", mode: "initial", gitUrl, project, repoDir, docDir };
+      state = { phase: "done", mode: "initial", gitUrl, project, repoDir, docDir, arranger };
       broadcastStatus();
     },
     (err) => {
@@ -260,6 +260,7 @@ async function handleStatus(): Promise<StatusResponse> {
     };
   }
   if (state.phase === "done") {
+    const progress = state.arranger ? await state.arranger.getProgress() : undefined;
     return {
       phase: "done",
       mode: state.mode,
@@ -267,6 +268,7 @@ async function handleStatus(): Promise<StatusResponse> {
       currentProject: state.project,
       repoDir: state.repoDir,
       docDir: state.docDir,
+      progress,
     };
   }
   if (state.phase === "error") {
@@ -442,6 +444,25 @@ const server = createServer(async (req, res) => {
       if (state.phase !== "running" || !state.arranger) throw new Error("Not running");
       state.arranger.resume();
       broadcastStatus();
+      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true }));
+    } else if (req.method === "POST" && url.pathname === "/api/retry-errors") {
+      if (state.phase !== "done" || !state.arranger) throw new Error("No completed run with arranger to retry");
+      const arranger = state.arranger;
+      const { gitUrl, project, repoDir, docDir } = state;
+      state = { phase: "running", mode: "initial", gitUrl, project, repoDir, docDir, arranger };
+      arranger.onProgress(debouncedBroadcast);
+      broadcastStatus();
+      arranger.resetErrorsAndResume().then(
+        (count) => {
+          console.log(`[RetryErrors] Reset and resumed ${count} error node(s).`);
+          state = { phase: "done", mode: "initial", gitUrl, project, repoDir, docDir, arranger };
+          broadcastStatus();
+        },
+        (err) => {
+          state = { phase: "error", gitUrl, project, message: String(err) };
+          broadcastStatus();
+        },
+      );
       res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true }));
     } else if (req.method === "GET" && url.pathname === "/api/projects") {
       const projects = await listProjects();

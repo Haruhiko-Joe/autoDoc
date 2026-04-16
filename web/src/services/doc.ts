@@ -120,6 +120,14 @@ export async function resumePipeline(): Promise<void> {
   }
 }
 
+export async function retryErrors(): Promise<void> {
+  const res = await fetch(`${API}/retry-errors`, { method: 'POST' })
+  if (!res.ok) {
+    const data = await res.json()
+    throw new Error(data.error ?? 'Failed to retry errors')
+  }
+}
+
 export async function fetchStatus(): Promise<RunStatus> {
   const res = await fetch(`${API}/status`)
   return res.json()

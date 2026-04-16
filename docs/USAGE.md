@@ -41,7 +41,7 @@ pnpm start
 此时后端会：
 
 1. 自动 `git clone` 到 `src/souko/repo/{项目名}/`
-2. 跑 **Scaffold → Decomposer → Writer → Checker → Flow Analyzer** 的全量管线
+2. 跑 **Scaffold → Checker → Decomposer → Checker → Writer → Flow Analyzer** 的全量管线
 3. 把文档产物写进 `src/souko/doc/{项目名}/`
 4. 在 `src/souko/projects.json` 里登记 sourceUrl / branch / head / lastUpdated
 
@@ -167,7 +167,7 @@ Once the backend prints `listening on 3100` and the frontend Vite dev server is 
 The backend will then:
 
 1. `git clone` into `src/souko/repo/{name}/`
-2. Run the full **Scaffold → Decomposer → Writer → Checker → Flow Analyzer** pipeline
+2. Run the full **Scaffold → Checker → Decomposer → Checker → Writer → Flow Analyzer** pipeline
 3. Write output to `src/souko/doc/{name}/`
 4. Register `sourceUrl` / `branch` / `head` / `lastUpdated` in `src/souko/projects.json`
 
@@ -284,7 +284,7 @@ pnpm start
 バックエンドが以下を実行します:
 
 1. `src/souko/repo/{プロジェクト名}/` に `git clone`
-2. **Scaffold → Decomposer → Writer → Checker → Flow Analyzer** の全量パイプラインを実行
+2. **Scaffold → Checker → Decomposer → Checker → Writer → Flow Analyzer** の全量パイプラインを実行
 3. 成果物を `src/souko/doc/{プロジェクト名}/` に書き込み
 4. `src/souko/projects.json` に sourceUrl / branch / head / lastUpdated を登録
 

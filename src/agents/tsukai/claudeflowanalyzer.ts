@@ -1,20 +1,24 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import { RawGraph, toOutputSchema } from "./schemas/schema.js";
-import type { AgentResult, Language } from "./schemas/schema.js";
-import { decomposerInstruction } from "./instructions/decomposer.js";
-import { decomposerInstructionEn } from "./instructions/decomposer.en.js";
+import { FlowAnalyzerOutput, toOutputSchema } from "../schemas/schema.js";
+import type { AgentResult, FlowAnalyzerOutput as FlowAnalyzerOutputType, Language } from "../schemas/schema.js";
+import { flowAnalyzerInstruction } from "../instructions/cn/flowanalyzer.js";
+import { flowAnalyzerInstructionEn } from "../instructions/en/flowanalyzer.js";
 
 const outputFormat = {
   type: "json_schema" as const,
-  schema: toOutputSchema(RawGraph),
+  schema: toOutputSchema(FlowAnalyzerOutput),
 };
 
-export class claudeDecomposer {
+export class claudeFlowAnalyzer {
   private sessionId: string | undefined;
   private cwd: string | undefined;
+  private readonly docDir: string;
+  private readonly project: string;
   private readonly language: Language;
 
-  constructor(language: Language = "zh") {
+  constructor(docDir: string, project: string, language: Language = "zh") {
+    this.docDir = docDir;
+    this.project = project;
     this.language = language;
   }
 
@@ -25,15 +29,15 @@ export class claudeDecomposer {
     this.cwd = workpath;
   }
 
-  async run(prompt: string, workpath: string): Promise<AgentResult<RawGraph>> {
+  async run(prompt: string, workpath: string): Promise<AgentResult<FlowAnalyzerOutputType>> {
     if (this.sessionId) {
-      throw new Error("Session already active. Use continue() or create a new claudeDecomposer instance.");
+      throw new Error("Session already active. Use continue() or create a new claudeFlowAnalyzer instance.");
     }
     this.cwd = workpath;
     return this.execute(prompt);
   }
 
-  async continue(prompt: string): Promise<AgentResult<RawGraph>> {
+  async continue(prompt: string): Promise<AgentResult<FlowAnalyzerOutputType>> {
     if (!this.sessionId) {
       throw new Error("No active session. Call run() first.");
     }
@@ -43,9 +47,14 @@ export class claudeDecomposer {
   private async execute(
     prompt: string,
     resumeSessionId?: string,
-  ): Promise<AgentResult<RawGraph>> {
+  ): Promise<AgentResult<FlowAnalyzerOutputType>> {
     let sessionId = "";
-    let result: RawGraph | undefined;
+    let result: FlowAnalyzerOutputType | undefined;
+
+    const baseInstruction = this.language === "en" ? flowAnalyzerInstructionEn : flowAnalyzerInstruction;
+    const systemPrompt = baseInstruction
+      .replaceAll("{{DOC_DIR}}", this.docDir)
+      .replaceAll("{{PROJECT}}", this.project);
 
     for await (const message of query({
       prompt,
@@ -55,13 +64,13 @@ export class claudeDecomposer {
         permissionMode: "bypassPermissions",
         allowDangerouslySkipPermissions: true,
         tools: { type: "preset", preset: "claude_code" },
-        allowedTools: ["Read", "Glob", "Grep"],
+        allowedTools: ["Bash", "Read", "Glob", "Grep"],
         cwd: this.cwd,
         outputFormat,
         systemPrompt: {
           type: "preset",
           preset: "claude_code",
-          append: this.language === "en" ? decomposerInstructionEn : decomposerInstruction,
+          append: systemPrompt,
         },
         ...(resumeSessionId ? { resume: resumeSessionId } : {}),
       },
@@ -74,14 +83,14 @@ export class claudeDecomposer {
         this.sessionId = message.session_id;
         sessionId = message.session_id;
         if (message.subtype === "success" && message.structured_output) {
-          result = RawGraph.parse(message.structured_output);
+          result = FlowAnalyzerOutput.parse(message.structured_output);
         } else {
-          throw new Error(`claudeDecomposer failed: ${message.subtype}, result: ${JSON.stringify((message as Record<string, unknown>).result ?? "").slice(0, 500)}`);
+          throw new Error(`claudeFlowAnalyzer failed: ${message.subtype}, result: ${JSON.stringify((message as Record<string, unknown>).result ?? "").slice(0, 500)}`);
         }
       }
     }
 
-    if (!result) throw new Error("claudeDecomposer returned no result");
+    if (!result) throw new Error("claudeFlowAnalyzer returned no result");
     return { sessionId, result };
   }
 }

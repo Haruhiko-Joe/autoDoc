@@ -1,8 +1,8 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import { UpdaterOutput, toOutputSchema } from "./schemas/schema.js";
-import type { AgentResult, IUpdater, UpdaterOutput as UpdaterOutputType, Language } from "./schemas/schema.js";
-import { updaterInstruction } from "./instructions/updater.js";
-import { updaterInstructionEn } from "./instructions/updater.en.js";
+import { UpdaterOutput, toOutputSchema } from "../schemas/schema.js";
+import type { AgentResult, IUpdater, UpdaterOutput as UpdaterOutputType, Language } from "../schemas/schema.js";
+import { updaterInstruction } from "../instructions/cn/updater.js";
+import { updaterInstructionEn } from "../instructions/en/updater.js";
 
 const outputFormat = {
   type: "json_schema" as const,

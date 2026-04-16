@@ -27,15 +27,15 @@ pnpm monorepo with two packages: root (backend) and `web/` (frontend).
 The system generates interactive documentation for any code repository using a pipeline of 4 Claude agents orchestrated by the **Arranger** state machine:
 
 ```
-Scaffold → [per-module loop: Decomposer → Writer → Checker] → done
+Scaffold → Checker → [per-module loop: Decomposer → Checker → Writer] → done
 ```
 
-- **Scaffold** (`src/agents/scaffold.ts`): Analyzes entire repo, produces `top.json` with top-level modules
-- **Decomposer** (`src/agents/decomposer.ts`): Recursively splits modules into sub-graphs (`graph`) or leaf pages (`page`)
-- **Writer** (`src/agents/writer.ts`): Generates Markdown documentation for leaf `page` nodes
-- **Checker** (`src/agents/checker.ts`): Validates structural integrity and content quality; failures trigger retry via `agent.continue()`
+- **Scaffold**: Analyzes entire repo, produces `top.json` with top-level modules
+- **Decomposer**: Recursively splits modules into sub-graphs (`graph`) or leaf pages (`page`)
+- **Writer**: Generates Markdown documentation for leaf `page` nodes
+- **Checker**: Validates graph structures from Scaffold and Decomposer (not Writer output); failures trigger retry via `agent.continue()`
 
-All 4 agents share identical structure: `run(prompt, workpath)` for fresh sessions, `continue(prompt)` to resume, `restore(sessionId, workpath)` to reconstitute from saved state, `getSessionId()` to expose session ID. They all use `claude-opus-4-6` with 1M context beta.
+Each agent has both a Claude and Codex backend implementation, located in `src/agents/tsukai/` (e.g. `claudescaffold.ts` / `codexscaffold.ts`). All share identical interface: `run(prompt, workpath)`, `continue(prompt)`, `restore(sessionId, workpath)`, `getSessionId()`. A barrel file `src/agents/tsukai/index.ts` re-exports all classes.
 
 ### Arranger (`src/workflow/arranger.ts`)
 
@@ -44,7 +44,7 @@ State machine that orchestrates the pipeline. Key design:
 - **State per node**: Each graph node's JSON file contains `status` (pending → decomposing → writing → checking → done/error) plus session IDs for crash recovery
 - **Intermediate persistence**: After each phase completes, results + session IDs are written to disk immediately. Writer MD outputs are staged in `_pending/` directories
 - **Crash recovery**: On restart, nodes in intermediate states (decomposing/writing/checking) are resumed from their saved session IDs rather than restarted. The `_pending/` directory preserves completed writer outputs so only interrupted writers need re-running
-- **Retry loop**: Checker failure → `decomposer.continue()` with fix prompt → re-run writers → re-check (up to `maxRetries`)
+- **Retry loop**: Checker failure → `scaffold.continue()` / `decomposer.continue()` with fix prompt → re-check (up to `maxRetries`)
 
 ### Graph JSON schema (`src/agents/schemas/schema.ts`)
 
@@ -75,7 +75,8 @@ Project matching: `path.basename(repoPath)` maps to `web/doc/{name}/`. Re-runnin
 
 ## Key Conventions
 
-- All agent instructions are in Chinese (`src/agents/instructions/`)
+- Agent instructions are split by language: `src/agents/instructions/cn/` (Chinese) and `src/agents/instructions/en/` (English)
 - Writer instruction file has a typo in its name: `wirter.ts` (not `writer.ts`)
 - Imports use `.js` extensions (Node ESM with `nodenext` module resolution)
 - The `codeScope` field on graph nodes tracks which source files/directories each module covers; child scopes must be subsets of parent scopes
+- `CheckerIssueType` enum: `broken-target`, `empty-content`, `invalid-path`

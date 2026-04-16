@@ -1,9 +1,9 @@
 import { Codex } from "@openai/codex-sdk";
 import type { Thread } from "@openai/codex-sdk";
-import { UpdaterOutput, toOutputSchema } from "./schemas/schema.js";
-import type { AgentResult, IUpdater, UpdaterOutput as UpdaterOutputType, Language } from "./schemas/schema.js";
-import { updaterInstruction } from "./instructions/updater.js";
-import { updaterInstructionEn } from "./instructions/updater.en.js";
+import { UpdaterOutput, toOutputSchema } from "../schemas/schema.js";
+import type { AgentResult, IUpdater, UpdaterOutput as UpdaterOutputType, Language } from "../schemas/schema.js";
+import { updaterInstruction } from "../instructions/cn/updater.js";
+import { updaterInstructionEn } from "../instructions/en/updater.js";
 
 const outputSchema = toOutputSchema(UpdaterOutput);
 

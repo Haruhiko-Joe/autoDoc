@@ -1,24 +1,20 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import { FlowAnalyzerOutput, toOutputSchema } from "./schemas/schema.js";
-import type { AgentResult, FlowAnalyzerOutput as FlowAnalyzerOutputType, Language } from "./schemas/schema.js";
-import { flowAnalyzerInstruction } from "./instructions/flowanalyzer.js";
-import { flowAnalyzerInstructionEn } from "./instructions/flowanalyzer.en.js";
+import { RawTopGraph, toOutputSchema } from "../schemas/schema.js";
+import type { AgentResult, Language } from "../schemas/schema.js";
+import { scaffoldInstruction } from "../instructions/cn/scaffold.js";
+import { scaffoldInstructionEn } from "../instructions/en/scaffold.js";
 
 const outputFormat = {
   type: "json_schema" as const,
-  schema: toOutputSchema(FlowAnalyzerOutput),
+  schema: toOutputSchema(RawTopGraph),
 };
 
-export class claudeFlowAnalyzer {
+export class claudeScaffold {
   private sessionId: string | undefined;
   private cwd: string | undefined;
-  private readonly docDir: string;
-  private readonly project: string;
   private readonly language: Language;
 
-  constructor(docDir: string, project: string, language: Language = "zh") {
-    this.docDir = docDir;
-    this.project = project;
+  constructor(language: Language = "zh") {
     this.language = language;
   }
 
@@ -29,15 +25,15 @@ export class claudeFlowAnalyzer {
     this.cwd = workpath;
   }
 
-  async run(prompt: string, workpath: string): Promise<AgentResult<FlowAnalyzerOutputType>> {
+  async run(prompt: string, workpath: string): Promise<AgentResult<RawTopGraph>> {
     if (this.sessionId) {
-      throw new Error("Session already active. Use continue() or create a new claudeFlowAnalyzer instance.");
+      throw new Error("Session already active. Use continue() or create a new claudeScaffold instance.");
     }
     this.cwd = workpath;
     return this.execute(prompt);
   }
 
-  async continue(prompt: string): Promise<AgentResult<FlowAnalyzerOutputType>> {
+  async continue(prompt: string): Promise<AgentResult<RawTopGraph>> {
     if (!this.sessionId) {
       throw new Error("No active session. Call run() first.");
     }
@@ -47,14 +43,9 @@ export class claudeFlowAnalyzer {
   private async execute(
     prompt: string,
     resumeSessionId?: string,
-  ): Promise<AgentResult<FlowAnalyzerOutputType>> {
+  ): Promise<AgentResult<RawTopGraph>> {
     let sessionId = "";
-    let result: FlowAnalyzerOutputType | undefined;
-
-    const baseInstruction = this.language === "en" ? flowAnalyzerInstructionEn : flowAnalyzerInstruction;
-    const systemPrompt = baseInstruction
-      .replaceAll("{{DOC_DIR}}", this.docDir)
-      .replaceAll("{{PROJECT}}", this.project);
+    let result: RawTopGraph | undefined;
 
     for await (const message of query({
       prompt,
@@ -64,13 +55,13 @@ export class claudeFlowAnalyzer {
         permissionMode: "bypassPermissions",
         allowDangerouslySkipPermissions: true,
         tools: { type: "preset", preset: "claude_code" },
-        allowedTools: ["Bash", "Read", "Glob", "Grep"],
+        allowedTools: ["Read", "Glob", "Grep"],
         cwd: this.cwd,
         outputFormat,
         systemPrompt: {
           type: "preset",
           preset: "claude_code",
-          append: systemPrompt,
+          append: this.language === "en" ? scaffoldInstructionEn : scaffoldInstruction,
         },
         ...(resumeSessionId ? { resume: resumeSessionId } : {}),
       },
@@ -83,14 +74,14 @@ export class claudeFlowAnalyzer {
         this.sessionId = message.session_id;
         sessionId = message.session_id;
         if (message.subtype === "success" && message.structured_output) {
-          result = FlowAnalyzerOutput.parse(message.structured_output);
+          result = RawTopGraph.parse(message.structured_output);
         } else {
-          throw new Error(`claudeFlowAnalyzer failed: ${message.subtype}, result: ${JSON.stringify((message as Record<string, unknown>).result ?? "").slice(0, 500)}`);
+          throw new Error(`claudeScaffold failed: ${message.subtype}, result: ${JSON.stringify((message as Record<string, unknown>).result ?? "").slice(0, 500)}`);
         }
       }
     }
 
-    if (!result) throw new Error("claudeFlowAnalyzer returned no result");
+    if (!result) throw new Error("claudeScaffold returned no result");
     return { sessionId, result };
   }
 }

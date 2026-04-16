@@ -1,13 +1,13 @@
 import { Codex } from "@openai/codex-sdk";
 import type { Thread } from "@openai/codex-sdk";
-import { RawGraph, toOutputSchema } from "./schemas/schema.js";
-import type { AgentResult, IDecomposer, Language } from "./schemas/schema.js";
-import { decomposerInstruction } from "./instructions/decomposer.js";
-import { decomposerInstructionEn } from "./instructions/decomposer.en.js";
+import { RawTopGraph, toOutputSchema } from "../schemas/schema.js";
+import type { AgentResult, IScaffold, Language } from "../schemas/schema.js";
+import { scaffoldInstruction } from "../instructions/cn/scaffold.js";
+import { scaffoldInstructionEn } from "../instructions/en/scaffold.js";
 
-const outputSchema = toOutputSchema(RawGraph);
+const outputSchema = toOutputSchema(RawTopGraph);
 
-export class codexDecomposer implements IDecomposer {
+export class codexScaffold implements IScaffold {
   private codex: Codex | null = null;
   private thread: Thread | null = null;
   private threadId: string | undefined;
@@ -25,15 +25,15 @@ export class codexDecomposer implements IDecomposer {
     this.cwd = workpath;
   }
 
-  async run(prompt: string, workpath: string): Promise<AgentResult<RawGraph>> {
+  async run(prompt: string, workpath: string): Promise<AgentResult<RawTopGraph>> {
     if (this.threadId) {
-      throw new Error("Session already active. Use continue() or create a new codexDecomposer instance.");
+      throw new Error("Session already active. Use continue() or create a new codexScaffold instance.");
     }
     this.cwd = workpath;
-    const instruction = this.language === "en" ? decomposerInstructionEn : decomposerInstruction;
+    const instruction = this.language === "en" ? scaffoldInstructionEn : scaffoldInstruction;
     this.codex = new Codex({
       config: {
-        profile: "decomposer",
+        profile: "scaffold",
         developer_instructions: instruction,
       },
     });
@@ -44,15 +44,15 @@ export class codexDecomposer implements IDecomposer {
     return this.execute(prompt);
   }
 
-  async continue(prompt: string): Promise<AgentResult<RawGraph>> {
+  async continue(prompt: string): Promise<AgentResult<RawTopGraph>> {
     if (!this.threadId) {
       throw new Error("No active session. Call run() first.");
     }
     if (!this.codex) {
-      const instruction = this.language === "en" ? decomposerInstructionEn : decomposerInstruction;
+      const instruction = this.language === "en" ? scaffoldInstructionEn : scaffoldInstruction;
       this.codex = new Codex({
         config: {
-          profile: "decomposer",
+          profile: "scaffold",
           developer_instructions: instruction,
         },
       });
@@ -66,13 +66,13 @@ export class codexDecomposer implements IDecomposer {
     return this.execute(prompt);
   }
 
-  private async execute(prompt: string): Promise<AgentResult<RawGraph>> {
+  private async execute(prompt: string): Promise<AgentResult<RawTopGraph>> {
     if (!this.thread) throw new Error("No active thread");
     const turn = await this.thread.run(prompt, { outputSchema });
     const threadId = this.thread.id;
     if (!threadId) throw new Error("Thread has no ID after execution");
     this.threadId = threadId;
-    const result = RawGraph.parse(JSON.parse(turn.finalResponse));
+    const result = RawTopGraph.parse(JSON.parse(turn.finalResponse));
     return { sessionId: threadId, result };
   }
 }

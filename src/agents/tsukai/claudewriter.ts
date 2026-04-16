@@ -1,8 +1,8 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import { WriterOutput, toOutputSchema } from "./schemas/schema.js";
-import type { AgentResult, Language } from "./schemas/schema.js";
-import { writerInstruction } from "./instructions/wirter.js";
-import { writerInstructionEn } from "./instructions/wirter.en.js";
+import { WriterOutput, toOutputSchema } from "../schemas/schema.js";
+import type { AgentResult, Language } from "../schemas/schema.js";
+import { writerInstruction } from "../instructions/cn/wirter.js";
+import { writerInstructionEn } from "../instructions/en/wirter.js";
 
 const outputFormat = {
   type: "json_schema" as const,

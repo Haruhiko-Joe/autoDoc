@@ -1,16 +1,10 @@
 import { readFile, writeFile, mkdir, readdir, access, copyFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { claudeScaffold } from "../agents/claudescaffold.js";
-import { claudeDecomposer } from "../agents/claudedecomposer.js";
-import { claudeChecker } from "../agents/claudechecker.js";
-import { codexChecker } from "../agents/codexchecker.js";
-import { codexScaffold } from "../agents/codexscaffold.js";
-import { codexDecomposer } from "../agents/codexdecomposer.js";
-import { codexWriter } from "../agents/codexwriter.js";
-import { codexFlowAnalyzer } from "../agents/codexflowanalyzer.js";
-import { claudeWriter } from "../agents/claudewriter.js";
-import { claudeFlowAnalyzer } from "../agents/claudeflowanalyzer.js";
+import {
+  claudeScaffold, claudeDecomposer, claudeChecker, claudeWriter, claudeFlowAnalyzer,
+  codexScaffold, codexDecomposer, codexChecker, codexWriter, codexFlowAnalyzer,
+} from "../agents/tsukai/index.js";
 import { TopGraph, Graph } from "../agents/schemas/schema.js";
 import type { IChecker, IScaffold, IDecomposer, IWriter, IFlowAnalyzer, Language } from "../agents/schemas/schema.js";
 
@@ -30,10 +24,7 @@ import type {
   CheckerIssue as CheckerIssueType,
 } from "../agents/schemas/schema.js";
 
-// ─── Checker issue 分类与格式化 ───
-
-const GRAPH_ISSUE_TYPES = new Set(["broken-target", "invalid-path", "empty-content", "missing-ref"]);
-const DOC_ISSUE_TYPES = new Set(["missing-section", "empty-content", "invalid-path", "missing-ref"]);
+// ─── Checker issue 格式化 ───
 
 function formatIssue(issue: CheckerIssueType, index: number): string {
   const severity = issue.severity === "error" ? "[ERROR]" : "[WARNING]";
@@ -42,27 +33,15 @@ function formatIssue(issue: CheckerIssueType, index: number): string {
 }
 
 function buildDecomposerFixPrompt(issues: CheckerIssueType[]): string {
-  const graphIssues = issues.filter((i) => GRAPH_ISSUE_TYPES.has(i.type));
-  const docIssues = issues.filter((i) => DOC_ISSUE_TYPES.has(i.type) && (i.type === "missing-section" || i.type === "missing-ref"));
-
   const parts = ["你的子图产出经过 Checker 校验未通过，存在以下问题：", ""];
 
-  if (graphIssues.length > 0) {
-    parts.push("### 图结构问题");
-    graphIssues.forEach((issue, i) => parts.push(formatIssue(issue, i)));
-    parts.push("");
-  }
-
-  if (docIssues.length > 0) {
-    parts.push("### 文档质量问题（可能需要调整节点的 description 或 codeScope 来辅助 Writer）");
-    docIssues.forEach((issue, i) => parts.push(formatIssue(issue, i)));
-    parts.push("");
-  }
+  issues.forEach((issue, i) => parts.push(formatIssue(issue, i)));
+  parts.push("");
 
   parts.push(
     "请根据以上问题修正你的输出：",
     "- edges[].target 必须指向当前图中实际存在的节点名称",
-    "- codeScope 中的路径必须是目标仓库中实际存在的文件或目录，请用 Glob 验证",
+    "- codeScope 中的路径必须是目标仓库中实际存在的文件或目录",
     "- 每个节点的 description 必须非空且有意义",
     "- child.ref 使用简洁英文标识符，不含空格和特殊字符",
     "",
@@ -133,8 +112,6 @@ class Semaphore {
 export type AgentBackend = "claude" | "codex";
 export type AgentRole = "scaffold" | "decomposer" | "writer" | "checker" | "flowAnalyzer" | "updater";
 export type AgentBackends = Record<AgentRole, AgentBackend>;
-/** @deprecated Use AgentBackend instead */
-export type CheckerType = AgentBackend;
 
 const DEFAULT_AGENT_BACKENDS: AgentBackends = {
   scaffold: "claude",
@@ -161,13 +138,12 @@ export class Arranger {
 
   constructor(options?: {
     maxConcurrency?: number
-    checkerType?: AgentBackend
     agentBackend?: AgentBackend
     agentBackends?: Partial<AgentBackends>
     language?: Language
   }) {
     this.maxConcurrency = options?.maxConcurrency ?? 8;
-    const fallback = options?.agentBackend ?? options?.checkerType;
+    const fallback = options?.agentBackend;
     this.agentBackends = {
       scaffold: options?.agentBackends?.scaffold ?? fallback ?? DEFAULT_AGENT_BACKENDS.scaffold,
       decomposer: options?.agentBackends?.decomposer ?? fallback ?? DEFAULT_AGENT_BACKENDS.decomposer,
@@ -301,45 +277,102 @@ export class Arranger {
     console.log("[Arranger] Done.");
   }
 
+  async resetErrorsAndResume(): Promise<number> {
+    if (!this.docDir) throw new Error("No active project. Run first.");
+    const allNodeIds = await this.scanGraphNodes(this.docDir, "");
+    let resetCount = 0;
+
+    for (const nodeId of allNodeIds) {
+      try {
+        const graph = await this.readGraph(nodeId);
+        if (graph.status !== "error") continue;
+        const pageTasks: Record<string, PageTaskType> | undefined = graph.pageTasks
+          ? Object.fromEntries(
+            Object.entries(graph.pageTasks).map(([ref, task]) => [
+              ref,
+              { ...task, status: task.status === "done" ? "done" : "pending" } satisfies PageTaskType,
+            ]),
+          )
+          : undefined;
+        const hasPendingPages = pageTasks && Object.values(pageTasks).some((task) => task.status !== "done");
+        await this.writeGraph(nodeId, {
+          ...graph,
+          status: hasPendingPages ? "writing" : "pending",
+          pageTasks,
+          decomposerSessionId: undefined,
+          checkerSessionId: undefined,
+          writerSessionIds: undefined,
+        });
+        resetCount++;
+      } catch {
+        console.warn(`[Arranger] Skipping unreadable graph during error reset: ${nodeId}`);
+      }
+    }
+
+    if (resetCount > 0) {
+      console.log(`[Arranger] Reset ${resetCount} error node(s) to pending.`);
+      this.currentPhase = "processing";
+      this.notify();
+      await this.processLoop();
+
+      this.currentPhase = "assembling";
+      this.notify();
+      await this.assembleSkill();
+
+      this.currentPhase = "flows";
+      this.notify();
+      await this.runFlowAnalysis();
+
+      this.currentPhase = "idle";
+      this.notify();
+    }
+
+    return resetCount;
+  }
+
   // ─── Scaffold + Checker ───
 
   private async runScaffold(): Promise<void> {
-    const scaffold = this.makeScaffold();
-    const { sessionId, result } = await scaffold.run(
-      `Analyze the repository at ${this.repoPath} and produce the top-level module graph.`,
-      this.repoPath,
-    );
+    const { topResult, finalSessionId } = await this.withRetry(async () => {
+      const scaffold = this.makeScaffold();
+      const { sessionId, result } = await scaffold.run(
+        `Analyze the repository at ${this.repoPath} and produce the top-level module graph.`,
+        this.repoPath,
+      );
 
-    let topResult: RawTopGraphType = result;
-    let finalSessionId = sessionId;
+      let topResult: RawTopGraphType = result;
+      let finalSessionId = sessionId;
 
-    const checker = this.makeChecker();
-    for (let retry = 0; ; retry++) {
-      const checkerPrompt = [
-        `Validate the scaffold output for the top-level module graph.`,
-        `Repository root: ${this.repoPath}`,
-        ``,
-        `## Graph JSON content:`,
-        "```json",
-        JSON.stringify(topResult, null, 2),
-        "```",
-      ].join("\n");
+      const checker = this.makeChecker();
+      for (let retry = 0; ; retry++) {
+        const checkerPrompt = [
+          `Validate the scaffold output for the top-level module graph.`,
+          `Repository root: ${this.repoPath}`,
+          ``,
+          `## Graph JSON content:`,
+          "```json",
+          JSON.stringify(topResult, null, 2),
+          "```",
+        ].join("\n");
 
-      const checkerResult = checker.getSessionId()
-        ? await checker.continue(checkerPrompt)
-        : await checker.run(checkerPrompt, this.repoPath);
+        const checkerResult = checker.getSessionId()
+          ? await checker.continue(checkerPrompt)
+          : await checker.run(checkerPrompt, this.repoPath);
 
-      if (checkerResult.result.passed) {
-        console.log("[Arranger] Scaffold check passed.");
-        break;
+        if (checkerResult.result.passed) {
+          console.log("[Arranger] Scaffold check passed.");
+          break;
+        }
+        if (retry >= 5) throw new Error(`Scaffold check failed after 5 retries: ${JSON.stringify(checkerResult.result.issues)}`);
+
+        console.log(`[Arranger] Scaffold check failed (retry ${retry + 1}/5)`);
+        const fixed = await scaffold.continue(buildScaffoldFixPrompt(checkerResult.result.issues));
+        topResult = fixed.result;
+        finalSessionId = fixed.sessionId;
       }
-      if (retry >= 5) throw new Error(`Scaffold check failed after 5 retries: ${JSON.stringify(checkerResult.result.issues)}`);
 
-      console.log(`[Arranger] Scaffold check failed (retry ${retry + 1}/5)`);
-      const fixed = await scaffold.continue(buildScaffoldFixPrompt(checkerResult.result.issues));
-      topResult = fixed.result;
-      finalSessionId = fixed.sessionId;
-    }
+      return { topResult, finalSessionId };
+    });
 
     const topGraph: TopGraphType = {
       status: "done",
@@ -370,7 +403,7 @@ export class Arranger {
   ]);
 
   private static readonly RECOVERABLE: ReadonlySet<GraphStatusType> = new Set([
-    "decomposing", "writing", "checking", "error",
+    "decomposing", "writing", "checking",
   ]);
 
   private async processLoop(): Promise<void> {
@@ -485,7 +518,7 @@ export class Arranger {
             await this.updatePageTask(nodeId, nextPage[0], { status: "writing" });
             return { kind: "page", nodeId, ref: nextPage[0], graph };
           } else if (Object.values(graph.pageTasks).every((task) => task.status === "done")) {
-            await this.finishNodeIfReady(nodeId, graph);
+            await this.finishNodeIfReady(nodeId);
           }
           continue;
         }
@@ -597,16 +630,19 @@ export class Arranger {
     let decomposerSessionId: string;
 
     try {
-      const prompt = this.buildDecompPrompt(nodeId, graph, ancestorContext);
-      const result = await this.decomposeAndCheck(nodeId, prompt, {
-        rawGraph: graph.status === "checking" && graph.nodes.length > 0 ? { nodes: graph.nodes } : undefined,
-        decomposerSessionId: graph.decomposerSessionId || undefined,
-        checkerSessionId: graph.checkerSessionId || undefined,
+      const result = await this.withRetry(async (attempt) => {
+        const prompt = this.buildDecompPrompt(nodeId, graph, ancestorContext);
+        const existing = attempt === 0 ? {
+          rawGraph: graph.status === "checking" && graph.nodes.length > 0 ? { nodes: graph.nodes } : undefined,
+          decomposerSessionId: graph.decomposerSessionId,
+          checkerSessionId: graph.checkerSessionId,
+        } : undefined;
+        return this.decomposeAndCheck(nodeId, prompt, existing);
       });
       rawGraph = result.rawGraph;
       decomposerSessionId = result.decomposer.getSessionId() ?? "";
     } catch (e) {
-      console.error(`[Arranger] Decompose+check error for ${nodeId}:`, e);
+      console.error(`[Arranger] Decompose+check failed for ${nodeId}:`, e);
       await this.updateGraph(nodeId, { status: "error" });
       return;
     }
@@ -615,17 +651,17 @@ export class Arranger {
     await this.ensureChildGraphs(nodeId, rawGraph.nodes);
 
     const pageTasks = this.buildPageTasks(rawGraph.nodes);
-    const nextStatus: GraphStatusType = Object.keys(pageTasks).length > 0 ? "writing" : "done";
+    const hasPages = Object.keys(pageTasks).length > 0;
     const latest = await this.readGraph(nodeId);
     await this.writeGraph(nodeId, {
       ...latest,
-      status: nextStatus,
+      status: hasPages ? "writing" : "done",
       sessionId: decomposerSessionId,
       nodes: rawGraph.nodes,
       decomposerSessionId: undefined,
       checkerSessionId: undefined,
       writerSessionIds: undefined,
-      pageTasks: Object.keys(pageTasks).length > 0 ? pageTasks : undefined,
+      pageTasks: hasPages ? pageTasks : undefined,
     });
   }
 
@@ -640,9 +676,9 @@ export class Arranger {
 
     let content: string;
     try {
-      content = await this.writePage(pageNode, ancestorContext);
+      content = await this.withRetry(() => this.writePage(pageNode, ancestorContext));
     } catch (e) {
-      console.error(`[Arranger] Write error for ${nodeId}/${ref}:`, e);
+      console.error(`[Arranger] Write failed for ${nodeId}/${ref}:`, e);
       await this.updatePageTask(nodeId, ref, { status: "error" });
       await this.updateGraph(nodeId, { status: "error" });
       return;
@@ -722,7 +758,7 @@ export class Arranger {
     }
   }
 
-  private async finishNodeIfReady(nodeId: string, current?: GraphType): Promise<void> {
+  private async finishNodeIfReady(nodeId: string): Promise<void> {
     let changed = false;
     await this.withNodeLock(nodeId, async () => {
       const graph = await this.readGraph(nodeId);
@@ -809,7 +845,7 @@ export class Arranger {
     }
     const nodeIds: string[] = [];
     for (const entry of entries) {
-      if (!entry.isDirectory() || entry.name === "_pending") continue;
+      if (!entry.isDirectory()) continue;
       const nodeId = prefix ? `${prefix}/${entry.name}` : entry.name;
       const selfJson = path.join(dir, entry.name, `${entry.name}.json`);
       if (await this.fileExists(selfJson)) {
@@ -904,12 +940,29 @@ export class Arranger {
     }
 
     console.log("[Arranger] Running flow analysis...");
-    const analyzer = this.makeFlowAnalyzer();
-    const prompt = `Analyze the documented codebase and produce 3-7 typical business interaction flows.\nRepository root: ${this.repoPath}`;
-    const { result } = await analyzer.run(prompt, this.repoPath);
+    const { result } = await this.withRetry(async () => {
+      const analyzer = this.makeFlowAnalyzer();
+      const prompt = `Analyze the documented codebase and produce 3-7 typical business interaction flows.\nRepository root: ${this.repoPath}`;
+      return analyzer.run(prompt, this.repoPath);
+    });
 
     await writeFile(flowsPath, JSON.stringify(result, null, 2));
     console.log(`[Arranger] Flow analysis complete. ${result.flows.length} flows generated.`);
+  }
+
+  // ─── 重试 ───
+
+  private async withRetry<T>(fn: (attempt: number) => Promise<T>, maxRetries = 3): Promise<T> {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await fn(attempt);
+      } catch (e) {
+        if (attempt >= maxRetries) throw e;
+        const delay = Math.min(2000 * 2 ** attempt, 30_000);
+        console.log(`[Arranger] Retry ${attempt + 1}/${maxRetries} after ${delay}ms: ${e}`);
+        await new Promise((r) => setTimeout(r, delay));
+      }
+    }
   }
 
   // ─── 工具 ───

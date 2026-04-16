@@ -169,7 +169,7 @@ gitUrl (existing) ──► git fetch + pull
 | **Scaffold** | Analyzes the whole repo, emits the top-level module graph | Validated by Checker |
 | **Decomposer** | Recursively splits modules into sub-graphs or leaf pages | Validated by Checker (up to 5 retries) |
 | **Writer** | Generates detailed Markdown for each leaf node | — |
-| **Checker** | Validates graph integrity and content quality | — |
+| **Checker** | Validates graph structure integrity from Scaffold and Decomposer | — |
 | **Flow Analyzer** | Extracts 3–7 typical cross-module interaction flows | — |
 | **Updater** | Receives a git diff and patches the doc tree in place | — |
 
@@ -327,12 +327,12 @@ autoDoc/
 │   │   ├── schema.ts             # Zod schemas (with version / pageVersions)
 │   │   └── tools/{query,mutate}.ts
 │   ├── agents/                   # Agent implementations (Claude + Codex)
-│   │   ├── claude{scaffold,decomposer,writer,checker,flowanalyzer,updater}.ts
-│   │   ├── codex{scaffold,decomposer,writer,checker,flowanalyzer,updater}.ts
-│   │   ├── instructions/         # Agent prompts (Chinese + English)
-│   │   │   ├── flowanalyzer.{ts,en.ts}
-│   │   │   ├── updater.{ts,en.ts}
-│   │   │   └── ...
+│   │   ├── tsukai/               # All Agent classes (barrel: index.ts)
+│   │   │   ├── claude{scaffold,decomposer,writer,checker,flowanalyzer,updater}.ts
+│   │   │   └── codex{scaffold,decomposer,writer,checker,flowanalyzer,updater}.ts
+│   │   ├── instructions/         # Agent prompts
+│   │   │   ├── cn/               # Chinese prompts
+│   │   │   └── en/               # English prompts
 │   │   └── schemas/schema.ts     # Zod output schemas (incl. UpdaterOutput)
 │   ├── workflow/
 │   │   └── arranger.ts           # Full-pipeline state machine

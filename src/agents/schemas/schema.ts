@@ -176,10 +176,8 @@ export const AncestorContext = z.object({
 // --- Checker ---
 
 export const CheckerIssueType = z.enum([
-  "missing-ref",
   "broken-target",
   "empty-content",
-  "missing-section",
   "invalid-path",
 ])
 

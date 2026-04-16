@@ -1,9 +1,9 @@
 import { Codex } from "@openai/codex-sdk";
 import type { Thread } from "@openai/codex-sdk";
-import { CheckerOutput, toOutputSchema } from "./schemas/schema.js";
-import type { AgentResult, IChecker, Language } from "./schemas/schema.js";
-import { checkerInstruction } from "./instructions/checker.js";
-import { checkerInstructionEn } from "./instructions/checker.en.js";
+import { CheckerOutput, toOutputSchema } from "../schemas/schema.js";
+import type { AgentResult, IChecker, Language } from "../schemas/schema.js";
+import { checkerInstruction } from "../instructions/cn/checker.js";
+import { checkerInstructionEn } from "../instructions/en/checker.js";
 
 const outputSchema = toOutputSchema(CheckerOutput);
 

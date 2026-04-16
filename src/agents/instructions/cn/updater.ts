@@ -39,10 +39,8 @@ export const updaterInstruction = `
 
 每个 graph node 的 \`codeScope\` 字段记录它覆盖哪些源码文件 / 目录；找受影响的节点就是看 \`codeScope\` 与改动文件路径的交集。叶子节点 \`child.type=="page"\` 对应一份 \`{ref}.md\`；子图节点 \`child.type=="graph"\` 对应一个同名子目录。
 
-## 你拥有的工具
+## 注意事项
 
-- **Read / Glob / Grep**：浏览 \`{{REPO_DIR}}\` 下的新代码、读取 \`{{DOC_DIR}}\` 下的现有文档
-- **Edit / Write**：直接修改 / 新建 \`{{DOC_DIR}}\` 下的 .md 与 .json 文件
 - 不要使用 Bash 调 git；diff 已经放在上面 \`{{DIFF_PATCH}}\` 里
 
 ## SOP

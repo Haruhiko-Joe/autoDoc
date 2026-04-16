@@ -169,7 +169,7 @@ gitUrl（既存） ──► git fetch + pull
 | **Scaffold** | リポジトリ全体を分析し、トップレベルモジュールグラフを生成 | Checker で検証 |
 | **Decomposer** | モジュールをサブグラフまたはリーフページに再帰的に分割 | Checker で検証（最大 5 回リトライ） |
 | **Writer** | 各リーフノードに詳細な Markdown を生成 | — |
-| **Checker** | グラフ構造の完全性と内容品質を検証 | — |
+| **Checker** | Scaffold と Decomposer が生成したグラフ構造の完全性を検証 | — |
 | **Flow Analyzer** | 3–7 件の典型的なモジュール間インタラクションフローを抽出 | — |
 | **Updater** | git diff を受け取り、ドキュメントツリーを局所的に追加削除変更 | — |
 
@@ -327,12 +327,12 @@ autoDoc/
 │   │   ├── schema.ts             # Zod schemas（version / pageVersions 含む）
 │   │   └── tools/{query,mutate}.ts
 │   ├── agents/                   # Agent 実装（Claude + Codex 双方）
-│   │   ├── claude{scaffold,decomposer,writer,checker,flowanalyzer,updater}.ts
-│   │   ├── codex{scaffold,decomposer,writer,checker,flowanalyzer,updater}.ts
-│   │   ├── instructions/         # Agent プロンプト（中国語 + 英語）
-│   │   │   ├── flowanalyzer.{ts,en.ts}
-│   │   │   ├── updater.{ts,en.ts}
-│   │   │   └── ...
+│   │   ├── tsukai/               # 全 Agent クラス（barrel: index.ts）
+│   │   │   ├── claude{scaffold,decomposer,writer,checker,flowanalyzer,updater}.ts
+│   │   │   └── codex{scaffold,decomposer,writer,checker,flowanalyzer,updater}.ts
+│   │   ├── instructions/         # Agent プロンプト
+│   │   │   ├── cn/               # 中国語プロンプト
+│   │   │   └── en/               # 英語プロンプト
 │   │   └── schemas/schema.ts     # Zod 出力スキーマ（UpdaterOutput 含む）
 │   ├── workflow/
 │   │   └── arranger.ts           # 全量パイプラインステートマシン

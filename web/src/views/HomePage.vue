@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { fetchTopGraph, startRun, fetchStatus, fetchProjects, subscribeStatus, searchModules, pausePipeline, resumePipeline, type AgentBackends, type RunStatus, type SearchResult, type ProjectListEntry } from '../services/doc'
+import { fetchTopGraph, startRun, fetchStatus, fetchProjects, subscribeStatus, searchModules, pausePipeline, resumePipeline, retryErrors, type AgentBackends, type RunStatus, type SearchResult, type ProjectListEntry } from '../services/doc'
 import GraphView from '../components/GraphView.vue'
 import EdgeLegend from '../components/EdgeLegend.vue'
 import DocTree from '../components/DocTree.vue'
@@ -339,6 +339,21 @@ async function handlePauseToggle() {
     errorMsg.value = e instanceof Error ? e.message : String(e)
   }
 }
+
+const hasErrors = computed(() => {
+  const c = progress.value?.counts
+  return c && (c.error ?? 0) > 0
+})
+
+const viewingDoneProject = computed(() => status.value.phase === 'done' && selectedProject.value === status.value.currentProject)
+
+async function handleRetryErrors() {
+  try {
+    await retryErrors()
+  } catch (e) {
+    errorMsg.value = e instanceof Error ? e.message : String(e)
+  }
+}
 </script>
 
 <template>
@@ -470,6 +485,12 @@ async function handlePauseToggle() {
             <span class="stat-label">error</span>
           </span>
         </div>
+      </div>
+
+      <div v-if="viewingDoneProject && hasErrors" class="sidebar-retry">
+        <button class="retry-btn" @click="handleRetryErrors">
+          Retry {{ progress?.counts?.error ?? 0 }} failed node(s)
+        </button>
       </div>
 
       <div class="sidebar-search" v-if="topGraph && selectedProject">
@@ -754,6 +775,27 @@ async function handlePauseToggle() {
 .pause-btn:hover {
   color: var(--accent);
   border-color: var(--accent);
+}
+
+.sidebar-retry {
+  padding: 0 16px 12px;
+}
+
+.retry-btn {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--error, #e53e3e);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--error, #e53e3e);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.retry-btn:hover {
+  background: var(--error, #e53e3e);
+  color: #fff;
 }
 
 .progress-bar-track {

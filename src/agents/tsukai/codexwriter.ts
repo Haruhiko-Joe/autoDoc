@@ -1,13 +1,13 @@
 import { Codex } from "@openai/codex-sdk";
 import type { Thread } from "@openai/codex-sdk";
-import { RawTopGraph, toOutputSchema } from "./schemas/schema.js";
-import type { AgentResult, IScaffold, Language } from "./schemas/schema.js";
-import { scaffoldInstruction } from "./instructions/scaffold.js";
-import { scaffoldInstructionEn } from "./instructions/scaffold.en.js";
+import { WriterOutput, toOutputSchema } from "../schemas/schema.js";
+import type { AgentResult, IWriter, Language } from "../schemas/schema.js";
+import { writerInstruction } from "../instructions/cn/wirter.js";
+import { writerInstructionEn } from "../instructions/en/wirter.js";
 
-const outputSchema = toOutputSchema(RawTopGraph);
+const outputSchema = toOutputSchema(WriterOutput);
 
-export class codexScaffold implements IScaffold {
+export class codexWriter implements IWriter {
   private codex: Codex | null = null;
   private thread: Thread | null = null;
   private threadId: string | undefined;
@@ -25,15 +25,15 @@ export class codexScaffold implements IScaffold {
     this.cwd = workpath;
   }
 
-  async run(prompt: string, workpath: string): Promise<AgentResult<RawTopGraph>> {
+  async run(prompt: string, workpath: string): Promise<AgentResult<WriterOutput>> {
     if (this.threadId) {
-      throw new Error("Session already active. Use continue() or create a new codexScaffold instance.");
+      throw new Error("Session already active. Use continue() or create a new codexWriter instance.");
     }
     this.cwd = workpath;
-    const instruction = this.language === "en" ? scaffoldInstructionEn : scaffoldInstruction;
+    const instruction = this.language === "en" ? writerInstructionEn : writerInstruction;
     this.codex = new Codex({
       config: {
-        profile: "scaffold",
+        profile: "writer",
         developer_instructions: instruction,
       },
     });
@@ -44,15 +44,15 @@ export class codexScaffold implements IScaffold {
     return this.execute(prompt);
   }
 
-  async continue(prompt: string): Promise<AgentResult<RawTopGraph>> {
+  async continue(prompt: string): Promise<AgentResult<WriterOutput>> {
     if (!this.threadId) {
       throw new Error("No active session. Call run() first.");
     }
     if (!this.codex) {
-      const instruction = this.language === "en" ? scaffoldInstructionEn : scaffoldInstruction;
+      const instruction = this.language === "en" ? writerInstructionEn : writerInstruction;
       this.codex = new Codex({
         config: {
-          profile: "scaffold",
+          profile: "writer",
           developer_instructions: instruction,
         },
       });
@@ -66,13 +66,13 @@ export class codexScaffold implements IScaffold {
     return this.execute(prompt);
   }
 
-  private async execute(prompt: string): Promise<AgentResult<RawTopGraph>> {
+  private async execute(prompt: string): Promise<AgentResult<WriterOutput>> {
     if (!this.thread) throw new Error("No active thread");
     const turn = await this.thread.run(prompt, { outputSchema });
     const threadId = this.thread.id;
     if (!threadId) throw new Error("Thread has no ID after execution");
     this.threadId = threadId;
-    const result = RawTopGraph.parse(JSON.parse(turn.finalResponse));
+    const result = WriterOutput.parse(JSON.parse(turn.finalResponse));
     return { sessionId: threadId, result };
   }
 }

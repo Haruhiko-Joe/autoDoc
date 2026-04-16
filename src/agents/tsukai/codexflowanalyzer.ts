@@ -1,9 +1,9 @@
 import { Codex } from "@openai/codex-sdk";
 import type { Thread } from "@openai/codex-sdk";
-import { FlowAnalyzerOutput, toOutputSchema } from "./schemas/schema.js";
-import type { AgentResult, FlowAnalyzerOutput as FlowAnalyzerOutputType, IFlowAnalyzer, Language } from "./schemas/schema.js";
-import { flowAnalyzerInstruction } from "./instructions/flowanalyzer.js";
-import { flowAnalyzerInstructionEn } from "./instructions/flowanalyzer.en.js";
+import { FlowAnalyzerOutput, toOutputSchema } from "../schemas/schema.js";
+import type { AgentResult, FlowAnalyzerOutput as FlowAnalyzerOutputType, IFlowAnalyzer, Language } from "../schemas/schema.js";
+import { flowAnalyzerInstruction } from "../instructions/cn/flowanalyzer.js";
+import { flowAnalyzerInstructionEn } from "../instructions/en/flowanalyzer.js";
 
 const outputSchema = toOutputSchema(FlowAnalyzerOutput);
 

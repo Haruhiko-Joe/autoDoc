@@ -171,7 +171,7 @@ gitUrl (已存在) ──► git fetch + pull
 | **Scaffold** | 分析整个仓库，生成顶层模块关系图 | Checker 校验 |
 | **Decomposer** | 递归拆分模块为子图或叶子页面 | Checker 校验（最多重试 5 次） |
 | **Writer** | 为每个叶子节点生成详细 Markdown 文档 | — |
-| **Checker** | 校验图结构完整性和内容质量 | — |
+| **Checker** | 校验 Scaffold 和 Decomposer 产出的图结构完整性 | — |
 | **Flow Analyzer** | 提取 3–7 条典型业务交互流程 | — |
 | **Updater** | 接收 git diff 后局部增删改文档树 | — |
 
@@ -329,12 +329,12 @@ autoDoc/
 │   │   ├── schema.ts             # Zod schemas（含 version / pageVersions）
 │   │   └── tools/{query,mutate}.ts
 │   ├── agents/                   # Agent 实现（Claude + Codex 双后端）
-│   │   ├── claude{scaffold,decomposer,writer,checker,flowanalyzer,updater}.ts
-│   │   ├── codex{scaffold,decomposer,writer,checker,flowanalyzer,updater}.ts
-│   │   ├── instructions/         # 各 Agent 提示词（中文 + 英文）
-│   │   │   ├── flowanalyzer.{ts,en.ts}
-│   │   │   ├── updater.{ts,en.ts}        # Updater 提示词
-│   │   │   └── ...
+│   │   ├── tsukai/               # 所有 Agent 类（barrel: index.ts）
+│   │   │   ├── claude{scaffold,decomposer,writer,checker,flowanalyzer,updater}.ts
+│   │   │   └── codex{scaffold,decomposer,writer,checker,flowanalyzer,updater}.ts
+│   │   ├── instructions/         # 各 Agent 提示词
+│   │   │   ├── cn/               # 中文提示词
+│   │   │   └── en/               # 英文提示词
 │   │   └── schemas/schema.ts     # Zod 输出 schema（含 UpdaterOutput）
 │   ├── workflow/
 │   │   └── arranger.ts           # 全量管线状态机
