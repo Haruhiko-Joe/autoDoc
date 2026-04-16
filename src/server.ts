@@ -7,7 +7,8 @@ import OpenAI from "openai";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 
 import { Arranger, type Progress, type AgentBackend, type AgentBackends } from "./workflow/arranger.js";
-import type { Language, IUpdater } from "./agents/schemas/schema.js";
+import { IncrementalUpdater } from "./workflow/incrementalUpdater.js";
+import type { Language } from "./agents/schemas/schema.js";
 import {
   REPO_ROOT,
   DOC_ROOT,
@@ -16,7 +17,6 @@ import {
   type ProjectMeta,
 } from "./souko/registry.js";
 import * as git from "./git/repoManager.js";
-import { claudeUpdater, codexUpdater } from "./agents/tsukai/index.js";
 import { DocStore } from "./mcp/docStore.js";
 import { buildMcpServer } from "./mcp/server.js";
 
@@ -183,27 +183,25 @@ async function runIncremental(args: RunArgs & { prev: ProjectMeta }): Promise<{ 
   }
 
   const changedFiles = await git.diffNameOnly(repoDir, prev.head, newHead);
-  const diffPatch = await git.diffPatch(repoDir, prev.head, newHead, changedFiles);
   console.log(`[Run] incremental: ${prev.head.slice(0, 8)} → ${newHead.slice(0, 8)} (${changedFiles.length} files)`);
 
   const language = body.language ?? "zh";
   const backend: AgentBackend = body.agentBackends?.updater ?? body.agentBackend ?? "claude";
-  const updater: IUpdater =
-    backend === "codex"
-      ? new codexUpdater(project, { docDir, repoDir, prevCommit: prev.head, newCommit: newHead, changedFiles, diffPatch }, language)
-      : new claudeUpdater(project, { docDir, repoDir, prevCommit: prev.head, newCommit: newHead, changedFiles, diffPatch }, language);
 
-  const prompt =
-    `项目 ${project} 在 ${prev.head.slice(0, 8)} → ${newHead.slice(0, 8)} 之间发生了 ${changedFiles.length} 个文件改动。` +
-    `请按 SOP 局部更新文档树，使其与新代码一致。`;
+  const orchestrator = new IncrementalUpdater({
+    project, repoDir, docDir,
+    prevCommit: prev.head, newCommit: newHead,
+    changedFiles, language, backend,
+    maxConcurrency: body.maxConcurrency ?? 4,
+  });
 
-  // Phase 2: hand off to Updater agent.
+  // Phase 2: triage + parallel per-graph updaters.
   state = { phase: "running", mode: "incremental", gitUrl, project, repoDir, docDir, step: "updating" };
+  orchestrator.onProgress(debouncedBroadcast);
   broadcastStatus();
-  console.log(`[Run] incremental: invoking ${backend} Updater`);
 
-  updater.run(prompt, repoDir).then(
-    async ({ result }) => {
+  orchestrator.run().then(
+    async (result) => {
       console.log(`[Updater] ${result.summary}`);
       console.log(`[Updater] touched ${result.touched.length} files`);
       await upsertProject(project, {
@@ -214,7 +212,7 @@ async function runIncremental(args: RunArgs & { prev: ProjectMeta }): Promise<{ 
       state = { phase: "done", mode: "incremental", gitUrl, project, repoDir, docDir };
       broadcastStatus();
     },
-    (err) => {
+    (err: unknown) => {
       state = { phase: "error", gitUrl, project, repoDir, docDir, message: String(err) };
       broadcastStatus();
     },

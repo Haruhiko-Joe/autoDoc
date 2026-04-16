@@ -1,6 +1,6 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { UpdaterOutput, toOutputSchema } from "../schemas/schema.js";
-import type { AgentResult, IUpdater, UpdaterOutput as UpdaterOutputType, Language } from "../schemas/schema.js";
+import type { AgentResult, IUpdater, UpdaterOutput as UpdaterOutputType, Language, AncestorContext as AncestorContextType } from "../schemas/schema.js";
 import { updaterInstruction } from "../instructions/cn/updater.js";
 import { updaterInstructionEn } from "../instructions/en/updater.js";
 
@@ -16,6 +16,8 @@ interface UpdaterContext {
   newCommit: string
   changedFiles: string[]
   diffPatch: string
+  graphNodeId?: string
+  ancestorContext?: AncestorContextType | null
 }
 
 export class claudeUpdater implements IUpdater {
@@ -62,7 +64,12 @@ export class claudeUpdater implements IUpdater {
       .replaceAll("{{PREV_COMMIT}}", this.ctx.prevCommit)
       .replaceAll("{{NEW_COMMIT}}", this.ctx.newCommit)
       .replaceAll("{{CHANGED_FILES}}", this.ctx.changedFiles.join("\n"))
-      .replaceAll("{{DIFF_PATCH}}", this.ctx.diffPatch);
+      .replaceAll("{{DIFF_PATCH}}", this.ctx.diffPatch)
+      .replaceAll("{{GRAPH_NODE_ID}}", this.ctx.graphNodeId ?? "")
+      .replaceAll(
+        "{{ANCESTOR_CONTEXT}}",
+        this.ctx.ancestorContext ? JSON.stringify(this.ctx.ancestorContext, null, 2) : "",
+      );
   }
 
   private async execute(
