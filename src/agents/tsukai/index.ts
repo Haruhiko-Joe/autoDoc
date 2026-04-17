@@ -1,12 +1,12 @@
 export { claudeChecker } from "./claudechecker.js";
 export { claudeDecomposer } from "./claudedecomposer.js";
 export { claudeFlowAnalyzer } from "./claudeflowanalyzer.js";
+export { claudeKnowledge } from "./claudeknowledge.js";
 export { claudeScaffold } from "./claudescaffold.js";
-export { claudeUpdater } from "./claudeupdater.js";
 export { claudeWriter } from "./claudewriter.js";
 export { codexChecker } from "./codexchecker.js";
 export { codexDecomposer } from "./codexdecomposer.js";
 export { codexFlowAnalyzer } from "./codexflowanalyzer.js";
+export { codexKnowledge } from "./codexknowledge.js";
 export { codexScaffold } from "./codexscaffold.js";
-export { codexUpdater } from "./codexupdater.js";
 export { codexWriter } from "./codexwriter.js";

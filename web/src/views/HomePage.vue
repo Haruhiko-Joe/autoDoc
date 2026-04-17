@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { fetchTopGraph, startRun, fetchStatus, fetchProjects, subscribeStatus, searchModules, pausePipeline, resumePipeline, retryErrors, type AgentBackends, type RunStatus, type SearchResult, type ProjectListEntry } from '../services/doc'
+import { fetchTopGraph, startRun, fetchStatus, fetchProjects, subscribeStatus, searchModules, pausePipeline, resumePipeline, retryErrors, knowledgeGet, type AgentBackends, type RunStatus, type SearchResult, type ProjectListEntry } from '../services/doc'
 import GraphView from '../components/GraphView.vue'
 import EdgeLegend from '../components/EdgeLegend.vue'
 import DocTree from '../components/DocTree.vue'
@@ -21,7 +21,6 @@ const agentBackends = reactive<AgentBackends>({
   writer: 'claude',
   checker: 'codex',
   flowAnalyzer: 'claude',
-  updater: 'claude',
 })
 const language = ref<'zh' | 'en'>('zh')
 const showConfigDialog = ref(false)
@@ -39,7 +38,6 @@ const agentBackendFields: Array<{ key: keyof AgentBackends; label: string }> = [
   { key: 'writer', label: 'Writer' },
   { key: 'checker', label: 'Checker' },
   { key: 'flowAnalyzer', label: 'Flow Analyzer' },
-  { key: 'updater', label: 'Updater' },
 ]
 
 function getRouteProject(): string {
@@ -120,6 +118,7 @@ onMounted(async () => {
   if (selectedProject.value) {
     syncGitUrlFromSelection()
     await loadGraph(selectedProject.value)
+    await refreshKnowledge(selectedProject.value)
   }
 
   if (s.phase === 'running') {
@@ -138,6 +137,9 @@ watch(() => route.params.project, async () => {
   if (routeProject) {
     syncGitUrlFromSelection()
     await loadGraph(routeProject)
+    await refreshKnowledge(routeProject)
+  } else {
+    await refreshKnowledge('')
   }
 })
 
@@ -147,19 +149,8 @@ async function handleRun() {
   topGraph.value = null
   try {
     const project = getProjectName(gitUrl.value)
-    const { mode } = await startRun(gitUrl.value.trim(), maxConcurrency.value, { ...agentBackends }, language.value)
-    if (mode === 'noop') {
-      // no-op: nothing to do, just refresh status
-      status.value = { phase: 'done', mode: 'noop', gitUrl: gitUrl.value.trim(), currentProject: project }
-      await refreshProjects()
-      if (project) {
-        selectedProject.value = project
-        await router.replace({ name: 'project', params: { project } })
-        await loadGraph(project)
-      }
-      return
-    }
-    status.value = { phase: 'running', mode, gitUrl: gitUrl.value.trim(), currentProject: project }
+    await startRun(gitUrl.value.trim(), maxConcurrency.value, { ...agentBackends }, language.value)
+    status.value = { phase: 'running', gitUrl: gitUrl.value.trim(), currentProject: project }
     selectedProject.value = project
     mergeProjectEntries([
       ...projectEntries.value,
@@ -257,6 +248,30 @@ function onNodeClick(node: Pick<GraphNode, 'child'>) {
   router.push(`/${selectedProject.value}/doc/${node.child.ref}`)
 }
 
+const knowledgeExists = ref(false)
+const knowledgeChars = ref(0)
+
+async function refreshKnowledge(projectName: string) {
+  if (!projectName) {
+    knowledgeExists.value = false
+    knowledgeChars.value = 0
+    return
+  }
+  try {
+    const res = await knowledgeGet(projectName)
+    knowledgeExists.value = res.exists
+    knowledgeChars.value = res.content?.length ?? 0
+  } catch {
+    knowledgeExists.value = false
+    knowledgeChars.value = 0
+  }
+}
+
+function openKnowledgePage() {
+  if (!selectedProject.value) return
+  router.push({ name: 'knowledge', query: { project: selectedProject.value } })
+}
+
 const searchQuery = ref('')
 const searchResults = ref<SearchResult[]>([])
 let searchTimer: ReturnType<typeof setTimeout> | null = null
@@ -288,6 +303,11 @@ function navigateToSearchResult(r: SearchResult) {
 
 const progress = computed(() => status.value.progress)
 const viewingRunningProject = computed(() => status.value.phase === 'running' && selectedProject.value === status.value.currentProject)
+const runProjectExists = computed(() => {
+  const n = getProjectName(gitUrl.value)
+  if (!n) return false
+  return projectEntries.value.some((p) => p.name === n && p.hasDoc)
+})
 const visibleNodeStates = computed(() => (viewingRunningProject.value ? progress.value?.nodes : undefined))
 
 const totalNodes = computed(() => {
@@ -305,21 +325,8 @@ const progressPercent = computed(() => {
 
 const isPaused = computed(() => status.value.paused === true)
 
-const runModeLabel = computed(() => {
-  const m = status.value.mode
-  if (m === 'initial') return 'Initial generation'
-  if (m === 'incremental') return 'Incremental update'
-  if (m === 'noop') return 'No changes'
-  return ''
-})
-
 const progressPhaseLabel = computed(() => {
   if (isPaused.value) return 'Paused'
-  if (status.value.mode === 'incremental') {
-    if (status.value.step === 'fetching') return 'Fetching latest commits...'
-    if (status.value.step === 'updating') return 'Updater agent applying diff...'
-    return 'Incremental update in progress...'
-  }
   const p = progress.value?.phase
   if (p === 'scaffold') return 'Analyzing project structure...'
   if (p === 'processing') return 'Processing modules...'
@@ -393,10 +400,11 @@ async function handleRetryErrors() {
           </button>
           <button
             class="run-btn"
-            :disabled="status.phase === 'running' || !gitUrl.trim()"
+            :disabled="status.phase === 'running' || !gitUrl.trim() || runProjectExists"
+            :title="runProjectExists ? 'Already generated — delete the project to regenerate.' : ''"
             @click="handleRun"
           >
-            {{ status.phase === 'running' ? '...' : 'Run' }}
+            {{ status.phase === 'running' ? '...' : (runProjectExists ? 'Generated' : 'Run') }}
           </button>
         </div>
         <label class="input-label select-label">Saved Projects</label>
@@ -413,6 +421,15 @@ async function handleRetryErrors() {
             {{ project }}
           </option>
         </select>
+        <button
+          v-if="selectedProject"
+          class="knowledge-btn"
+          :disabled="status.phase === 'running'"
+          @click="openKnowledgePage"
+        >
+          <span>{{ knowledgeExists ? 'Edit existing knowledge' : 'Inject additional knowledge' }}</span>
+          <span v-if="knowledgeExists" class="knowledge-chip">{{ knowledgeChars }} chars</span>
+        </button>
         <p v-if="errorMsg" class="input-error">{{ errorMsg }}</p>
       </div>
 
@@ -737,6 +754,41 @@ async function handleRetryErrors() {
 .project-select:disabled {
   background: var(--bg-surface-alt);
   color: var(--text-muted);
+}
+
+.knowledge-btn {
+  margin-top: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.knowledge-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.knowledge-btn:disabled {
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
+.knowledge-chip {
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--bg-surface-alt);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 8px;
 }
 
 /* ─── Progress ─── */
