@@ -16,6 +16,7 @@ export interface RegistryFile {
 export const SOUKO_DIR = path.resolve("src/souko");
 export const REPO_ROOT = path.join(SOUKO_DIR, "repo");
 export const DOC_ROOT = path.join(SOUKO_DIR, "doc");
+export const KNOWLEDGE_ROOT = path.join(SOUKO_DIR, "knowledge");
 const REGISTRY_PATH = path.join(SOUKO_DIR, "projects.json");
 
 const empty = (): RegistryFile => ({ version: 1, projects: {} });
@@ -60,4 +61,12 @@ export function repoDirOf(name: string): string {
 
 export function docDirOf(name: string): string {
   return path.join(DOC_ROOT, name);
+}
+
+export function knowledgePathOf(name: string): string {
+  return path.join(KNOWLEDGE_ROOT, `${name}.md`);
+}
+
+export function knowledgeDraftPathOf(name: string): string {
+  return path.join(KNOWLEDGE_ROOT, `.draft-${name}.md`);
 }

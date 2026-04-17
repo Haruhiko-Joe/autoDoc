@@ -132,6 +132,13 @@ export const FlowAnalyzerOutput = z.object({
   flows: z.array(FlowCase),
 })
 
+// --- Knowledge Elicitor ---
+
+export const KnowledgeTurn = z.object({
+  draft: z.string(),
+  question: z.string(),
+})
+
 // --- Updater (incremental documentation updater) ---
 
 export const UpdaterAction = z.enum(["created", "updated", "deleted"])
@@ -242,6 +249,13 @@ export interface IUpdater {
   continue(prompt: string): Promise<AgentResult<UpdaterOutput>>
 }
 
+export interface IKnowledge {
+  getSessionId(): string | undefined
+  restore(sessionId: string, workpath: string): void
+  run(prompt: string, workpath: string): Promise<AgentResult<KnowledgeTurn>>
+  continue(prompt: string): Promise<AgentResult<KnowledgeTurn>>
+}
+
 // --- Inferred types ---
 
 export type EdgeType = z.infer<typeof EdgeType>
@@ -273,6 +287,7 @@ export type FlowAnalyzerOutput = z.infer<typeof FlowAnalyzerOutput>
 export type UpdaterAction = z.infer<typeof UpdaterAction>
 export type UpdaterTouched = z.infer<typeof UpdaterTouched>
 export type UpdaterOutput = z.infer<typeof UpdaterOutput>
+export type KnowledgeTurn = z.infer<typeof KnowledgeTurn>
 
 export type Language = "zh" | "en";
 

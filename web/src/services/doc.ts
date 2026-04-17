@@ -169,6 +169,88 @@ export interface ChatEvent {
   text?: string
 }
 
+// ─── Knowledge ───
+
+export interface KnowledgeGetResponse {
+  exists: boolean
+  content?: string
+  draftExists?: boolean
+}
+
+export async function knowledgeGet(project: string): Promise<KnowledgeGetResponse> {
+  const res = await fetch(`${API}/knowledge?project=${encodeURIComponent(project)}`)
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export interface KnowledgeTurnResponse {
+  sessionId?: string
+  draft: string
+  question: string
+}
+
+export async function knowledgeStart(
+  project: string,
+  userMessage: string,
+  language: 'zh' | 'en',
+  agentBackend: AgentBackend,
+): Promise<KnowledgeTurnResponse & { sessionId: string }> {
+  const res = await fetch(`${API}/knowledge/start`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project, userMessage, language, agentBackend }),
+  })
+  if (!res.ok) {
+    const data = await res.json()
+    throw new Error(data.error ?? 'Failed to start knowledge session')
+  }
+  return res.json()
+}
+
+export async function knowledgeMessage(
+  sessionId: string,
+  userReply: string,
+): Promise<KnowledgeTurnResponse> {
+  const res = await fetch(`${API}/knowledge/message`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId, userReply }),
+  })
+  if (!res.ok) {
+    const data = await res.json()
+    throw new Error(data.error ?? 'Failed to send knowledge message')
+  }
+  return res.json()
+}
+
+export async function knowledgeFinalize(
+  sessionId: string,
+  project: string,
+): Promise<{ ok: boolean; path: string }> {
+  const res = await fetch(`${API}/knowledge/finalize`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId, project }),
+  })
+  if (!res.ok) {
+    const data = await res.json()
+    throw new Error(data.error ?? 'Failed to finalize knowledge')
+  }
+  return res.json()
+}
+
+export async function knowledgeDiscard(project: string): Promise<void> {
+  const res = await fetch(`${API}/knowledge/discard`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project }),
+  })
+  if (!res.ok) {
+    const data = await res.json()
+    throw new Error(data.error ?? 'Failed to discard knowledge draft')
+  }
+}
+
 export async function sendChat(
   messages: ChatMessage[],
   onEvent: (event: ChatEvent) => void,

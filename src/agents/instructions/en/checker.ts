@@ -163,4 +163,14 @@ Field descriptions:
   - \`invalid-path\`: Paths in codeScope don't exist in the target repository
 - \`issues[].description\`: Specific description, containing enough information for Scaffold/Decomposer to locate and fix
 - \`issues[].severity\`: \`"error"\` (blocking) or \`"warning"\` (advisory)
+
+### Repository Domain Knowledge Exceptions
+
+When the prompt contains a trailing "# Repository Domain Knowledge" (or "# 仓库领域知识") section that **explicitly authorizes** an exception to a default constraint, you must not flag such a case as a violation. Typical authorized exceptions include (but are not limited to):
+
+- Allowing a module's codeScope to span multiple subtrees / not be a subset of its parent's codeScope
+- Allowing different modules' codeScope to overlap
+- Allowing a decomposition that does not align perfectly with the repo's physical structure
+
+Only explicit authorization **targeting the specific module or situation** counts as an exception — vague, generic phrasing does not authorize anything and default rules still apply.
 `.trim();

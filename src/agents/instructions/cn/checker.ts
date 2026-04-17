@@ -163,4 +163,14 @@ autoDoc 是一个自动文档生成系统：给定任意代码仓库，自动生
   - \`invalid-path\`：codeScope 中的路径在目标仓库中不存在
 - \`issues[].description\`：具体描述，包含足够信息让 Scaffold/Decomposer 定位和修复
 - \`issues[].severity\`：\`"error"\`（阻断性）或 \`"warning"\`（建议性）
+
+### 仓库领域知识的例外授权
+
+当 prompt 末尾存在"# 仓库领域知识"（或 "# Repository Domain Knowledge"）章节，且其中**明确授权**了某种本来属于默认约束的例外时，不得将此类情况再判定为违例。典型例外包括（不限于）：
+
+- 允许某模块的 codeScope 跨多个子树 / 不是父节点 codeScope 的子集
+- 允许不同模块的 codeScope 存在重叠
+- 允许某种拆分方式虽然与代码物理结构不完全对齐
+
+只有当 knowledge 文本里**明确针对该模块 / 该情形**授权时才算例外；模糊、泛泛的描述不构成授权，仍按默认规则校验。
 `.trim();

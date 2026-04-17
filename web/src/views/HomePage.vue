@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { fetchTopGraph, startRun, fetchStatus, fetchProjects, subscribeStatus, searchModules, pausePipeline, resumePipeline, retryErrors, type AgentBackends, type RunStatus, type SearchResult, type ProjectListEntry } from '../services/doc'
+import { fetchTopGraph, startRun, fetchStatus, fetchProjects, subscribeStatus, searchModules, pausePipeline, resumePipeline, retryErrors, knowledgeGet, type AgentBackends, type RunStatus, type SearchResult, type ProjectListEntry } from '../services/doc'
 import GraphView from '../components/GraphView.vue'
 import EdgeLegend from '../components/EdgeLegend.vue'
 import DocTree from '../components/DocTree.vue'
@@ -120,6 +120,7 @@ onMounted(async () => {
   if (selectedProject.value) {
     syncGitUrlFromSelection()
     await loadGraph(selectedProject.value)
+    await refreshKnowledge(selectedProject.value)
   }
 
   if (s.phase === 'running') {
@@ -138,6 +139,9 @@ watch(() => route.params.project, async () => {
   if (routeProject) {
     syncGitUrlFromSelection()
     await loadGraph(routeProject)
+    await refreshKnowledge(routeProject)
+  } else {
+    await refreshKnowledge('')
   }
 })
 
@@ -255,6 +259,30 @@ function graphNodes() {
 function onNodeClick(node: Pick<GraphNode, 'child'>) {
   if (!node.child || !selectedProject.value) return
   router.push(`/${selectedProject.value}/doc/${node.child.ref}`)
+}
+
+const knowledgeExists = ref(false)
+const knowledgeChars = ref(0)
+
+async function refreshKnowledge(projectName: string) {
+  if (!projectName) {
+    knowledgeExists.value = false
+    knowledgeChars.value = 0
+    return
+  }
+  try {
+    const res = await knowledgeGet(projectName)
+    knowledgeExists.value = res.exists
+    knowledgeChars.value = res.content?.length ?? 0
+  } catch {
+    knowledgeExists.value = false
+    knowledgeChars.value = 0
+  }
+}
+
+function openKnowledgePage() {
+  if (!selectedProject.value) return
+  router.push({ name: 'knowledge', query: { project: selectedProject.value } })
 }
 
 const searchQuery = ref('')
@@ -413,6 +441,15 @@ async function handleRetryErrors() {
             {{ project }}
           </option>
         </select>
+        <button
+          v-if="selectedProject"
+          class="knowledge-btn"
+          :disabled="status.phase === 'running'"
+          @click="openKnowledgePage"
+        >
+          <span>{{ knowledgeExists ? 'Edit existing knowledge' : 'Inject additional knowledge' }}</span>
+          <span v-if="knowledgeExists" class="knowledge-chip">{{ knowledgeChars }} chars</span>
+        </button>
         <p v-if="errorMsg" class="input-error">{{ errorMsg }}</p>
       </div>
 
@@ -737,6 +774,41 @@ async function handleRetryErrors() {
 .project-select:disabled {
   background: var(--bg-surface-alt);
   color: var(--text-muted);
+}
+
+.knowledge-btn {
+  margin-top: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.knowledge-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.knowledge-btn:disabled {
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
+.knowledge-chip {
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--bg-surface-alt);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 8px;
 }
 
 /* ─── Progress ─── */

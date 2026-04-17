@@ -7,6 +7,7 @@ import {
 } from "../agents/tsukai/index.js";
 import { TopGraph, Graph } from "../agents/schemas/schema.js";
 import type { IChecker, IScaffold, IDecomposer, IWriter, IFlowAnalyzer, Language } from "../agents/schemas/schema.js";
+import { knowledgePathOf } from "../souko/registry.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SKILL_TEMPLATE_DIR = path.resolve(__dirname, "..", "skill-template");
@@ -133,6 +134,7 @@ export class Arranger {
   private _resumePromise: Promise<void> | null = null;
   private repoPath = "";
   private docDir = "";
+  private knowledge = "";
   private currentPhase: Progress["phase"] = "idle";
   private listeners = new Set<() => void>();
 
@@ -246,6 +248,7 @@ export class Arranger {
   async run(repoPath: string, docDir = path.resolve("src/souko/doc", path.basename(path.resolve(repoPath)))): Promise<void> {
     this.repoPath = repoPath;
     this.docDir = docDir;
+    this.knowledge = await this.loadKnowledge();
 
     await mkdir(this.docDir, { recursive: true });
 
@@ -344,7 +347,7 @@ export class Arranger {
     const { topResult, finalSessionId } = await this.withRetry(async () => {
       const scaffold = this.makeScaffold();
       const { sessionId, result } = await scaffold.run(
-        `Analyze the repository at ${this.repoPath} and produce the top-level module graph.`,
+        this.appendKnowledge(`Analyze the repository at ${this.repoPath} and produce the top-level module graph.`),
         this.repoPath,
       );
 
@@ -353,7 +356,7 @@ export class Arranger {
 
       const checker = this.makeChecker();
       for (let retry = 0; ; retry++) {
-        const checkerPrompt = [
+        const checkerPrompt = this.appendKnowledge([
           `Validate the scaffold output for the top-level module graph.`,
           `Repository root: ${this.repoPath}`,
           ``,
@@ -361,7 +364,7 @@ export class Arranger {
           "```json",
           JSON.stringify(topResult, null, 2),
           "```",
-        ].join("\n");
+        ].join("\n"));
 
         const checkerResult = checker.getSessionId()
           ? await checker.continue(checkerPrompt)
@@ -556,11 +559,11 @@ export class Arranger {
     if (ancestorContext) {
       parts.push(`\nAncestor context (the module hierarchy above this node):\n${JSON.stringify(ancestorContext, null, 2)}`);
     }
-    return parts.join("\n");
+    return this.appendKnowledge(parts.join("\n"));
   }
 
   private buildGraphCheckerPrompt(nodeId: string, rawGraph: RawGraphType): string {
-    return [
+    return this.appendKnowledge([
       `Validate the decomposer output (graph structure only) for module "${nodeId}".`,
       `Repository root: ${this.repoPath}`,
       ``,
@@ -570,7 +573,7 @@ export class Arranger {
       "```",
       ``,
       `Note: Leaf Markdown documents have not been generated yet — validate graph structure only.`,
-    ].join("\n");
+    ].join("\n"));
   }
 
   // ─── Agent 循环 ───
@@ -719,7 +722,7 @@ export class Arranger {
       parts.push(`\nAncestor context (the module hierarchy above this node):\n${JSON.stringify(ancestorContext, null, 2)}`);
     }
 
-    const { result } = await writer.run(parts.join("\n"), this.repoPath);
+    const { result } = await writer.run(this.appendKnowledge(parts.join("\n")), this.repoPath);
     console.log(`[Arranger] Page generated: ${node.name}`);
     return result.content;
   }
@@ -982,5 +985,22 @@ export class Arranger {
     } catch {
       return false;
     }
+  }
+
+  private async loadKnowledge(): Promise<string> {
+    const name = path.basename(this.docDir);
+    try {
+      const content = (await readFile(knowledgePathOf(name), "utf-8")).trim();
+      if (content) console.log(`[Arranger] Loaded knowledge.md (${content.length} chars) for ${name}`);
+      return content;
+    } catch {
+      return "";
+    }
+  }
+
+  private appendKnowledge(prompt: string): string {
+    if (!this.knowledge) return prompt;
+    const header = this.language === "en" ? "# Repository Domain Knowledge" : "# 仓库领域知识";
+    return `${prompt}\n\n${header}\n${this.knowledge}`;
   }
 }
