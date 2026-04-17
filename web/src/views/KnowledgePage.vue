@@ -6,6 +6,8 @@ import {
   knowledgeStart,
   knowledgeMessage,
   knowledgeFinalize,
+  continueRun,
+  fetchStatus,
   KnowledgeSessionExpiredError,
   type AgentBackend,
 } from '../services/doc'
@@ -42,8 +44,12 @@ const initialized = ref(false)
 const finalizing = ref(false)
 const chatLogRef = ref<HTMLElement | null>(null)
 
-const canSend = computed(() => !!project.value && !loading.value && userInput.value.trim().length > 0)
+const preGen = ref(false)
+const cloning = ref(false)
+
+const canSend = computed(() => !!project.value && !loading.value && !cloning.value && userInput.value.trim().length > 0)
 const canFinalize = computed(() => initialized.value && !loading.value && !finalizing.value && draft.value.trim().length > 0)
+const canStartGen = computed(() => preGen.value && !loading.value && !finalizing.value && !cloning.value)
 
 async function scrollToBottom() {
   await nextTick()
@@ -121,6 +127,35 @@ async function finalizeOnly() {
   }
 }
 
+async function skipAndStart() {
+  finalizing.value = true
+  errorMsg.value = ''
+  try {
+    await continueRun()
+    router.push(`/${project.value}`)
+  } catch (e) {
+    errorMsg.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    finalizing.value = false
+  }
+}
+
+async function saveAndStart() {
+  finalizing.value = true
+  errorMsg.value = ''
+  try {
+    if (initialized.value) {
+      await knowledgeFinalize(sessionId.value, project.value)
+    }
+    await continueRun()
+    router.push(`/${project.value}`)
+  } catch (e) {
+    errorMsg.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    finalizing.value = false
+  }
+}
+
 function handleInputKey(e: KeyboardEvent) {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault()
@@ -128,8 +163,48 @@ function handleInputKey(e: KeyboardEvent) {
   }
 }
 
+async function syncServerPhase() {
+  try {
+    const s = await fetchStatus()
+    if (s.currentProject !== project.value) {
+      preGen.value = false
+      cloning.value = false
+      return
+    }
+    if (s.phase === 'cloning') {
+      preGen.value = true
+      cloning.value = true
+    } else if (s.phase === 'awaiting-knowledge') {
+      preGen.value = true
+      cloning.value = false
+    } else {
+      preGen.value = false
+      cloning.value = false
+    }
+  } catch {
+    preGen.value = false
+    cloning.value = false
+  }
+}
+
 onMounted(async () => {
+  await syncServerPhase()
   await loadExistingDraft()
+  if (preGen.value && messages.value.length === 0) {
+    messages.value.push({
+      role: 'assistant',
+      content: language.value === 'en'
+        ? 'Repository is being cloned. Would you like to inject any domain knowledge before I start generating docs? Tell me what default behavior to change — e.g. "treat X/Y/Z as one unit", "src/legacy/ is noise". Or skip to use defaults.'
+        : '仓库正在克隆。要不要在生成文档前注入一些领域知识？告诉我想改变的默认行为，比如"把 X/Y/Z 作为一个单元"、"src/legacy/ 是噪声"。或者直接跳过使用默认行为。',
+    })
+  }
+  // Keep the "cloning" banner in sync until the server reaches awaiting-knowledge.
+  if (cloning.value) {
+    const iv = setInterval(async () => {
+      await syncServerPhase()
+      if (!cloning.value) clearInterval(iv)
+    }, 1000)
+  }
 })
 </script>
 
@@ -162,7 +237,8 @@ onMounted(async () => {
     <div class="k-body">
       <section class="k-chat">
         <div class="chat-log" ref="chatLogRef">
-          <div v-if="!initialized && messages.length === 0" class="chat-hint">
+          <div v-if="cloning" class="chat-banner">Cloning repository... Elicitor will be available once the clone completes.</div>
+          <div v-if="!preGen && !initialized && messages.length === 0" class="chat-hint">
             <p>Start the conversation with the Elicitor.</p>
             <p class="sub">Tell it what default documentation behavior you want to change — e.g. "treat X/Y/Z as one unit", "src/legacy/ is noise", "the only public API is Foo".</p>
           </div>
@@ -192,9 +268,19 @@ onMounted(async () => {
           <div class="chat-input-row">
             <p v-if="errorMsg" class="chat-error">{{ errorMsg }}</p>
             <div class="chat-input-actions">
-              <button class="secondary-btn" :disabled="!canFinalize" @click="finalizeOnly">
-                {{ finalizing ? 'Saving...' : 'Save & close' }}
-              </button>
+              <template v-if="preGen">
+                <button class="secondary-btn" :disabled="!canStartGen" @click="skipAndStart">
+                  {{ finalizing ? 'Starting...' : 'Skip & start generation' }}
+                </button>
+                <button class="primary-btn" :disabled="!canStartGen || !initialized" @click="saveAndStart">
+                  {{ finalizing ? 'Starting...' : 'Save & start generation' }}
+                </button>
+              </template>
+              <template v-else>
+                <button class="secondary-btn" :disabled="!canFinalize" @click="finalizeOnly">
+                  {{ finalizing ? 'Saving...' : 'Save & close' }}
+                </button>
+              </template>
               <button class="primary-btn" :disabled="!canSend" @click="sendReply">
                 Send
               </button>
@@ -314,6 +400,16 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.chat-banner {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-surface-alt);
+  color: var(--text-secondary);
+  font-size: 12px;
+  text-align: center;
 }
 
 .chat-hint {

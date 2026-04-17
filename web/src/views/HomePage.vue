@@ -121,7 +121,7 @@ onMounted(async () => {
     await refreshKnowledge(selectedProject.value)
   }
 
-  if (s.phase === 'running') {
+  if (runInProgress.value) {
     startSSE()
   }
 })
@@ -144,27 +144,17 @@ watch(() => route.params.project, async () => {
 })
 
 async function handleRun() {
-  if (!gitUrl.value.trim()) return
+  const url = gitUrl.value.trim()
+  if (!url) return
   errorMsg.value = ''
-  topGraph.value = null
   try {
-    const project = getProjectName(gitUrl.value)
-    await startRun(gitUrl.value.trim(), maxConcurrency.value, { ...agentBackends }, language.value)
-    status.value = { phase: 'running', gitUrl: gitUrl.value.trim(), currentProject: project }
-    selectedProject.value = project
+    const { project } = await startRun(url, maxConcurrency.value, { ...agentBackends }, language.value)
     mergeProjectEntries([
       ...projectEntries.value,
-      {
-        name: project,
-        hasDoc: false,
-        sourceUrl: gitUrl.value.trim(),
-        branch: '',
-        head: '',
-        lastUpdated: '',
-      },
+      { name: project, hasDoc: false, sourceUrl: url, branch: '', head: '', lastUpdated: '' },
     ])
-    await router.replace({ name: 'project', params: { project } })
     startSSE()
+    await router.push({ name: 'knowledge', query: { project } })
   } catch (e) {
     errorMsg.value = e instanceof Error ? e.message : String(e)
   }
@@ -174,7 +164,12 @@ function startSSE() {
   stopSSE()
   unsubscribeSSE = subscribeStatus(async (s) => {
     status.value = s
-    if (s.phase === 'running') {
+    if (s.phase === 'awaiting-knowledge' && s.currentProject) {
+      // Auto-navigate to knowledge page once the clone completes.
+      if (route.name !== 'knowledge') {
+        router.push({ name: 'knowledge', query: { project: s.currentProject } })
+      }
+    } else if (s.phase === 'running') {
       if (selectedProject.value === s.currentProject) {
         await tryLoadGraph(selectedProject.value)
       }
@@ -303,6 +298,10 @@ function navigateToSearchResult(r: SearchResult) {
 
 const progress = computed(() => status.value.progress)
 const viewingRunningProject = computed(() => status.value.phase === 'running' && selectedProject.value === status.value.currentProject)
+const runInProgress = computed(() => {
+  const p = status.value.phase
+  return p === 'cloning' || p === 'awaiting-knowledge' || p === 'running'
+})
 const runProjectExists = computed(() => {
   const n = getProjectName(gitUrl.value)
   if (!n) return false
@@ -327,6 +326,8 @@ const isPaused = computed(() => status.value.paused === true)
 
 const progressPhaseLabel = computed(() => {
   if (isPaused.value) return 'Paused'
+  if (status.value.phase === 'cloning') return 'Cloning repository...'
+  if (status.value.phase === 'awaiting-knowledge') return 'Waiting for knowledge injection...'
   const p = progress.value?.phase
   if (p === 'scaffold') return 'Analyzing project structure...'
   if (p === 'processing') return 'Processing modules...'
@@ -400,11 +401,11 @@ async function handleRetryErrors() {
           </button>
           <button
             class="run-btn"
-            :disabled="status.phase === 'running' || !gitUrl.trim() || runProjectExists"
+            :disabled="runInProgress || !gitUrl.trim() || runProjectExists"
             :title="runProjectExists ? 'Already generated — delete the project to regenerate.' : ''"
             @click="handleRun"
           >
-            {{ status.phase === 'running' ? '...' : (runProjectExists ? 'Generated' : 'Run') }}
+            {{ runInProgress ? '...' : (runProjectExists ? 'Generated' : 'Run') }}
           </button>
         </div>
         <label class="input-label select-label">Saved Projects</label>

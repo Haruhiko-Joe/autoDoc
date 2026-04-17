@@ -169,33 +169,20 @@ async function handleKnowledgeDiscard(project: string): Promise<{ ok: true }> {
 
 // ─── Run state ───────────────────────────────────────────────
 
+interface RunContext {
+  gitUrl: string;
+  project: string;
+  repoDir: string;
+  docDir: string;
+}
+
 type RunState =
   | { phase: "idle" }
-  | {
-      phase: "running";
-      gitUrl: string;
-      project: string;
-      repoDir: string;
-      docDir: string;
-      arranger?: Arranger;
-    }
-  | {
-      phase: "done";
-      gitUrl: string;
-      project: string;
-      repoDir: string;
-      docDir: string;
-      arranger?: Arranger;
-    }
-  | {
-      phase: "error";
-      gitUrl: string;
-      project: string;
-      repoDir: string;
-      docDir: string;
-      message: string;
-      arranger?: Arranger;
-    };
+  | (RunContext & { phase: "cloning"; config: RunBody })
+  | (RunContext & { phase: "awaiting-knowledge"; config: RunBody })
+  | (RunContext & { phase: "running"; arranger: Arranger })
+  | (RunContext & { phase: "done"; arranger?: Arranger })
+  | (RunContext & { phase: "error"; message: string; arranger?: Arranger });
 
 let state: RunState = { phase: "idle" };
 const sseClients = new Set<ServerResponse>();
@@ -230,8 +217,8 @@ interface RunBody {
   language?: Language;
 }
 
-async function handleRun(body: RunBody): Promise<{ ok: boolean }> {
-  if (state.phase === "running") {
+async function handleRun(body: RunBody): Promise<{ ok: boolean; project: string }> {
+  if (state.phase === "cloning" || state.phase === "awaiting-knowledge" || state.phase === "running") {
     throw new Error("Already running");
   }
   if (!body.gitUrl || typeof body.gitUrl !== "string") {
@@ -248,23 +235,50 @@ async function handleRun(body: RunBody): Promise<{ ok: boolean }> {
     throw new Error(`Project "${project}" is already generated. Delete it first to regenerate.`);
   }
 
-  // Clean any half-state from a previous aborted attempt before cloning fresh.
-  await rm(repoDir, { recursive: true, force: true });
+  // Always wipe any stale doc dir before a fresh run.
   await rm(docDir, { recursive: true, force: true });
 
-  console.log(`[Run] cloning ${gitUrl} → ${repoDir}`);
-  await git.clone(gitUrl, repoDir);
+  state = { phase: "cloning", gitUrl, project, repoDir, docDir, config: body };
+  broadcastStatus();
+
+  (async () => {
+    try {
+      const repoExists = await stat(repoDir).then((s) => s.isDirectory()).catch(() => false);
+      if (!repoExists) {
+        await rm(repoDir, { recursive: true, force: true });
+        console.log(`[Run] cloning ${gitUrl} → ${repoDir}`);
+        await git.clone(gitUrl, repoDir);
+      } else {
+        console.log(`[Run] repo already on disk at ${repoDir}, skipping clone`);
+      }
+      state = { phase: "awaiting-knowledge", gitUrl, project, repoDir, docDir, config: body };
+      broadcastStatus();
+    } catch (err) {
+      state = { phase: "error", gitUrl, project, repoDir, docDir, message: String(err) };
+      broadcastStatus();
+    }
+  })();
+
+  return { ok: true, project };
+}
+
+async function handleRunContinue(): Promise<{ ok: boolean }> {
+  if (state.phase !== "awaiting-knowledge") {
+    throw new Error(`Cannot continue run: current phase is "${state.phase}"`);
+  }
+  const { gitUrl, project, repoDir, docDir, config } = state;
   const head = await git.getHead(repoDir);
   const branch = await git.getCurrentBranch(repoDir);
 
   const arranger = new Arranger({
-    maxConcurrency: body.maxConcurrency,
-    agentBackend: body.agentBackend,
-    agentBackends: body.agentBackends,
-    language: body.language,
+    maxConcurrency: config.maxConcurrency,
+    agentBackend: config.agentBackend,
+    agentBackends: config.agentBackends,
+    language: config.language,
   });
   state = { phase: "running", gitUrl, project, repoDir, docDir, arranger };
   arranger.onProgress(debouncedBroadcast);
+  broadcastStatus();
 
   arranger.run(repoDir, docDir).then(
     async () => {
@@ -282,7 +296,6 @@ async function handleRun(body: RunBody): Promise<{ ok: boolean }> {
       broadcastStatus();
     },
   );
-
   return { ok: true };
 }
 
@@ -295,7 +308,7 @@ interface RunConfig {
 }
 
 interface StatusResponse {
-  phase: "idle" | "running" | "done" | "error";
+  phase: "idle" | "cloning" | "awaiting-knowledge" | "running" | "done" | "error";
   paused?: boolean;
   gitUrl?: string;
   currentProject?: string;
@@ -307,6 +320,15 @@ interface StatusResponse {
 }
 
 async function handleStatus(): Promise<StatusResponse> {
+  if (state.phase === "cloning" || state.phase === "awaiting-knowledge") {
+    return {
+      phase: state.phase,
+      gitUrl: state.gitUrl,
+      currentProject: state.project,
+      repoDir: state.repoDir,
+      docDir: state.docDir,
+    };
+  }
   if (state.phase === "running") {
     const progress = state.arranger ? await state.arranger.getProgress() : undefined;
     const config = state.arranger?.getConfig();
@@ -499,6 +521,9 @@ const server = createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/api/run") {
       const body = (await parseBody(req)) as unknown as RunBody;
       const result = await handleRun(body);
+      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(result));
+    } else if (req.method === "POST" && url.pathname === "/api/run/continue") {
+      const result = await handleRunContinue();
       res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(result));
     } else if (req.method === "POST" && url.pathname === "/api/pause") {
       if (state.phase !== "running" || !state.arranger) throw new Error("Not running");

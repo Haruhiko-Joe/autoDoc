@@ -53,8 +53,10 @@ export interface RunConfig {
   language: 'zh' | 'en'
 }
 
+export type RunPhase = 'idle' | 'cloning' | 'awaiting-knowledge' | 'running' | 'done' | 'error'
+
 export interface RunStatus {
-  phase: 'idle' | 'running' | 'done' | 'error'
+  phase: RunPhase
   paused?: boolean
   gitUrl?: string
   currentProject?: string
@@ -86,7 +88,7 @@ export async function startRun(
   maxConcurrency?: number,
   agentBackends?: Partial<AgentBackends>,
   language?: 'zh' | 'en',
-): Promise<{ ok: boolean }> {
+): Promise<{ ok: boolean; project: string }> {
   const res = await fetch(`${API}/run`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -97,6 +99,14 @@ export async function startRun(
     throw new Error(data.error ?? 'Failed to start')
   }
   return res.json()
+}
+
+export async function continueRun(): Promise<void> {
+  const res = await fetch(`${API}/run/continue`, { method: 'POST' })
+  if (!res.ok) {
+    const data = await res.json()
+    throw new Error(data.error ?? 'Failed to continue run')
+  }
 }
 
 export async function pausePipeline(): Promise<void> {
