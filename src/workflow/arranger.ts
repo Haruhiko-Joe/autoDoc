@@ -111,7 +111,7 @@ class Semaphore {
 }
 
 export type AgentBackend = "claude" | "codex";
-export type AgentRole = "scaffold" | "decomposer" | "writer" | "checker" | "flowAnalyzer" | "updater";
+export type AgentRole = "scaffold" | "decomposer" | "writer" | "checker" | "flowAnalyzer";
 export type AgentBackends = Record<AgentRole, AgentBackend>;
 
 const DEFAULT_AGENT_BACKENDS: AgentBackends = {
@@ -120,7 +120,6 @@ const DEFAULT_AGENT_BACKENDS: AgentBackends = {
   writer: "claude",
   checker: "codex",
   flowAnalyzer: "claude",
-  updater: "claude",
 };
 
 export class Arranger {
@@ -152,7 +151,6 @@ export class Arranger {
       writer: options?.agentBackends?.writer ?? fallback ?? DEFAULT_AGENT_BACKENDS.writer,
       checker: options?.agentBackends?.checker ?? fallback ?? DEFAULT_AGENT_BACKENDS.checker,
       flowAnalyzer: options?.agentBackends?.flowAnalyzer ?? fallback ?? DEFAULT_AGENT_BACKENDS.flowAnalyzer,
-      updater: options?.agentBackends?.updater ?? fallback ?? DEFAULT_AGENT_BACKENDS.updater,
     };
     this.language = options?.language ?? "zh";
     this.sem = new Semaphore(this.maxConcurrency);

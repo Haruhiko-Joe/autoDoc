@@ -44,7 +44,7 @@ export interface Progress {
 }
 
 export type AgentBackend = 'claude' | 'codex'
-export type AgentRole = 'scaffold' | 'decomposer' | 'writer' | 'checker' | 'flowAnalyzer' | 'updater'
+export type AgentRole = 'scaffold' | 'decomposer' | 'writer' | 'checker' | 'flowAnalyzer'
 export type AgentBackends = Record<AgentRole, AgentBackend>
 
 export interface RunConfig {
@@ -53,13 +53,8 @@ export interface RunConfig {
   language: 'zh' | 'en'
 }
 
-export type RunMode = 'initial' | 'incremental' | 'noop'
-export type IncrementalStep = 'fetching' | 'updating'
-
 export interface RunStatus {
   phase: 'idle' | 'running' | 'done' | 'error'
-  mode?: RunMode
-  step?: IncrementalStep
   paused?: boolean
   gitUrl?: string
   currentProject?: string
@@ -91,7 +86,7 @@ export async function startRun(
   maxConcurrency?: number,
   agentBackends?: Partial<AgentBackends>,
   language?: 'zh' | 'en',
-): Promise<{ ok: boolean; mode: RunMode }> {
+): Promise<{ ok: boolean }> {
   const res = await fetch(`${API}/run`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -207,6 +202,11 @@ export async function knowledgeStart(
   return res.json()
 }
 
+export class KnowledgeSessionExpiredError extends Error {
+  readonly code = 'SESSION_EXPIRED'
+  constructor() { super('Knowledge session expired. Start a new one.') }
+}
+
 export async function knowledgeMessage(
   sessionId: string,
   userReply: string,
@@ -217,7 +217,8 @@ export async function knowledgeMessage(
     body: JSON.stringify({ sessionId, userReply }),
   })
   if (!res.ok) {
-    const data = await res.json()
+    const data = await res.json() as { error?: string; code?: string }
+    if (data.code === 'SESSION_EXPIRED') throw new KnowledgeSessionExpiredError()
     throw new Error(data.error ?? 'Failed to send knowledge message')
   }
   return res.json()

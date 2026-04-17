@@ -6,10 +6,8 @@ import {
   knowledgeStart,
   knowledgeMessage,
   knowledgeFinalize,
-  startRun,
-  fetchProjects,
+  KnowledgeSessionExpiredError,
   type AgentBackend,
-  type ProjectListEntry,
 } from '../services/doc'
 import MarkdownView from '../components/MarkdownView.vue'
 import { useTheme } from '../composables/useTheme'
@@ -44,10 +42,6 @@ const initialized = ref(false)
 const finalizing = ref(false)
 const chatLogRef = ref<HTMLElement | null>(null)
 
-const projectEntry = ref<ProjectListEntry | null>(null)
-
-const gitUrl = computed(() => projectEntry.value?.sourceUrl ?? '')
-
 const canSend = computed(() => !!project.value && !loading.value && userInput.value.trim().length > 0)
 const canFinalize = computed(() => initialized.value && !loading.value && !finalizing.value && draft.value.trim().length > 0)
 
@@ -55,15 +49,6 @@ async function scrollToBottom() {
   await nextTick()
   const el = chatLogRef.value
   if (el) el.scrollTop = el.scrollHeight
-}
-
-async function ensureProjectEntry() {
-  try {
-    const all = await fetchProjects()
-    projectEntry.value = all.find((p) => p.name === project.value) ?? null
-  } catch {
-    projectEntry.value = null
-  }
 }
 
 async function loadExistingDraft() {
@@ -81,6 +66,14 @@ async function loadExistingDraft() {
   }
 }
 
+async function startFresh(reply: string) {
+  const res = await knowledgeStart(project.value, reply, language.value, agentBackend.value)
+  sessionId.value = res.sessionId
+  draft.value = res.draft
+  messages.value.push({ role: 'assistant', content: res.question })
+  initialized.value = true
+}
+
 async function sendReply() {
   if (!canSend.value) return
   const reply = userInput.value.trim()
@@ -91,41 +84,26 @@ async function sendReply() {
   errorMsg.value = ''
   try {
     if (!initialized.value) {
-      const res = await knowledgeStart(project.value, reply, language.value, agentBackend.value)
-      sessionId.value = res.sessionId
-      draft.value = res.draft
-      messages.value.push({ role: 'assistant', content: res.question })
-      initialized.value = true
+      await startFresh(reply)
     } else {
-      const res = await knowledgeMessage(sessionId.value, reply)
-      draft.value = res.draft
-      messages.value.push({ role: 'assistant', content: res.question })
+      try {
+        const res = await knowledgeMessage(sessionId.value, reply)
+        draft.value = res.draft
+        messages.value.push({ role: 'assistant', content: res.question })
+      } catch (e) {
+        if (e instanceof KnowledgeSessionExpiredError) {
+          // server restarted or session dropped — start a new one transparently
+          await startFresh(reply)
+        } else {
+          throw e
+        }
+      }
     }
   } catch (e) {
     errorMsg.value = e instanceof Error ? e.message : String(e)
   } finally {
     loading.value = false
     await scrollToBottom()
-  }
-}
-
-async function finalizeAndRun() {
-  if (!canFinalize.value) return
-  finalizing.value = true
-  errorMsg.value = ''
-  try {
-    await knowledgeFinalize(sessionId.value, project.value)
-    if (!gitUrl.value) {
-      errorMsg.value = 'Saved. No git URL on record — open the home page and click Run manually.'
-      setTimeout(() => router.push(`/${project.value}`), 1200)
-      return
-    }
-    await startRun(gitUrl.value, undefined, { updater: agentBackend.value }, language.value)
-    router.push(`/${project.value}`)
-  } catch (e) {
-    errorMsg.value = e instanceof Error ? e.message : String(e)
-  } finally {
-    finalizing.value = false
   }
 }
 
@@ -151,7 +129,6 @@ function handleInputKey(e: KeyboardEvent) {
 }
 
 onMounted(async () => {
-  await ensureProjectEntry()
   await loadExistingDraft()
 })
 </script>
@@ -216,10 +193,7 @@ onMounted(async () => {
             <p v-if="errorMsg" class="chat-error">{{ errorMsg }}</p>
             <div class="chat-input-actions">
               <button class="secondary-btn" :disabled="!canFinalize" @click="finalizeOnly">
-                Save without running
-              </button>
-              <button class="primary-btn" :disabled="!canFinalize" @click="finalizeAndRun">
-                {{ finalizing ? 'Finalizing...' : 'Finalize & generate' }}
+                {{ finalizing ? 'Saving...' : 'Save & close' }}
               </button>
               <button class="primary-btn" :disabled="!canSend" @click="sendReply">
                 Send

@@ -43,13 +43,6 @@ export async function clone(url: string, dest: string): Promise<void> {
   await run(["fetch", "--unshallow"], { cwd: dest }).catch(() => undefined);
 }
 
-export async function fetchAndPull(dest: string): Promise<void> {
-  await run(["fetch", "--all", "--prune"], { cwd: dest });
-  // fast-forward the current branch to its upstream
-  const branch = await getCurrentBranch(dest);
-  await run(["reset", "--hard", `origin/${branch}`], { cwd: dest });
-}
-
 export async function getHead(dest: string): Promise<string> {
   return (await run(["rev-parse", "HEAD"], { cwd: dest })).trim();
 }
@@ -63,24 +56,6 @@ export async function getCurrentBranch(dest: string): Promise<string> {
   } catch { /* detached */ }
   const remote = (await run(["rev-parse", "--abbrev-ref", "origin/HEAD"], { cwd: dest })).trim();
   return remote.replace(/^origin\//, "");
-}
-
-export async function diffNameOnly(dest: string, fromCommit: string, toCommit: string): Promise<string[]> {
-  const out = await run(["diff", "--name-only", `${fromCommit}..${toCommit}`], { cwd: dest });
-  return out.split("\n").map((l) => l.trim()).filter(Boolean);
-}
-
-export async function diffPatch(
-  dest: string,
-  fromCommit: string,
-  toCommit: string,
-  paths?: string[],
-): Promise<string> {
-  const args = ["diff", "--unified=3", `${fromCommit}..${toCommit}`];
-  if (paths && paths.length > 0) {
-    args.push("--", ...paths);
-  }
-  return await run(args, { cwd: dest });
 }
 
 /**

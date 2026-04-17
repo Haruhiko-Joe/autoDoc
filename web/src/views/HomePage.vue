@@ -21,7 +21,6 @@ const agentBackends = reactive<AgentBackends>({
   writer: 'claude',
   checker: 'codex',
   flowAnalyzer: 'claude',
-  updater: 'claude',
 })
 const language = ref<'zh' | 'en'>('zh')
 const showConfigDialog = ref(false)
@@ -39,7 +38,6 @@ const agentBackendFields: Array<{ key: keyof AgentBackends; label: string }> = [
   { key: 'writer', label: 'Writer' },
   { key: 'checker', label: 'Checker' },
   { key: 'flowAnalyzer', label: 'Flow Analyzer' },
-  { key: 'updater', label: 'Updater' },
 ]
 
 function getRouteProject(): string {
@@ -151,19 +149,8 @@ async function handleRun() {
   topGraph.value = null
   try {
     const project = getProjectName(gitUrl.value)
-    const { mode } = await startRun(gitUrl.value.trim(), maxConcurrency.value, { ...agentBackends }, language.value)
-    if (mode === 'noop') {
-      // no-op: nothing to do, just refresh status
-      status.value = { phase: 'done', mode: 'noop', gitUrl: gitUrl.value.trim(), currentProject: project }
-      await refreshProjects()
-      if (project) {
-        selectedProject.value = project
-        await router.replace({ name: 'project', params: { project } })
-        await loadGraph(project)
-      }
-      return
-    }
-    status.value = { phase: 'running', mode, gitUrl: gitUrl.value.trim(), currentProject: project }
+    await startRun(gitUrl.value.trim(), maxConcurrency.value, { ...agentBackends }, language.value)
+    status.value = { phase: 'running', gitUrl: gitUrl.value.trim(), currentProject: project }
     selectedProject.value = project
     mergeProjectEntries([
       ...projectEntries.value,
@@ -316,6 +303,11 @@ function navigateToSearchResult(r: SearchResult) {
 
 const progress = computed(() => status.value.progress)
 const viewingRunningProject = computed(() => status.value.phase === 'running' && selectedProject.value === status.value.currentProject)
+const runProjectExists = computed(() => {
+  const n = getProjectName(gitUrl.value)
+  if (!n) return false
+  return projectEntries.value.some((p) => p.name === n && p.hasDoc)
+})
 const visibleNodeStates = computed(() => (viewingRunningProject.value ? progress.value?.nodes : undefined))
 
 const totalNodes = computed(() => {
@@ -333,21 +325,8 @@ const progressPercent = computed(() => {
 
 const isPaused = computed(() => status.value.paused === true)
 
-const runModeLabel = computed(() => {
-  const m = status.value.mode
-  if (m === 'initial') return 'Initial generation'
-  if (m === 'incremental') return 'Incremental update'
-  if (m === 'noop') return 'No changes'
-  return ''
-})
-
 const progressPhaseLabel = computed(() => {
   if (isPaused.value) return 'Paused'
-  if (status.value.mode === 'incremental') {
-    if (status.value.step === 'fetching') return 'Fetching latest commits...'
-    if (status.value.step === 'updating') return 'Updater agent applying diff...'
-    return 'Incremental update in progress...'
-  }
   const p = progress.value?.phase
   if (p === 'scaffold') return 'Analyzing project structure...'
   if (p === 'processing') return 'Processing modules...'
@@ -421,10 +400,11 @@ async function handleRetryErrors() {
           </button>
           <button
             class="run-btn"
-            :disabled="status.phase === 'running' || !gitUrl.trim()"
+            :disabled="status.phase === 'running' || !gitUrl.trim() || runProjectExists"
+            :title="runProjectExists ? 'Already generated — delete the project to regenerate.' : ''"
             @click="handleRun"
           >
-            {{ status.phase === 'running' ? '...' : 'Run' }}
+            {{ status.phase === 'running' ? '...' : (runProjectExists ? 'Generated' : 'Run') }}
           </button>
         </div>
         <label class="input-label select-label">Saved Projects</label>
