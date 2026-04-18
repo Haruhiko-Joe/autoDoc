@@ -1,7 +1,10 @@
 <p align="center">
   <h1 align="center">autoDoc</h1>
   <p align="center">
-    <strong>粘一条 git URL，自动产出可交互、可增量更新、可被 Agent 直接读写的文档站</strong>
+    <strong>快手社科线Q2重点基建项目</strong>
+  </p>
+  <p align="center">
+    粘一条 git URL，自动产出可交互、可增量更新、可被 Agent 直接读写消费的自索引文档站
   </p>
   <p align="center">
     5 + 1 个 AI Agent 协作 · 迭代验证 · git diff 增量更新 · HTTP MCP 接口 · 交互式架构图 · 崩溃恢复 · 渐进式披露
