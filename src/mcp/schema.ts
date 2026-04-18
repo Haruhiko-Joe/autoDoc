@@ -1,7 +1,7 @@
 import { z } from "zod"
 
 // Minimal self-contained schema for autoDoc documents.
-// `.passthrough()` preserves arranger-only fields (sessionId, writerSessionIds, pageTasks, ...)
+// `.loose()` preserves arranger-only fields (sessionId, writerSessionIds, pageTasks, ...)
 // so mcp can read & round-trip files produced by the backend without losing data.
 
 export const EdgeType = z.enum([
@@ -51,7 +51,7 @@ export const TopGraph = z
     nodes: z.array(ScaffoldNode),
     version: z.number().int().min(0).default(0),
   })
-  .passthrough()
+  .loose()
 
 export const Graph = z
   .object({
@@ -61,7 +61,7 @@ export const Graph = z
     version: z.number().int().min(0).default(0),
     pageVersions: z.record(z.string(), z.number()).optional(),
   })
-  .passthrough()
+  .loose()
 
 export type GraphEdgeT = z.infer<typeof GraphEdge>
 export type ScaffoldEdgeT = z.infer<typeof ScaffoldEdge>

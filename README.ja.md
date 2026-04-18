@@ -99,26 +99,6 @@ model_reasoning_effort = "high"
 
 必要に応じてモデルを差し替えたり、`model_reasoning_effort` / `service_tier` を調整可能です。全キーは公式 [Config Reference](https://developers.openai.com/codex/config-reference) を参照してください。
 
-### Claude Code 内部プロキシ
-
-ゲートウェイが内部エンドポイントモデル（例: `ep-...`）を必要とする場合、ローカル転送プロキシを起動できます:
-
-```bash
-pnpm proxy:claude:setup -- \
-  --model ep-xxxxx \
-  --base-url https://your-gateway.example.com/api/v1 \
-  --api-key <your_token>
-```
-
-別のターミナルで:
-
-```bash
-unset ANTHROPIC_AUTH_TOKEN
-export ANTHROPIC_BASE_URL=http://127.0.0.1:8787/v1
-export ANTHROPIC_API_KEY=<your_token>
-claude --model "claude-opus-4-6"
-```
-
 ## 仕組み
 
 ### 初回投入: 全量パイプライン
@@ -313,7 +293,6 @@ autoDoc はスリム版 [doc-drill](src/skill-template/SKILL.md) skill をター
 autoDoc/
 ├── src/
 │   ├── server.ts                 # HTTP API + /mcp（同一ポート、stateless transport）
-│   ├── claude-proxy.ts           # Claude API 内部転送プロキシ
 │   ├── git/
 │   │   └── repoManager.ts        # git CLI ラッパー（clone / fetch / diff / projectNameFromUrl）
 │   ├── souko/                    # プロジェクトストア（repo + doc + 共有 registry）
@@ -338,9 +317,6 @@ autoDoc/
 │   │   └── arranger.ts           # 全量パイプラインステートマシン
 │   └── skill-template/
 │       └── SKILL.md              # スリム版 doc-drill skill（/mcp を指す）
-├── scripts/
-│   ├── setup-claude-proxy.sh
-│   └── unwrap-md-json.mjs
 ├── web/                          # Vue 3 フロントエンド
 │   └── src/
 │       ├── views/                # GraphPage, DocPage, HomePage（git URL 入力）, FlowsPage
@@ -348,16 +324,6 @@ autoDoc/
 │       └── services/doc.ts       # API クライアント（startRun → { ok, mode }）
 ├── package.json
 └── pnpm-workspace.yaml
-```
-
-## ユーティリティスクリプト
-
-```bash
-# 生成された Markdown のネスト JSON 問題をスキャン（チェックのみ）
-pnpm docs:scan-md-json
-
-# ネスト JSON 問題を自動修復
-pnpm docs:fix-md-json
 ```
 
 ## Contributing

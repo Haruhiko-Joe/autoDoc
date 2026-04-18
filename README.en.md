@@ -99,26 +99,6 @@ model_reasoning_effort = "high"
 
 Replace models or tweak `model_reasoning_effort` / `service_tier` as needed. See the official [Config Reference](https://developers.openai.com/codex/config-reference) for all keys.
 
-### Claude Code Internal Proxy
-
-If your gateway requires an internal endpoint model (e.g. `ep-...`), launch a local forwarding proxy:
-
-```bash
-pnpm proxy:claude:setup -- \
-  --model ep-xxxxx \
-  --base-url https://your-gateway.example.com/api/v1 \
-  --api-key <your_token>
-```
-
-Then in another terminal:
-
-```bash
-unset ANTHROPIC_AUTH_TOKEN
-export ANTHROPIC_BASE_URL=http://127.0.0.1:8787/v1
-export ANTHROPIC_API_KEY=<your_token>
-claude --model "claude-opus-4-6"
-```
-
 ## How It Works
 
 ### First submission: full pipeline
@@ -313,7 +293,6 @@ autoDoc installs the thin [doc-drill](src/skill-template/SKILL.md) skill into th
 autoDoc/
 ├── src/
 │   ├── server.ts                 # HTTP API + /mcp (same port, stateless transport)
-│   ├── claude-proxy.ts           # Claude API internal forwarding proxy
 │   ├── git/
 │   │   └── repoManager.ts        # git CLI wrapper (clone / fetch / diff / projectNameFromUrl)
 │   ├── souko/                    # Project store (repo + doc + shared registry)
@@ -338,9 +317,6 @@ autoDoc/
 │   │   └── arranger.ts           # Full-pipeline state machine
 │   └── skill-template/
 │       └── SKILL.md              # Thin doc-drill skill (points at /mcp)
-├── scripts/
-│   ├── setup-claude-proxy.sh
-│   └── unwrap-md-json.mjs
 ├── web/                          # Vue 3 frontend
 │   └── src/
 │       ├── views/                # GraphPage, DocPage, HomePage (git URL input), FlowsPage
@@ -348,16 +324,6 @@ autoDoc/
 │       └── services/doc.ts       # API client (startRun → { ok, mode })
 ├── package.json
 └── pnpm-workspace.yaml
-```
-
-## Utility Scripts
-
-```bash
-# Scan generated Markdown for nested JSON issues (check only)
-pnpm docs:scan-md-json
-
-# Auto-fix nested JSON issues
-pnpm docs:fix-md-json
 ```
 
 ## Contributing

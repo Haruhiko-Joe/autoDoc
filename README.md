@@ -99,28 +99,6 @@ model_reasoning_effort = "high"
 
 可以按需替换为其他模型或调整 `model_reasoning_effort`、`service_tier` 等字段。完整可选键参见官方 [Config Reference](https://developers.openai.com/codex/config-reference)。
 
-### Claude Code 内网代理
-
-如果你的网关要求使用内部 endpoint model（例如 `ep-...`），可以一键启动本地转发代理：
-
-```bash
-pnpm proxy:claude:setup -- \
-  --model ep-xxxxx \
-  --base-url https://your-gateway.example.com/api/v1 \
-  --api-key <your_token>
-```
-
-然后在另一个终端执行：
-
-```bash
-unset ANTHROPIC_AUTH_TOKEN
-export ANTHROPIC_BASE_URL=http://127.0.0.1:8787/v1
-export ANTHROPIC_API_KEY=<your_token>
-claude --model "claude-opus-4-6"
-```
-
-更加推荐使用Claude code内置的api配置，不需要额外启动内网代理服务
-
 ## 工作原理
 
 ### 首次接入：全量管线
@@ -315,7 +293,6 @@ autoDoc 自动把瘦版 [doc-drill](src/skill-template/SKILL.md) skill 安装到
 autoDoc/
 ├── src/
 │   ├── server.ts                 # HTTP API + /mcp（同端口，stateless transport）
-│   ├── claude-proxy.ts           # Claude API 内网转发代理
 │   ├── git/
 │   │   └── repoManager.ts        # git CLI 封装（clone / fetch / diff / projectNameFromUrl）
 │   ├── souko/                    # 项目仓（repo + doc + 共享 registry）
@@ -340,9 +317,6 @@ autoDoc/
 │   │   └── arranger.ts           # 全量管线状态机
 │   └── skill-template/
 │       └── SKILL.md              # 瘦版 doc-drill skill（指向 /mcp）
-├── scripts/
-│   ├── setup-claude-proxy.sh
-│   └── unwrap-md-json.mjs
 ├── web/                          # Vue 3 前端
 │   └── src/
 │       ├── views/                # GraphPage, DocPage, HomePage（git URL 输入）, FlowsPage
@@ -350,16 +324,6 @@ autoDoc/
 │       └── services/doc.ts       # API 客户端（startRun → { ok, mode }）
 ├── package.json
 └── pnpm-workspace.yaml
-```
-
-## 实用脚本
-
-```bash
-# 扫描生成的 Markdown 中嵌套 JSON 问题（仅检查）
-pnpm docs:scan-md-json
-
-# 自动修复嵌套 JSON 问题
-pnpm docs:fix-md-json
 ```
 
 ## Contributing

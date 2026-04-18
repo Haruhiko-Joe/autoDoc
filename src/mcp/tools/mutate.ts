@@ -18,14 +18,16 @@ function json(data: unknown) {
 export function registerMutateTools(mcp: McpServer, store: DocStore): void {
   // ─── top.json edits ─────────────────────────────────────────
 
-  mcp.tool(
-    "update_top",
-    "Patch top.json. Must supply `baseVersion` (from get_top). Optionally replace `description` and/or the full `nodes` array. Use this to add/remove top-level modules or rewrite the project overview.",
-    {
-      project: z.string(),
-      baseVersion: z.number().int().min(0),
-      description: z.string().optional(),
-      nodes: z.array(ScaffoldNodeSchema).optional(),
+  mcp.registerTool(
+    "update_top", {
+      description:
+        "Patch top.json. Must supply `baseVersion` (from get_top). Optionally replace `description` and/or the full `nodes` array. Use this to add/remove top-level modules or rewrite the project overview.",
+      inputSchema: {
+        project: z.string(),
+        baseVersion: z.number().int().min(0),
+        description: z.string().optional(),
+        nodes: z.array(ScaffoldNodeSchema).optional(),
+      },
     },
     async ({ project, baseVersion, description, nodes }) => {
       const current = await store.readTop(project)
@@ -40,15 +42,17 @@ export function registerMutateTools(mcp: McpServer, store: DocStore): void {
 
   // ─── graph-level metadata edits ─────────────────────────────
 
-  mcp.tool(
-    "update_graph_meta",
-    "Patch a subgraph's `description` and/or `codeScope`. `baseVersion` is the graph's version from the last get_graph.",
-    {
-      project: z.string(),
-      nodeId: z.string(),
-      baseVersion: z.number().int().min(0),
-      description: z.string().optional(),
-      codeScope: z.array(z.string()).optional(),
+  mcp.registerTool(
+    "update_graph_meta", {
+      description:
+        "Patch a subgraph's `description` and/or `codeScope`. `baseVersion` is the graph's version from the last get_graph.",
+      inputSchema: {
+        project: z.string(),
+        nodeId: z.string(),
+        baseVersion: z.number().int().min(0),
+        description: z.string().optional(),
+        codeScope: z.array(z.string()).optional(),
+      },
     },
     async ({ project, nodeId, baseVersion, description, codeScope }) => {
       const current = await store.readGraph(project, nodeId)
@@ -63,18 +67,21 @@ export function registerMutateTools(mcp: McpServer, store: DocStore): void {
 
   // ─── node CRUD ──────────────────────────────────────────────
 
-  mcp.tool(
+  mcp.registerTool(
     "create_node",
-    "Append a new node to a parent subgraph. If `node.child.type=='page'`, an (optionally pre-filled) markdown file is created and `pageVersions[ref]` is initialized to 0. If `node.child.type=='graph'`, a placeholder sub-graph is created at `{parentNodeId}/{ref}/{ref}.json`. Fails if a sibling with the same name already exists.",
     {
-      project: z.string(),
-      parentNodeId: z.string(),
-      baseVersion: z.number().int().min(0),
-      node: GraphNodeSchema,
-      initialContent: z
-        .string()
-        .optional()
-        .describe("For page nodes only: initial markdown body. Defaults to an empty string."),
+      description:
+        "Append a new node to a parent subgraph. If `node.child.type=='page'`, an (optionally pre-filled) markdown file is created and `pageVersions[ref]` is initialized to 0. If `node.child.type=='graph'`, a placeholder sub-graph is created at `{parentNodeId}/{ref}/{ref}.json`. Fails if a sibling with the same name already exists.",
+      inputSchema: {
+        project: z.string(),
+        parentNodeId: z.string(),
+        baseVersion: z.number().int().min(0),
+        node: GraphNodeSchema,
+        initialContent: z
+          .string()
+          .optional()
+          .describe("For page nodes only: initial markdown body. Defaults to an empty string."),
+      },
     },
     async ({ project, parentNodeId, baseVersion, node, initialContent }) => {
       const parent = await store.readGraph(project, parentNodeId)
@@ -108,20 +115,23 @@ export function registerMutateTools(mcp: McpServer, store: DocStore): void {
     },
   )
 
-  mcp.tool(
+  mcp.registerTool(
     "update_node",
-    "Patch a single child node inside a parent graph, matched by `nodeName`. Only the provided patch fields are replaced. Cannot rename `child.ref` — use delete_node + create_node for that.",
     {
-      project: z.string(),
-      parentNodeId: z.string(),
-      nodeName: z.string(),
-      baseVersion: z.number().int().min(0),
-      patch: z.object({
-        name: z.string().optional(),
-        description: z.string().optional(),
-        codeScope: z.array(z.string()).optional(),
-        edges: z.array(GraphEdgeSchema).optional(),
-      }),
+      description:
+        "Patch a single child node inside a parent graph, matched by `nodeName`. Only the provided patch fields are replaced. Cannot rename `child.ref` — use delete_node + create_node for that.",
+      inputSchema: {
+        project: z.string(),
+        parentNodeId: z.string(),
+        nodeName: z.string(),
+        baseVersion: z.number().int().min(0),
+        patch: z.object({
+          name: z.string().optional(),
+          description: z.string().optional(),
+          codeScope: z.array(z.string()).optional(),
+          edges: z.array(GraphEdgeSchema).optional(),
+        }),
+      },
     },
     async ({ project, parentNodeId, nodeName, baseVersion, patch }) => {
       const parent = await store.readGraph(project, parentNodeId)
@@ -142,14 +152,17 @@ export function registerMutateTools(mcp: McpServer, store: DocStore): void {
     },
   )
 
-  mcp.tool(
+  mcp.registerTool(
     "delete_node",
-    "Remove a child node from its parent graph. For page children: the `.md` file is deleted and `pageVersions[ref]` cleared. For graph children: the entire sub-directory is removed recursively. A snapshot is kept under `.history/` for the parent graph and (best-effort) for the removed child.",
     {
-      project: z.string(),
-      parentNodeId: z.string(),
-      nodeName: z.string(),
-      baseVersion: z.number().int().min(0),
+      description:
+        "Remove a child node from its parent graph. For page children: the `.md` file is deleted and `pageVersions[ref]` cleared. For graph children: the entire sub-directory is removed recursively. A snapshot is kept under `.history/` for the parent graph and (best-effort) for the removed child.",
+      inputSchema: {
+        project: z.string(),
+        parentNodeId: z.string(),
+        nodeName: z.string(),
+        baseVersion: z.number().int().min(0),
+      },
     },
     async ({ project, parentNodeId, nodeName, baseVersion }) => {
       const parent = await store.readGraph(project, parentNodeId)
@@ -179,15 +192,17 @@ export function registerMutateTools(mcp: McpServer, store: DocStore): void {
 
   // ─── page content edits ─────────────────────────────────────
 
-  mcp.tool(
-    "update_page",
-    "Overwrite a leaf markdown page's full content. `baseVersion` is the page's version from `pageVersions[ref]` (NOT the parent graph's version). Bumps both the page's own version and the parent graph's version.",
-    {
-      project: z.string(),
-      nodeId: z.string(),
-      ref: z.string(),
-      baseVersion: z.number().int().min(0),
-      content: z.string(),
+  mcp.registerTool(
+    "update_page", {
+      description:
+        "Overwrite a leaf markdown page's full content. `baseVersion` is the page's version from `pageVersions[ref]` (NOT the parent graph's version). Bumps both the page's own version and the parent graph's version.",
+      inputSchema: {
+        project: z.string(),
+        nodeId: z.string(),
+        ref: z.string(),
+        baseVersion: z.number().int().min(0),
+        content: z.string(),
+      },
     },
     async ({ project, nodeId, ref, baseVersion, content }) =>
       json(await store.writePage(project, nodeId, ref, content, baseVersion)),
@@ -195,14 +210,16 @@ export function registerMutateTools(mcp: McpServer, store: DocStore): void {
 
   // ─── revert ─────────────────────────────────────────────────
 
-  mcp.tool(
-    "revert",
-    "Restore a historical version's content as the new current version. This does NOT rewind — it creates version N+1 whose content equals version `toVersion`. `baseVersion` is the file's current version (optimistic lock).",
-    {
-      project: z.string(),
-      relPath: z.string(),
-      toVersion: z.number().int().min(0),
-      baseVersion: z.number().int().min(0),
+  mcp.registerTool(
+    "revert", {
+      description:
+        "Restore a historical version's content as the new current version. This does NOT rewind — it creates version N+1 whose content equals version `toVersion`. `baseVersion` is the file's current version (optimistic lock).",
+      inputSchema: {
+        project: z.string(),
+        relPath: z.string(),
+        toVersion: z.number().int().min(0),
+        baseVersion: z.number().int().min(0),
+      },
     },
     async ({ project, relPath, toVersion, baseVersion }) =>
       json(await store.revert(project, relPath, toVersion, baseVersion)),

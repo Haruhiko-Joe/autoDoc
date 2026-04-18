@@ -117,10 +117,6 @@ cd web && pnpm dev
 # 类型检查
 npx tsc --noEmit                 # 后端
 cd web && npx vue-tsc --noEmit   # 前端
-
-# 修复生成的 Markdown 里的嵌套 JSON 问题
-pnpm docs:scan-md-json   # 只扫描
-pnpm docs:fix-md-json    # 自动修
 ```
 
 ## 8. 常见问题
@@ -236,8 +232,6 @@ pnpm dev                          # backend only
 cd web && pnpm dev                # frontend only
 npx tsc --noEmit                  # type-check backend
 cd web && npx vue-tsc --noEmit    # type-check frontend
-pnpm docs:scan-md-json            # scan generated md for nested JSON
-pnpm docs:fix-md-json             # auto-fix nested JSON
 ```
 
 ### 8. FAQ
@@ -353,8 +347,6 @@ pnpm dev                          # backend のみ
 cd web && pnpm dev                # frontend のみ
 npx tsc --noEmit                  # backend 型チェック
 cd web && npx vue-tsc --noEmit    # frontend 型チェック
-pnpm docs:scan-md-json            # ネスト JSON をスキャン
-pnpm docs:fix-md-json             # ネスト JSON を自動修復
 ```
 
 ### 8. FAQ
