@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir, readdir, stat, rm, open } from "node:fs/promises"
+import { readFile, writeFile, mkdir, readdir, stat, rm, open, rename } from "node:fs/promises"
 import path from "node:path"
 import ignore, { type Ignore } from "ignore"
 import { Graph, TopGraph, type GraphT, type TopGraphT } from "./schema.js"
@@ -15,6 +15,23 @@ export class VersionMismatchError extends Error {
     )
     this.name = "VersionMismatchError"
   }
+}
+
+export interface SnapshotSource {
+  type: "commit" | "pr" | "manual" | "agent"
+  ref?: string
+}
+
+export interface SnapshotMeta {
+  source?: SnapshotSource
+  summary?: string
+}
+
+export interface HistoryEntry {
+  version: number
+  ts: string
+  source?: SnapshotSource
+  summary?: string
 }
 
 export interface SourceReadRequest {
@@ -108,9 +125,57 @@ export class DocStore {
     return Graph.parse(raw)
   }
 
+  async readPage(
+    project: string,
+    nodeId: string,
+    ref: string,
+  ): Promise<{ content: string; version: number }> {
+    const graph = await this.readGraph(project, nodeId)
+    const version = graph.pageVersions?.[ref] ?? 0
+    const content = await readFile(this.pageFilePath(project, nodeId, ref), "utf-8")
+    return { content, version }
+  }
+
+  async searchNodes(
+    project: string,
+    query: string,
+  ): Promise<{ nodeId: string; name: string; description: string; type: "graph" | "page" }[]> {
+    const q = query.toLowerCase()
+    const results: { nodeId: string; name: string; description: string; type: "graph" | "page" }[] = []
+
+    const top = await this.readTop(project).catch(() => null)
+    if (!top) return results
+
+    for (const node of top.nodes) {
+      if (node.name.toLowerCase().includes(q) || node.description.toLowerCase().includes(q)) {
+        results.push({ nodeId: node.name, name: node.name, description: node.description, type: "graph" })
+      }
+    }
+
+    const recurse = async (parentId: string): Promise<void> => {
+      const graph = await this.readGraph(project, parentId).catch(() => null)
+      if (!graph) return
+      for (const node of graph.nodes) {
+        const childId = `${parentId}/${node.child.ref}`
+        if (node.name.toLowerCase().includes(q) || node.description.toLowerCase().includes(q)) {
+          results.push({ nodeId: childId, name: node.name, description: node.description, type: node.child.type })
+        }
+        if (node.child.type === "graph") {
+          await recurse(childId)
+        }
+      }
+    }
+
+    for (const node of top.nodes) {
+      await recurse(node.name)
+    }
+
+    return results
+  }
+
   // ─── Snapshot ──────────────────────────────────────────────
 
-  private async snapshot(filePath: string, version: number): Promise<void> {
+  private async snapshot(filePath: string, version: number, meta?: SnapshotMeta): Promise<void> {
     try {
       const data = await readFile(filePath)
       const dir = this.historyDir(filePath)
@@ -119,6 +184,14 @@ export class DocStore {
       const ext = path.extname(base)
       const stem = base.slice(0, base.length - ext.length)
       await writeFile(path.join(dir, `${stem}.v${version}${ext}`), data)
+      const entry: HistoryEntry = {
+        version,
+        ts: new Date().toISOString(),
+        ...(meta?.source ? { source: meta.source } : {}),
+        ...(meta?.summary ? { summary: meta.summary } : {}),
+      }
+      const metaFile = path.join(dir, "_meta.jsonl")
+      await writeFile(metaFile, JSON.stringify(entry) + "\n", { flag: "a" })
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e
     }
@@ -196,6 +269,52 @@ export class DocStore {
     return { version: currentPageVersion + 1, graphVersion: nextGraph.version }
   }
 
+  async patchPage(
+    project: string,
+    nodeId: string,
+    ref: string,
+    edits: { old_text: string; new_text: string }[],
+    baseVersion: number,
+  ): Promise<{ version: number; graphVersion: number; appliedCount: number }> {
+    const graph = await this.readGraph(project, nodeId)
+    const currentPageVersion = graph.pageVersions?.[ref] ?? 0
+    if (currentPageVersion !== baseVersion) {
+      throw new VersionMismatchError(
+        `${nodeId}/${ref}.md`,
+        baseVersion,
+        currentPageVersion,
+      )
+    }
+
+    const pageFile = this.pageFilePath(project, nodeId, ref)
+    let content = await readFile(pageFile, "utf-8")
+
+    for (const edit of edits) {
+      const count = content.split(edit.old_text).length - 1
+      if (count === 0) {
+        throw new Error(`TextNotFound: "${edit.old_text.slice(0, 80)}"`)
+      }
+      if (count > 1) {
+        throw new Error(`AmbiguousMatch: "${edit.old_text.slice(0, 80)}" matches ${count} times`)
+      }
+      content = content.replace(edit.old_text, edit.new_text)
+    }
+
+    await this.snapshot(pageFile, currentPageVersion)
+    await writeFile(pageFile, content)
+
+    const graphFile = this.graphFilePath(project, nodeId)
+    await this.snapshot(graphFile, graph.version)
+    const nextGraph: GraphT = {
+      ...graph,
+      pageVersions: { ...(graph.pageVersions ?? {}), [ref]: currentPageVersion + 1 },
+      version: graph.version + 1,
+    }
+    await writeFile(graphFile, JSON.stringify(nextGraph, null, 2))
+
+    return { version: currentPageVersion + 1, graphVersion: nextGraph.version, appliedCount: edits.length }
+  }
+
   // ─── Create helpers (no version check — used internally by create_node) ─
 
   async createEmptyPage(
@@ -251,6 +370,19 @@ export class DocStore {
       // best-effort snapshot
     }
     const dir = path.dirname(graphFile)
+    const histDir = path.join(dir, ".history")
+    try {
+      const histStat = await stat(histDir)
+      if (histStat.isDirectory()) {
+        const subgraphName = path.basename(dir)
+        const parentDir = path.dirname(dir)
+        const tombDir = path.join(parentDir, ".tombstones", subgraphName, `${Date.now()}`)
+        await mkdir(tombDir, { recursive: true })
+        await rename(histDir, path.join(tombDir, ".history"))
+      }
+    } catch {
+      // no .history to preserve
+    }
     await rm(dir, { recursive: true, force: true })
   }
 
@@ -267,6 +399,43 @@ export class DocStore {
     const ext = path.extname(base)
     const stem = base.slice(0, base.length - ext.length)
     return await readFile(path.join(dir, `${stem}.v${version}${ext}`), "utf-8")
+  }
+
+  async listHistory(project: string, relPath: string): Promise<HistoryEntry[]> {
+    const full = this.resolveWithin(project, relPath)
+    const dir = this.historyDir(full)
+    const base = path.basename(full)
+    const ext = path.extname(base)
+    const stem = base.slice(0, base.length - ext.length)
+
+    const metaMap = new Map<number, HistoryEntry>()
+    try {
+      const raw = await readFile(path.join(dir, "_meta.jsonl"), "utf-8")
+      for (const line of raw.split("\n")) {
+        if (!line.trim()) continue
+        const entry = JSON.parse(line) as HistoryEntry
+        metaMap.set(entry.version, entry)
+      }
+    } catch {
+      // no _meta.jsonl yet
+    }
+
+    const entries: HistoryEntry[] = []
+    try {
+      const files = await readdir(dir)
+      const re = new RegExp(`^${escapeForRegex(stem)}\\.v(\\d+)${escapeForRegex(ext)}$`)
+      for (const f of files) {
+        const m = f.match(re)
+        if (!m) continue
+        const version = parseInt(m[1]!, 10)
+        const meta = metaMap.get(version)
+        entries.push(meta ?? { version, ts: "" })
+      }
+    } catch {
+      // no .history dir
+    }
+    entries.sort((a, b) => b.version - a.version)
+    return entries
   }
 
   // ─── Revert ─────────────────────────────────────────────────
@@ -524,6 +693,10 @@ export class DocStore {
     if (await fileExists(graphFile)) return graphFile
     return null
   }
+}
+
+function escapeForRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
 
 async function fileExists(p: string): Promise<boolean> {

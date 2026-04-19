@@ -22,6 +22,11 @@ import * as git from "./git/repoManager.js";
 import { claudeKnowledge, codexKnowledge } from "./agents/tsukai/index.js";
 import { DocStore } from "./mcp/docStore.js";
 import { buildMcpServer } from "./mcp/server.js";
+import {
+  startUpdate, continueUpdate, skipTask, cancelUpdate, acceptTask, chatOnTask,
+  getUpdateState, subscribe as subscribeUpdate,
+  type UpdateEvent,
+} from "./workflow/updateOrchestrator.js";
 
 const PORT = Number(process.env.PORT ?? 3100);
 
@@ -637,6 +642,163 @@ const server = createServer(async (req, res) => {
       }
       const results = await searchModules(project, q);
       res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ results }));
+    // ─── Update endpoints ───
+    } else if (req.method === "POST" && url.pathname === "/api/update/start") {
+      const body = (await parseBody(req)) as { project: string; mode?: "auto" | "manual"; backend?: "claude" | "codex"; language?: "zh" | "en" };
+      if (!body.project) {
+        res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "project required" }));
+        return;
+      }
+      const state = await startUpdate(body.project, { mode: body.mode, backend: body.backend, language: body.language });
+      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true, tasks: state.tasks }));
+    } else if (req.method === "POST" && url.pathname === "/api/update/continue") {
+      const body = (await parseBody(req)) as { project: string; extraInstructions?: string };
+      continueUpdate(body.project, body.extraInstructions);
+      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true }));
+    } else if (req.method === "POST" && url.pathname === "/api/update/skip") {
+      const body = (await parseBody(req)) as { project: string; taskId: string };
+      skipTask(body.project, body.taskId);
+      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true }));
+    } else if (req.method === "POST" && url.pathname === "/api/update/cancel") {
+      const body = (await parseBody(req)) as { project: string };
+      cancelUpdate(body.project);
+      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true }));
+    } else if (req.method === "POST" && url.pathname === "/api/update/task/accept") {
+      const body = (await parseBody(req)) as { project: string; taskId: string };
+      await acceptTask(body.project, body.taskId);
+      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true }));
+    } else if (req.method === "POST" && url.pathname === "/api/update/task/chat") {
+      const body = (await parseBody(req)) as { project: string; taskId: string; prompt: string };
+      // Fire-and-forget so the HTTP response returns immediately and the SSE stream carries progress
+      void chatOnTask(body.project, body.taskId, body.prompt).catch(() => {});
+      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true }));
+    } else if (req.method === "GET" && url.pathname === "/api/update/status") {
+      const project = url.searchParams.get("project");
+      if (!project) {
+        res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "project required" }));
+        return;
+      }
+      const state = getUpdateState(project);
+      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ state: state ?? null }));
+    } else if (req.method === "GET" && url.pathname === "/api/update/stream") {
+      const project = url.searchParams.get("project");
+      if (!project) {
+        res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "project required" }));
+        return;
+      }
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+      });
+      const state = getUpdateState(project);
+      if (state) {
+        res.write(`data: ${JSON.stringify({ type: "queue", tasks: state.tasks })}\n\n`);
+        if (state.awaitingConfirm) {
+          const current = state.tasks[state.currentIndex];
+          if (current) {
+            res.write(`data: ${JSON.stringify({ type: "awaiting-confirm", taskId: current.id })}\n\n`);
+          }
+        }
+        if (state.awaitingReview) {
+          const current = state.tasks[state.currentIndex];
+          if (current && current.markdown) {
+            res.write(`data: ${JSON.stringify({ type: "task-awaiting-review", taskId: current.id, markdown: current.markdown })}\n\n`);
+          }
+        }
+      }
+      const unsub = subscribeUpdate(project, (event: UpdateEvent) => {
+        if (!res.writable) { unsub(); return; }
+        res.write(`data: ${JSON.stringify(event)}\n\n`);
+      });
+      req.on("close", unsub);
+    // ─── Doc mutation endpoints ───
+    } else if (req.method === "POST" && url.pathname === "/api/doc/create-node") {
+      const body = (await parseBody(req)) as {
+        project: string; parentNodeId: string; baseVersion: number;
+        node: import("./mcp/schema.js").GraphNodeT; initialContent?: string;
+      };
+      const parent = await docStore.readGraph(body.project, body.parentNodeId);
+      if (parent.nodes.some((n: { name: string }) => n.name === body.node.name)) {
+        throw new Error(`Sibling node already exists: ${body.node.name}`);
+      }
+      if (body.node.child.type === "page") {
+        await docStore.createEmptyPage(body.project, body.parentNodeId, body.node.child.ref, body.initialContent ?? "");
+      } else {
+        await docStore.createPlaceholderSubgraph(body.project, body.parentNodeId, body.node.child.ref, body.node.description, body.node.codeScope);
+      }
+      const nextPV = { ...(parent.pageVersions ?? {}) };
+      if (body.node.child.type === "page") nextPV[body.node.child.ref] = 0;
+      try {
+        const written = await docStore.writeGraph(body.project, body.parentNodeId, {
+          ...parent, nodes: [...parent.nodes, body.node],
+          pageVersions: Object.keys(nextPV).length > 0 ? nextPV : parent.pageVersions,
+        }, body.baseVersion);
+        res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(written));
+      } catch (e) {
+        if (body.node.child.type === "page") await docStore.deletePageFile(body.project, body.parentNodeId, body.node.child.ref).catch(() => {});
+        else await docStore.deleteSubgraphDir(body.project, `${body.parentNodeId}/${body.node.child.ref}`).catch(() => {});
+        throw e;
+      }
+    } else if (req.method === "POST" && url.pathname === "/api/doc/update-node") {
+      const body = (await parseBody(req)) as {
+        project: string; parentNodeId: string; nodeName: string; baseVersion: number;
+        patch: { name?: string; description?: string; codeScope?: string[]; edges?: import("./mcp/schema.js").GraphEdgeT[] };
+      };
+      const parent = await docStore.readGraph(body.project, body.parentNodeId);
+      const idx = parent.nodes.findIndex((n: { name: string }) => n.name === body.nodeName);
+      if (idx < 0) throw new Error(`Node not found: ${body.nodeName}`);
+      const current = parent.nodes[idx]!;
+      const merged = { ...current, ...body.patch, child: current.child };
+      const nextNodes = parent.nodes.slice();
+      nextNodes[idx] = merged;
+      const written = await docStore.writeGraph(body.project, body.parentNodeId, { ...parent, nodes: nextNodes }, body.baseVersion);
+      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(written));
+    } else if (req.method === "POST" && url.pathname === "/api/doc/delete-node") {
+      const body = (await parseBody(req)) as { project: string; parentNodeId: string; nodeName: string; baseVersion: number };
+      const parent = await docStore.readGraph(body.project, body.parentNodeId);
+      const target = parent.nodes.find((n: { name: string }) => n.name === body.nodeName);
+      if (!target) throw new Error(`Node not found: ${body.nodeName}`);
+      const nextPV = { ...(parent.pageVersions ?? {}) };
+      if (target.child.type === "page") delete nextPV[target.child.ref];
+      const written = await docStore.writeGraph(body.project, body.parentNodeId, {
+        ...parent, nodes: parent.nodes.filter((n: { name: string }) => n.name !== body.nodeName),
+        pageVersions: target.child.type === "page" ? nextPV : parent.pageVersions,
+      }, body.baseVersion);
+      if (target.child.type === "page") await docStore.deletePageFile(body.project, body.parentNodeId, target.child.ref);
+      else await docStore.deleteSubgraphDir(body.project, `${body.parentNodeId}/${target.child.ref}`);
+      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(written));
+    } else if (req.method === "POST" && url.pathname === "/api/doc/update-page") {
+      const body = (await parseBody(req)) as { project: string; nodeId: string; ref: string; baseVersion: number; content: string };
+      const result = await docStore.writePage(body.project, body.nodeId, body.ref, body.content, body.baseVersion);
+      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(result));
+    } else if (req.method === "POST" && url.pathname === "/api/doc/patch-page") {
+      const body = (await parseBody(req)) as { project: string; nodeId: string; ref: string; baseVersion: number; edits: { old_text: string; new_text: string }[] };
+      const result = await docStore.patchPage(body.project, body.nodeId, body.ref, body.edits, body.baseVersion);
+      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(result));
+    } else if (req.method === "POST" && url.pathname === "/api/doc/revert") {
+      const body = (await parseBody(req)) as { project: string; relPath: string; toVersion: number; baseVersion: number };
+      const result = await docStore.revert(body.project, body.relPath, body.toVersion, body.baseVersion);
+      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(result));
+    } else if (req.method === "GET" && url.pathname === "/api/history") {
+      const project = url.searchParams.get("project");
+      const relPath = url.searchParams.get("relPath");
+      if (!project || !relPath) {
+        res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "project and relPath required" }));
+        return;
+      }
+      const versions = await docStore.listHistory(project, relPath);
+      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ versions }));
+    } else if (req.method === "POST" && url.pathname === "/api/history/diff") {
+      const body = (await parseBody(req)) as { project: string; relPath: string; versionA: number; versionB: number };
+      const { project, relPath, versionA, versionB } = body;
+      if (!project || !relPath || versionA == null || versionB == null) {
+        res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "project, relPath, versionA, versionB required" }));
+        return;
+      }
+      const contentA = await docStore.readHistorySnapshot(project, relPath, versionA);
+      const contentB = await docStore.readHistorySnapshot(project, relPath, versionB);
+      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ contentA, contentB }));
     } else if (req.method === "GET" && url.pathname.startsWith("/api/doc/")) {
       let docDir: string | undefined;
       const project = url.searchParams.get("project");

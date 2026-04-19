@@ -37,15 +37,31 @@ Edges between sibling nodes carry relationship types: `calls`, `depends`, `data-
 
 ## Read tools (start here)
 
+### Structured navigation (preferred — returns version for write round-trips)
+
 | Tool | When to use |
 |---|---|
 | `list_projects` | See which projects are documented on this server |
-| `get_top(project)` | Get the project overview and top-level module list — **always call this first** |
-| `get_graph(project, nodeId)` | Drill into a module. `nodeId` is a slash-separated path like `MobileApps/IOSApp` |
-| `get_page(project, nodeId, ref)` | Read a leaf markdown page. `nodeId` = parent graph path, `ref` = child's `ref` |
-| `search_nodes(project, query)` | Keyword-search names + descriptions across every level when you don't know which module to pick |
-| `list_history(project, relPath)` | List historical versions of a file (e.g. `top.json`, `MobileApps/MobileApps.json`, `MobileApps/IOSApp/VoiceSystem.md`) |
+| `get_top(project)` | Get the project overview and top-level module list — **always call this first**. Returns `version` for `update_top` |
+| `get_graph(project, nodeId)` | Drill into a module. Returns `version`, `pageVersions`, `codeScope`, `nodes`. `nodeId` is slash-separated, e.g. `MobileApps/IOSApp` |
+| `get_page(project, nodeId, ref)` | Read a leaf markdown page. Returns `{ content, version }` — use `version` directly as `baseVersion` for `update_page` / `patch_page` |
+| `search_nodes(project, query)` | Keyword-search names + descriptions across every level. Returns full nodeId path so you can jump straight to the right depth |
+
+### History
+
+| Tool | When to use |
+|---|---|
+| `list_history(project, relPath)` | List historical versions of a file (e.g. `top.json`, `MobileApps/MobileApps.json`, `MobileApps/IOSApp/VoiceSystem.md`). Returns version, timestamp, source, and summary |
 | `get_history(project, relPath, version)` | Read a specific historical version's content |
+
+### Batch / source access
+
+| Tool | When to use |
+|---|---|
+| `list_source_files(project, patterns)` | List repo source files matching regex patterns. Pass `['.*']` for all |
+| `read_source_files(project, requests)` | Read source code files with optional line-range slicing. Each request is `{ path, start, end }` |
+| `list_docs(project, patterns)` | List doc nodeIds matching regex patterns. Pass `['.*']` for all |
+| `read_docs(project, paths)` | Batch-read doc files by nodeId (returns raw content without version — prefer `get_top`/`get_graph`/`get_page` when you need version) |
 
 ## Write tools (only when the user asks you to maintain docs)
 
@@ -58,7 +74,8 @@ Every write tool requires a `baseVersion`. Get it by **reading the file first**,
 | `create_node` | Append a new child node to a parent graph (page or sub-graph). For pages, optionally seed `initialContent` |
 | `update_node` | Patch an existing child node's `name` / `description` / `codeScope` / `edges` |
 | `delete_node` | Remove a child node. Pages delete the `.md`; graph children are removed recursively |
-| `update_page` | Overwrite a leaf markdown page's full content. `baseVersion` comes from `pageVersions[ref]`, not the graph's own `version` |
+| `patch_page` | Apply targeted string-match edits to a page without rewriting the full content. Each edit is `{ old_text, new_text }`. **Prefer this over `update_page` for small changes** — cheaper and less error-prone |
+| `update_page` | Overwrite a leaf markdown page's full content. Use only when the page needs major restructuring. `baseVersion` comes from `pageVersions[ref]` (use `get_page` to obtain it) |
 | `revert` | Make a past snapshot the new current version (creates version N+1 with old content; nothing is erased) |
 
 ## Progressive-disclosure workflow
@@ -81,9 +98,13 @@ If you can't tell which module to drill into, search by keyword. The results tel
 
 When the user asks you to change the documentation:
 
-1. **Read first** — always call the matching read tool to get the current object and its `version` / `pageVersions[ref]`
-2. **Compute the new value** locally (don't ask the server to do partial merges beyond the patch fields the tool already supports)
-3. **Write** with the `baseVersion` you just read
+1. **Read first** — call `get_top`, `get_graph`, or `get_page` to get the current object and its `version`
+2. **Choose the right tool**:
+   - Small page edits (fixing a paragraph, updating an API name): use `patch_page` with `[{ old_text, new_text }]`
+   - Major page rewrites: use `update_page` with full content
+   - Graph metadata: use `update_graph_meta` or `update_node`
+   - Structural changes: use `create_node` / `delete_node`
+3. **Write** with the `baseVersion` you just read (from `version` for graphs, from `get_page`'s `version` for pages)
 4. **On VersionMismatch**, re-read and retry (the error message tells you the server's current version)
 
 For new content, prefer `create_node` with `initialContent` for pages, or `create_node` with `child.type="graph"` for a new sub-module placeholder.

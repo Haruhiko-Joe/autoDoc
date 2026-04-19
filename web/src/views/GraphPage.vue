@@ -1,12 +1,18 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { fetchTopGraph, fetchSubGraph, fetchPage } from '../services/doc'
+import { fetchTopGraph, fetchSubGraph, fetchPage, createNode, updateNode, deleteNode, updatePage, revertDoc } from '../services/doc'
 import GraphView from '../components/GraphView.vue'
+import GraphToolbar from '../components/GraphToolbar.vue'
+import NodeFormDialog from '../components/NodeFormDialog.vue'
+import EdgeFormDialog from '../components/EdgeFormDialog.vue'
 import MarkdownView from '../components/MarkdownView.vue'
+import MarkdownEditor from '../components/MarkdownEditor.vue'
+import ConflictDialog from '../components/ConflictDialog.vue'
+import HistoryPanel from '../components/HistoryPanel.vue'
 import EdgeLegend from '../components/EdgeLegend.vue'
 import DocTree from '../components/DocTree.vue'
-import type { TopGraph, SubGraph, GraphNode } from '../types'
+import type { TopGraph, SubGraph, GraphNode, GraphEdge, EdgeType } from '../types'
 
 const route = useRoute()
 const router = useRouter()
@@ -15,6 +21,29 @@ const subGraph = ref<SubGraph | null>(null)
 const pageContent = ref('')
 const loading = ref(true)
 const error = ref('')
+
+// Edit mode
+const editMode = ref(false)
+const selectedNodeId = ref<string | null>(null)
+const nodeDialogVisible = ref(false)
+const nodeDialogTarget = ref<GraphNode | undefined>()
+const edgeDialogVisible = ref(false)
+const edgeDialogSource = ref('')
+const edgeDialogTarget = ref<{ target: string; type: EdgeType; description: string } | undefined>()
+const edgeDialogPrefillTarget = ref('')
+
+// History panel
+const showHistory = ref(false)
+
+function getHistoryRelPath(): string {
+  const p = getPath()
+  if (subGraph.value) {
+    const parts = p.split('/')
+    const last = parts[parts.length - 1]
+    return `${p}/${last}.json`
+  }
+  return `${p}.md`
+}
 
 function getPath(): string {
   const p = route.params.path
@@ -25,6 +54,10 @@ function getProject(): string {
   const p = route.params.project
   if (!p) return ''
   return Array.isArray(p) ? (p[0] ?? '') : p
+}
+
+function getNodeId(): string {
+  return getPath()
 }
 
 async function load() {
@@ -63,6 +96,7 @@ async function load() {
 onMounted(load)
 watch(() => [route.params.path, route.params.project], () => {
   topGraph.value = null
+  editMode.value = false
   load()
 })
 
@@ -89,6 +123,223 @@ const breadcrumbs = () => {
     label: p,
     path: parts.slice(0, i + 1).join('/'),
   }))
+}
+
+// ─── Graph editing ───
+
+function openAddNode() {
+  nodeDialogTarget.value = undefined
+  nodeDialogVisible.value = true
+}
+
+function openEditNode(node: GraphNode) {
+  nodeDialogTarget.value = node
+  nodeDialogVisible.value = true
+}
+
+async function handleNodeSubmit(data: { name: string; description: string; codeScope: string[]; childType: 'graph' | 'page'; childRef: string }) {
+  if (!subGraph.value) return
+  const project = getProject()
+  const nodeId = getNodeId()
+  try {
+    if (nodeDialogTarget.value) {
+      // Edit existing node
+      subGraph.value = await updateNode(project, nodeId, nodeDialogTarget.value.name, subGraph.value.version, {
+        name: data.name,
+        description: data.description,
+        codeScope: data.codeScope,
+      })
+    } else {
+      // Create new node
+      const node: GraphNode = {
+        name: data.name,
+        description: data.description,
+        codeScope: data.codeScope,
+        edges: [],
+        child: { type: data.childType, ref: data.childRef },
+      }
+      subGraph.value = await createNode(project, nodeId, subGraph.value.version, node)
+    }
+    nodeDialogVisible.value = false
+  } catch (e) {
+    alert(e instanceof Error ? e.message : 'Operation failed')
+  }
+}
+
+async function handleDeleteNode(node: GraphNode) {
+  if (!subGraph.value || !confirm(`Delete "${node.name}"?`)) return
+  try {
+    subGraph.value = await deleteNode(getProject(), getNodeId(), node.name, subGraph.value.version)
+    selectedNodeId.value = null
+  } catch (e) {
+    alert(e instanceof Error ? e.message : 'Delete failed')
+  }
+}
+
+function handleDeleteSelected() {
+  if (!selectedNodeId.value || !subGraph.value) return
+  const node = subGraph.value.nodes.find(n => n.name === selectedNodeId.value)
+  if (node) handleDeleteNode(node)
+}
+
+// ─── Edge editing ───
+
+function openAddEdge(sourceNode: string) {
+  edgeDialogSource.value = sourceNode
+  edgeDialogTarget.value = undefined
+  edgeDialogPrefillTarget.value = ''
+  edgeDialogVisible.value = true
+}
+
+function handleEdgeCreate(source: string, target: string) {
+  edgeDialogSource.value = source
+  edgeDialogTarget.value = undefined
+  edgeDialogPrefillTarget.value = target
+  edgeDialogVisible.value = true
+}
+
+function openEditEdge(source: string, edge: { target: string; type: EdgeType; description: string }) {
+  edgeDialogSource.value = source
+  edgeDialogTarget.value = edge
+  edgeDialogVisible.value = true
+}
+
+async function handleEdgeSubmit(data: { target: string; type: EdgeType; description: string }) {
+  if (!subGraph.value) return
+  const project = getProject()
+  const nodeId = getNodeId()
+  const sourceNodeName = edgeDialogSource.value
+  const sourceNode = subGraph.value.nodes.find(n => n.name === sourceNodeName)
+  if (!sourceNode) return
+
+  let newEdges: GraphEdge[]
+  if (edgeDialogTarget.value) {
+    // Edit: replace the matching edge
+    newEdges = sourceNode.edges.map(e =>
+      e.target === edgeDialogTarget.value!.target && e.type === edgeDialogTarget.value!.type
+        ? { ...e, target: data.target, type: data.type, description: data.description }
+        : e
+    )
+  } else {
+    // Add new edge
+    newEdges = [...sourceNode.edges, { target: data.target, type: data.type, description: data.description }]
+  }
+
+  try {
+    subGraph.value = await updateNode(project, nodeId, sourceNodeName, subGraph.value.version, { edges: newEdges })
+    edgeDialogVisible.value = false
+  } catch (e) {
+    alert(e instanceof Error ? e.message : 'Edge operation failed')
+  }
+}
+
+async function handleEdgeDelete(source: string, edgeTarget: string, edgeType: EdgeType) {
+  if (!subGraph.value || !confirm(`Delete edge ${source} -> ${edgeTarget}?`)) return
+  const sourceNode = subGraph.value.nodes.find(n => n.name === source)
+  if (!sourceNode) return
+  const newEdges = sourceNode.edges.filter(e => !(e.target === edgeTarget && e.type === edgeType))
+  try {
+    subGraph.value = await updateNode(getProject(), getNodeId(), source, subGraph.value.version, { edges: newEdges })
+  } catch (e) {
+    alert(e instanceof Error ? e.message : 'Delete edge failed')
+  }
+}
+
+// ─── Page editing ───
+
+type PageViewMode = 'preview' | 'edit' | 'split'
+const pageViewMode = ref<PageViewMode>('preview')
+const pageEditContent = ref('')
+const pageVersion = ref(0)
+const pageSaving = ref(false)
+const conflictVisible = ref(false)
+const conflictServerContent = ref('')
+
+function getPageParentNodeId(): string {
+  const parts = getPath().split('/')
+  return parts.slice(0, -1).join('/')
+}
+
+function getPageRef(): string {
+  const parts = getPath().split('/')
+  return parts[parts.length - 1] ?? ''
+}
+
+watch(pageContent, (val) => {
+  if (pageViewMode.value === 'preview') {
+    pageEditContent.value = val
+  }
+})
+
+async function loadPageVersion() {
+  try {
+    const parentNodeId = getPageParentNodeId()
+    const sub = await fetchSubGraph(getProject(), parentNodeId)
+    const ref = getPageRef()
+    pageVersion.value = sub.pageVersions?.[ref] ?? 0
+  } catch {
+    pageVersion.value = 0
+  }
+}
+
+function enterPageEdit() {
+  pageEditContent.value = pageContent.value
+  pageViewMode.value = 'edit'
+  loadPageVersion()
+}
+
+async function savePage() {
+  pageSaving.value = true
+  try {
+    const result = await updatePage(getProject(), getPageParentNodeId(), getPageRef(), pageVersion.value, pageEditContent.value)
+    pageVersion.value = result.version
+    pageContent.value = pageEditContent.value
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : ''
+    if (msg.includes('Version mismatch')) {
+      try {
+        conflictServerContent.value = await fetchPage(getProject(), getPath())
+      } catch {
+        conflictServerContent.value = '(failed to load server version)'
+      }
+      conflictVisible.value = true
+    } else {
+      alert(msg || 'Save failed')
+    }
+  } finally {
+    pageSaving.value = false
+  }
+}
+
+async function handleConflictOverwrite() {
+  conflictVisible.value = false
+  await loadPageVersion()
+  await savePage()
+}
+
+function handleConflictDiscard() {
+  conflictVisible.value = false
+  pageEditContent.value = conflictServerContent.value
+  pageContent.value = conflictServerContent.value
+  loadPageVersion()
+}
+
+async function handleRevert(version: number) {
+  const relPath = getHistoryRelPath()
+  try {
+    let currentVersion = 0
+    if (subGraph.value) {
+      currentVersion = subGraph.value.version
+    } else {
+      await loadPageVersion()
+      currentVersion = pageVersion.value
+    }
+    await revertDoc(getProject(), relPath, version, currentVersion)
+    await load()
+    showHistory.value = false
+  } catch (e) {
+    alert(e instanceof Error ? e.message : 'Revert failed')
+  }
 }
 </script>
 
@@ -122,13 +373,36 @@ const breadcrumbs = () => {
           <div class="header-meta">
             <p class="desc">{{ subGraph.description }}</p>
             <span class="status-badge" :class="subGraph.status">{{ subGraph.status }}</span>
+            <button
+              class="edit-toggle"
+              :class="{ active: editMode }"
+              @click="editMode = !editMode; selectedNodeId = null"
+            >
+              {{ editMode ? 'Done' : 'Edit' }}
+            </button>
+            <button class="history-toggle" @click="showHistory = !showHistory">History</button>
           </div>
         </div>
         <div class="canvas-graph">
-          <GraphView :nodes="subGraph.nodes" @node-click="onNodeClick" />
+          <GraphView
+            :nodes="subGraph.nodes"
+            :editable="editMode"
+            @node-click="onNodeClick"
+            @node-edit="openEditNode"
+            @node-delete="handleDeleteNode"
+            @edge-edit="openEditEdge"
+            @edge-delete="handleEdgeDelete"
+            @edge-create="handleEdgeCreate"
+          />
+          <GraphToolbar
+            v-if="editMode"
+            :has-selection="!!selectedNodeId"
+            @add-node="openAddNode"
+            @delete-selected="handleDeleteSelected"
+          />
         </div>
       </template>
-      <template v-else-if="pageContent">
+      <template v-else-if="pageContent || pageViewMode !== 'preview'">
         <div class="canvas-header">
           <nav class="breadcrumb">
             <a class="crumb" @click="router.push({ name: 'project', params: { project: getProject() } })">Home</a>
@@ -137,12 +411,66 @@ const breadcrumbs = () => {
               <a class="crumb" @click="router.push(`/${getProject()}/doc/${bc.path}`)">{{ bc.label }}</a>
             </template>
           </nav>
+          <div class="header-meta">
+            <div class="view-mode-group">
+              <button class="mode-btn" :class="{ active: pageViewMode === 'preview' }" @click="pageViewMode = 'preview'">Preview</button>
+              <button class="mode-btn" :class="{ active: pageViewMode === 'edit' }" @click="enterPageEdit()">Edit</button>
+              <button class="mode-btn" :class="{ active: pageViewMode === 'split' }" @click="enterPageEdit(); pageViewMode = 'split'">Split</button>
+            </div>
+            <button v-if="pageViewMode !== 'preview'" class="btn-save" :disabled="pageSaving" @click="savePage">
+              {{ pageSaving ? 'Saving...' : 'Save' }}
+            </button>
+          </div>
         </div>
-        <div class="canvas-page">
+        <div class="canvas-page" v-if="pageViewMode === 'preview'">
           <MarkdownView :content="pageContent" />
+        </div>
+        <div class="canvas-page-edit" v-else-if="pageViewMode === 'edit'">
+          <MarkdownEditor v-model="pageEditContent" @save="savePage" />
+        </div>
+        <div class="canvas-page-split" v-else>
+          <div class="split-editor">
+            <MarkdownEditor v-model="pageEditContent" @save="savePage" />
+          </div>
+          <div class="split-preview">
+            <MarkdownView :content="pageEditContent" />
+          </div>
         </div>
       </template>
     </main>
+
+    <!-- Dialogs -->
+    <NodeFormDialog
+      :visible="nodeDialogVisible"
+      :node="nodeDialogTarget"
+      @close="nodeDialogVisible = false"
+      @submit="handleNodeSubmit"
+    />
+    <EdgeFormDialog
+      :visible="edgeDialogVisible"
+      :edge="edgeDialogTarget"
+      :source-node="edgeDialogSource"
+      :prefill-target="edgeDialogPrefillTarget"
+      :target-options="subGraph?.nodes.map(n => n.name).filter(n => n !== edgeDialogSource) ?? []"
+      @close="edgeDialogVisible = false"
+      @submit="handleEdgeSubmit"
+    />
+    <ConflictDialog
+      :visible="conflictVisible"
+      :local-content="pageEditContent"
+      :server-content="conflictServerContent"
+      @overwrite="handleConflictOverwrite"
+      @discard="handleConflictDiscard"
+      @close="conflictVisible = false"
+    />
+    <HistoryPanel
+      v-if="subGraph || pageContent"
+      :project="getProject()"
+      :rel-path="getHistoryRelPath()"
+      :visible="showHistory"
+      @close="showHistory = false"
+      @revert="handleRevert"
+    />
   </div>
 </template>
 
@@ -239,6 +567,7 @@ const breadcrumbs = () => {
   font-size: 15px;
   color: var(--text-secondary);
   margin: 0;
+  flex: 1;
 }
 
 .status-badge {
@@ -256,17 +585,115 @@ const breadcrumbs = () => {
 .status-badge.writing,
 .status-badge.checking { background: var(--badge-active-bg); color: var(--accent); }
 
+.edit-toggle,
+.history-toggle {
+  padding: 4px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+
+.edit-toggle:hover,
+.history-toggle:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.edit-toggle.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
 .canvas-graph {
   flex: 1;
   margin: 0 16px 16px;
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
+  position: relative;
 }
 
 .canvas-page {
   flex: 1;
   overflow-y: auto;
+}
+
+.canvas-page-edit {
+  flex: 1;
+  overflow: hidden;
+}
+
+.canvas-page-split {
+  flex: 1;
+  display: flex;
+  gap: 1px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.split-editor, .split-preview {
+  flex: 1;
+  overflow-y: auto;
+  background: var(--bg-body);
+}
+
+.view-mode-group {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.mode-btn {
+  padding: 4px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  border: none;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.mode-btn:not(:last-child) {
+  border-right: 1px solid var(--border);
+}
+
+.mode-btn:hover {
+  color: var(--accent);
+}
+
+.mode-btn.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.btn-save {
+  padding: 4px 16px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.btn-save:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.btn-save:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .loading,

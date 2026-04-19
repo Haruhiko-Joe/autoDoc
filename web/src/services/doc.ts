@@ -146,6 +146,185 @@ export function subscribeStatus(onStatus: (status: RunStatus) => void): () => vo
   return () => es.close()
 }
 
+// ─── Doc editing ───
+
+export async function createNode(
+  project: string, parentNodeId: string, baseVersion: number,
+  node: import('../types').GraphNode, initialContent?: string,
+): Promise<import('../types').SubGraph> {
+  const res = await fetch(`${API}/doc/create-node`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project, parentNodeId, baseVersion, node, initialContent }),
+  })
+  if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to create node')
+  return res.json()
+}
+
+export async function updateNode(
+  project: string, parentNodeId: string, nodeName: string, baseVersion: number,
+  patch: { name?: string; description?: string; codeScope?: string[]; edges?: import('../types').GraphEdge[] },
+): Promise<import('../types').SubGraph> {
+  const res = await fetch(`${API}/doc/update-node`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project, parentNodeId, nodeName, baseVersion, patch }),
+  })
+  if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to update node')
+  return res.json()
+}
+
+export async function deleteNode(
+  project: string, parentNodeId: string, nodeName: string, baseVersion: number,
+): Promise<import('../types').SubGraph> {
+  const res = await fetch(`${API}/doc/delete-node`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project, parentNodeId, nodeName, baseVersion }),
+  })
+  if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to delete node')
+  return res.json()
+}
+
+export async function updatePage(
+  project: string, nodeId: string, ref: string, baseVersion: number, content: string,
+): Promise<{ version: number; graphVersion: number }> {
+  const res = await fetch(`${API}/doc/update-page`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project, nodeId, ref, baseVersion, content }),
+  })
+  if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to update page')
+  return res.json()
+}
+
+export async function patchPage(
+  project: string, nodeId: string, ref: string, baseVersion: number,
+  edits: { old_text: string; new_text: string }[],
+): Promise<{ version: number; graphVersion: number; appliedCount: number }> {
+  const res = await fetch(`${API}/doc/patch-page`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project, nodeId, ref, baseVersion, edits }),
+  })
+  if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to patch page')
+  return res.json()
+}
+
+export async function revertDoc(
+  project: string, relPath: string, toVersion: number, baseVersion: number,
+): Promise<{ relPath: string; newVersion: number }> {
+  const res = await fetch(`${API}/doc/revert`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project, relPath, toVersion, baseVersion }),
+  })
+  if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to revert')
+  return res.json()
+}
+
+export async function fetchHistory(
+  project: string, relPath: string,
+): Promise<{ versions: { version: number; ts: string; source?: { type: string; ref?: string }; summary?: string }[] }> {
+  const res = await fetch(`${API}/history?project=${encodeURIComponent(project)}&relPath=${encodeURIComponent(relPath)}`)
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function fetchHistoryDiff(
+  project: string, relPath: string, versionA: number, versionB: number,
+): Promise<{ contentA: string; contentB: string }> {
+  const res = await fetch(`${API}/history/diff`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project, relPath, versionA, versionB }),
+  })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+// ─── Update ───
+
+export type UpdateTaskStatus = 'idle' | 'running' | 'awaiting-review' | 'done' | 'skipped' | 'error'
+
+export interface UpdateTaskItem {
+  id: string
+  sha: string
+  title: string
+  body?: string
+  filesChanged: number
+  changedFiles?: string[]
+  status: UpdateTaskStatus
+  markdown?: string
+  error?: string
+  userInstructions?: string
+  confirmed?: boolean
+  sessionId?: string
+}
+
+export interface UpdateEvent {
+  type: 'queue' | 'task-start' | 'task-text-delta' | 'task-awaiting-review' | 'task-done' | 'task-error' | 'task-skipped' | 'awaiting-confirm' | 'finished'
+  taskId?: string
+  tasks?: UpdateTaskItem[]
+  delta?: string
+  markdown?: string
+  error?: string
+}
+
+export async function startUpdateRun(
+  project: string, mode: 'auto' | 'manual' = 'auto',
+): Promise<{ ok: boolean; tasks: UpdateTaskItem[] }> {
+  const res = await fetch(`${API}/update/start`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project, mode }),
+  })
+  if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to start update')
+  return res.json()
+}
+
+export async function continueUpdateRun(project: string, extraInstructions?: string): Promise<void> {
+  const res = await fetch(`${API}/update/continue`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project, extraInstructions }),
+  })
+  if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to continue')
+}
+
+export async function skipUpdateTask(project: string, taskId: string): Promise<void> {
+  const res = await fetch(`${API}/update/skip`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project, taskId }),
+  })
+  if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to skip')
+}
+
+export async function cancelUpdateRun(project: string): Promise<void> {
+  const res = await fetch(`${API}/update/cancel`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project }),
+  })
+  if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to cancel')
+}
+
+export async function acceptUpdateTask(project: string, taskId: string): Promise<void> {
+  const res = await fetch(`${API}/update/task/accept`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project, taskId }),
+  })
+  if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to accept task')
+}
+
+export async function chatOnUpdateTask(project: string, taskId: string, prompt: string): Promise<void> {
+  const res = await fetch(`${API}/update/task/chat`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project, taskId, prompt }),
+  })
+  if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to send follow-up')
+}
+
+export function subscribeUpdateStream(
+  project: string, onEvent: (event: UpdateEvent) => void,
+): () => void {
+  const es = new EventSource(`${API}/update/stream?project=${encodeURIComponent(project)}`)
+  es.onmessage = (e) => {
+    try { onEvent(JSON.parse(e.data)) } catch { /* ignore */ }
+  }
+  return () => es.close()
+}
+
 // ─── Search ───
 
 export interface SearchResult {

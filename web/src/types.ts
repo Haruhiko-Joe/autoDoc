@@ -43,6 +43,8 @@ export interface SubGraph {
   description: string
   codeScope: string[]
   nodes: GraphNode[]
+  version: number
+  pageVersions?: Record<string, number>
 }
 
 // ─── Flow ───

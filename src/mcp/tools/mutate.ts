@@ -89,8 +89,6 @@ export function registerMutateTools(mcp: McpServer, store: DocStore): void {
         throw new Error(`Sibling node already exists: ${node.name}`)
       }
 
-      // Create child artifact first so that if writeGraph fails (version mismatch),
-      // retrying won't fight a half-written state.
       if (node.child.type === "page") {
         await store.createEmptyPage(project, parentNodeId, node.child.ref, initialContent ?? "")
       } else {
@@ -111,7 +109,17 @@ export function registerMutateTools(mcp: McpServer, store: DocStore): void {
         nodes: [...parent.nodes, node],
         pageVersions: Object.keys(nextPageVersions).length > 0 ? nextPageVersions : parent.pageVersions,
       }
-      return json(await store.writeGraph(project, parentNodeId, next, baseVersion))
+      try {
+        return json(await store.writeGraph(project, parentNodeId, next, baseVersion))
+      } catch (e) {
+        // Rollback child artifact on version mismatch
+        if (node.child.type === "page") {
+          await store.deletePageFile(project, parentNodeId, node.child.ref).catch(() => {})
+        } else {
+          await store.deleteSubgraphDir(project, `${parentNodeId}/${node.child.ref}`).catch(() => {})
+        }
+        throw e
+      }
     },
   )
 
@@ -206,6 +214,30 @@ export function registerMutateTools(mcp: McpServer, store: DocStore): void {
     },
     async ({ project, nodeId, ref, baseVersion, content }) =>
       json(await store.writePage(project, nodeId, ref, content, baseVersion)),
+  )
+
+  // ─── patch page (fine-grained edits) ────────────────────────
+
+  mcp.registerTool(
+    "patch_page",
+    {
+      description:
+        "Apply targeted string-match edits to a leaf markdown page without rewriting the entire file. Each edit specifies `old_text` (must match exactly once in the current content) and `new_text` to replace it with. Edits are applied sequentially. Use this instead of update_page when only changing specific sections — it's cheaper and less error-prone. `baseVersion` comes from `pageVersions[ref]` (use get_graph or get_page to obtain it).",
+      inputSchema: {
+        project: z.string(),
+        nodeId: z.string(),
+        ref: z.string(),
+        baseVersion: z.number().int().min(0),
+        edits: z.array(
+          z.object({
+            old_text: z.string().describe("Exact text to find. Must appear exactly once."),
+            new_text: z.string().describe("Replacement text. Empty string = delete the matched text."),
+          }),
+        ).min(1),
+      },
+    },
+    async ({ project, nodeId, ref, baseVersion, edits }) =>
+      json(await store.patchPage(project, nodeId, ref, edits, baseVersion)),
   )
 
   // ─── revert ─────────────────────────────────────────────────
