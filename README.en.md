@@ -122,26 +122,34 @@ gitUrl ──► git clone ──► src/souko/repo/{name}
                        projects.json + src/souko/doc/{name}
 ```
 
-### Incremental update: git-diff driven
+### Incremental update: PR-driven
 
 ```
-gitUrl (existing) ──► git fetch + pull
-                          │
-                          ▼
-                  newHead == prevHead?
-                          │
-              ┌───────────┴───────────┐
-              ▼                       ▼
-            yes                       no
-              │                       │
-              ▼                       ▼
-       mode: "noop"           git diff prev..new
-                                       │
-                                       ▼
-                             Updater Agent (Read/Edit/Write)
-                                       │
-                                       ▼
-                          patches .md / .json locally + updates head
+Manual trigger POST /api/update/start
+         │
+         ▼
+  UpdateOrchestrator (per-project lock)
+         │
+  git fetch origin main → read lastProcessedSha (cursor)
+         │
+  ┌──────┴───────┐
+  │ GitHub repo  │ Non-GitHub
+  │ gh pr list   │ git log
+  │ --state merged│ --first-parent
+  └──────┬───────┘
+         │
+    PR/Commit queue (oldest first)
+         │
+    for each task (serial):
+      PrUpdater Agent + MCP tools
+         │
+  ┌──────┴───────┐
+  │ Auto mode    │ Manual mode
+  │ → done       │ → awaiting-review
+  │ → next       │ → Accept / follow-up
+  └──────────────┘
+         │
+    advance cursor → next task
 ```
 
 | Agent | Role | Validation |
@@ -151,9 +159,9 @@ gitUrl (existing) ──► git fetch + pull
 | **Writer** | Generates detailed Markdown for each leaf node | — |
 | **Checker** | Validates graph structure integrity from Scaffold and Decomposer | — |
 | **Flow Analyzer** | Extracts 3–7 typical cross-module interaction flows | — |
-| **Updater** | Receives a git diff and patches the doc tree in place | — |
+| **PrUpdater** | Per-PR agent: navigates docs via MCP tools, applies targeted edits (impact assessment → locate → patch_page / update_page) | Manual review gate |
 
-Full-pipeline Agents are orchestrated by the **Arranger** state machine with a **sliding-window concurrency model** — the concurrency level is configurable from the frontend (default 8). State is tracked per node with full crash recovery. **Updater** is a separate incremental channel that uses fs Read/Edit/Write directly for minimal edits.
+Full-pipeline Agents are orchestrated by the **Arranger** state machine with a **sliding-window concurrency model** — the concurrency level is configurable from the frontend (default 8). State is tracked per node with full crash recovery. **PrUpdater** is a separate incremental channel that works at PR granularity: the agent receives commit metadata + diff, navigates the doc tree via MCP tools (`get_top` → `search_nodes` → `get_page` → `patch_page`), and makes targeted edits. In Manual mode every PR passes through a user review gate with session continuation for iterative refinement.
 
 ### Hybrid AI Backends
 
@@ -171,7 +179,7 @@ Each Agent role independently uses **Claude** (Claude Agent SDK) or **Codex** (O
 ## Key Features
 
 - **🔗 One-step git URL ingestion** — paste an SSH/HTTPS git URL; backend auto-clones, tracks the main branch head, keeps everything under `src/souko/`
-- **🔁 Incremental updates** — re-submitting the same URL triggers fetch + diff, and a dedicated Updater Agent patches docs in place instead of rerunning the full pipeline
+- **🔁 Per-PR incremental updates** — discovers all newly merged PRs via `gh pr list` (or `git log` fallback) and PrUpdater Agent navigates docs via MCP tools for targeted edits. Auto mode runs hands-free; Manual mode adds a review gate with session continuation for iterative refinement
 - **🛰️ HTTP MCP server** — same-process `/mcp` endpoint (Streamable HTTP) exposes the full query + mutate toolset for direct Code Agent access
 - **📜 Document version control** — every write carries optimistic locking (`baseVersion`) and snapshots to `.history/{file}.v{n}`; `revert` restores any historical version
 - **🔗 Interactive directed graphs** — [AntV G6](https://g6.antv.antgroup.com/) with 6 semantic edge types (calls, depends, data-flow, event, extends, composes) and hover popovers
@@ -227,6 +235,7 @@ The matching [doc-drill skill](src/skill-template/SKILL.md) is a thin instructio
 | `create_node` | Append a node to a parent graph (page → creates an empty md; graph → creates a sub-graph placeholder) |
 | `update_node` | Update a node's name / description / codeScope / edges in its parent graph |
 | `delete_node` | Remove a node from its parent graph (page deletes the md; graph recursively deletes its subtree) |
+| `patch_page` | Targeted string-match-and-replace edits to a leaf md, more efficient and safer than update_page |
 | `update_page` | Overwrite a leaf md; uses `pageVersions[ref]` as baseVersion |
 | `revert` | Write a historical version back as a new version, keeping intermediate versions intact |
 
@@ -263,7 +272,7 @@ Each module's documentation is a self-contained unit. Three ways to edit it:
 
 - **Via MCP tools** (recommended): `update_node` / `update_page` / `create_node` / `delete_node` — automatic version tracking and history snapshots; ideal for Code Agents
 - **Direct file edits**: edit `.md` / `.json` under `src/souko/doc/{project}/`; restart the server to pick it up (bypasses version control)
-- **Trigger an incremental update**: push a new commit upstream and resubmit the same git URL; the Updater Agent will detect the diff and patch the docs
+- **Trigger an incremental update**: click the Update button on the home page; PrUpdater Agent automatically discovers all newly merged PRs and processes them one by one. Manual mode gates each PR behind a review confirmation
 
 ## doc-drill: Native Code Agent Integration
 
@@ -294,7 +303,8 @@ autoDoc/
 ├── src/
 │   ├── server.ts                 # HTTP API + /mcp (same port, stateless transport)
 │   ├── git/
-│   │   └── repoManager.ts        # git CLI wrapper (clone / fetch / diff / projectNameFromUrl)
+│   │   ├── repoManager.ts        # git CLI wrapper (clone / fetch / diff / projectNameFromUrl)
+│   │   └── prDiscovery.ts         # Discover merged PRs (gh pr list) or commits (git log fallback)
 │   ├── souko/                    # Project store (repo + doc + shared registry)
 │   │   ├── registry.ts           # projects.json read/write
 │   │   ├── repo/                 # gitignored: cloned sources
@@ -307,14 +317,15 @@ autoDoc/
 │   │   └── tools/{query,mutate}.ts
 │   ├── agents/                   # Agent implementations (Claude + Codex)
 │   │   ├── tsukai/               # All Agent classes (barrel: index.ts)
-│   │   │   ├── claude{scaffold,decomposer,writer,checker,flowanalyzer,updater}.ts
-│   │   │   └── codex{scaffold,decomposer,writer,checker,flowanalyzer,updater}.ts
+│   │   │   ├── claude{scaffold,decomposer,writer,checker,flowanalyzer,prupdater}.ts
+│   │   │   └── codex{scaffold,decomposer,writer,checker,flowanalyzer,prupdater}.ts
 │   │   ├── instructions/         # Agent prompts
 │   │   │   ├── cn/               # Chinese prompts
 │   │   │   └── en/               # English prompts
 │   │   └── schemas/schema.ts     # Zod output schemas (incl. UpdaterOutput)
 │   ├── workflow/
-│   │   └── arranger.ts           # Full-pipeline state machine
+│   │   ├── arranger.ts           # Full-pipeline state machine
+│   │   └── updateOrchestrator.ts  # PR-driven incremental update orchestrator
 │   └── skill-template/
 │       └── SKILL.md              # Thin doc-drill skill (points at /mcp)
 ├── web/                          # Vue 3 frontend

@@ -122,26 +122,34 @@ gitUrl ──► git clone ──► src/souko/repo/{name}
                        projects.json + src/souko/doc/{name}
 ```
 
-### 増分更新: git diff 駆動
+### 増分更新: PR 駆動
 
 ```
-gitUrl（既存） ──► git fetch + pull
-                          │
-                          ▼
-                  newHead == prevHead?
-                          │
-              ┌───────────┴───────────┐
-              ▼                       ▼
-            yes                       no
-              │                       │
-              ▼                       ▼
-       mode: "noop"           git diff prev..new
-                                       │
-                                       ▼
-                             Updater Agent（Read/Edit/Write）
-                                       │
-                                       ▼
-                          .md / .json の局所追加削除変更 + head 更新
+手動トリガー POST /api/update/start
+         │
+         ▼
+  UpdateOrchestrator (プロジェクト単位ロック)
+         │
+  git fetch origin main → lastProcessedSha (カーソル) 読取
+         │
+  ┌──────┴───────┐
+  │ GitHub 項目   │ 非 GitHub
+  │ gh pr list   │ git log
+  │ --state merged│ --first-parent
+  └──────┬───────┘
+         │
+    PR/Commit キュー (時系列昇順)
+         │
+    各タスクを直列処理:
+      PrUpdater Agent + MCP ツール
+         │
+  ┌──────┴───────┐
+  │ Auto モード   │ Manual モード
+  │ → done       │ → awaiting-review
+  │ → 次へ       │ → Accept / フォローアップ
+  └──────────────┘
+         │
+    カーソル更新 → 次のタスクへ
 ```
 
 | Agent | 役割 | 検証 |
@@ -151,9 +159,9 @@ gitUrl（既存） ──► git fetch + pull
 | **Writer** | 各リーフノードに詳細な Markdown を生成 | — |
 | **Checker** | Scaffold と Decomposer が生成したグラフ構造の完全性を検証 | — |
 | **Flow Analyzer** | 3–7 件の典型的なモジュール間インタラクションフローを抽出 | — |
-| **Updater** | git diff を受け取り、ドキュメントツリーを局所的に追加削除変更 | — |
+| **PrUpdater** | PR 単位で MCP ツール経由でドキュメントを自律ナビゲーションし、標的修正を実行（影響評価 → 検索 → patch_page / update_page） | 手動レビューゲート（Manual モード） |
 
-全量 Agent は **Arranger** ステートマシンにより統合管理され、**スライディングウィンドウ型並行モデル**を採用します——並行セッション数はフロントエンドから設定可能（デフォルト 8）。ノードごとに状態を管理し、クラッシュリカバリを完全サポート。**Updater** は独立した増分チャネルで、fs Read/Edit/Write を直接使って最小限の編集を行います。
+全量 Agent は **Arranger** ステートマシンにより統合管理され、**スライディングウィンドウ型並行モデル**を採用します——並行セッション数はフロントエンドから設定可能（デフォルト 8）。ノードごとに状態を管理し、クラッシュリカバリを完全サポート。**PrUpdater** は独立した増分チャネルで、PR 単位で動作します：Agent は commit メタデータ + diff を受け取り、MCP ツール（`get_top` → `search_nodes` → `get_page` → `patch_page`）でドキュメントツリーを自律ナビゲーションし、標的修正を行います。Manual モードでは各 PR がユーザーレビューゲートを通過し、セッション継続による反復微調整をサポートします。
 
 ### ハイブリッド AI バックエンド
 
@@ -171,7 +179,7 @@ gitUrl（既存） ──► git fetch + pull
 ## 主な機能
 
 - **🔗 git URL ワンクリック接続** — SSH/HTTPS git URL を入力するだけで、バックエンドが自動 clone・メインブランチの commit を追跡、すべて `src/souko/` 以下に集約
-- **🔁 増分更新** — 同じ URL の 2 回目投入時に fetch + diff を計算し、専用の Updater Agent が局所更新、全量パイプラインは再実行しません
+- **🔁 PR 単位の増分更新** — `gh pr list`（または `git log` フォールバック）で新たにマージされた全 PR を自動検出し、PrUpdater Agent が MCP ツール経由で標的修正を実行。Auto モードは完全自動、Manual モードはレビューゲート + セッション継続による反復微調整付き
 - **🛰️ HTTP MCP サーバー** — 同一プロセスの `/mcp` エンドポイント（Streamable HTTP）が query + mutate の全ツールを公開、Code Agent から直接読み書き可能
 - **📜 ドキュメントバージョン管理** — 書き込みごとに楽観的ロック（`baseVersion`）と `.history/{file}.v{n}` スナップショット、`revert` ツールで任意の履歴版に巻き戻し可能
 - **🔗 インタラクティブ有向グラフ** — [AntV G6](https://g6.antv.antgroup.com/) ベース、6 種のセマンティックエッジ（呼び出し、依存、データフロー、イベント、継承、コンポジション）対応、ホバーで関係詳細を表示
@@ -227,6 +235,7 @@ gitUrl（既存） ──► git fetch + pull
 | `create_node` | 親グラフに新ノードを追加（page → 空 md も同時作成、graph → サブグラフのプレースホルダも作成） |
 | `update_node` | 親グラフ内ノードの name / description / codeScope / edges を更新 |
 | `delete_node` | 親グラフからノードを削除（page なら md を削除、graph ならサブツリーを再帰削除） |
+| `patch_page` | リーフ md 内の局所テキストを文字列マッチ＆置換で精密編集、update_page より効率的で安全 |
 | `update_page` | リーフ md を上書き、`pageVersions[ref]` を baseVersion として使用 |
 | `revert` | 履歴版を新しい版として書き戻し、中間版は消さない |
 
@@ -263,7 +272,7 @@ src/souko/
 
 - **MCP ツール経由**（推奨）: `update_node` / `update_page` / `create_node` / `delete_node` — 自動的に version と履歴スナップショットが管理される、Code Agent による自動メンテに最適
 - **ファイルを直接編集**: `src/souko/doc/{project}/` 以下の `.md` / `.json` を直接編集、サーバー再起動で反映（version 機構はバイパス）
-- **増分更新のトリガー**: upstream で新しい commit をプッシュしたあと、同じ git URL を再投入すると、Updater Agent が自動で diff を検知してドキュメントを局所更新
+- **増分更新のトリガー**: ホーム画面で Update ボタンをクリックすると、PrUpdater Agent が新しくマージされた全 PR を自動検出し、1 件ずつ処理します。Manual モードでは各 PR がレビュー確認ゲートを通過します
 
 ## doc-drill: Code Agent ネイティブ統合
 
@@ -294,7 +303,8 @@ autoDoc/
 ├── src/
 │   ├── server.ts                 # HTTP API + /mcp（同一ポート、stateless transport）
 │   ├── git/
-│   │   └── repoManager.ts        # git CLI ラッパー（clone / fetch / diff / projectNameFromUrl）
+│   │   ├── repoManager.ts        # git CLI ラッパー（clone / fetch / diff / projectNameFromUrl）
+│   │   └── prDiscovery.ts         # GitHub PR / git log による増分タスク検出
 │   ├── souko/                    # プロジェクトストア（repo + doc + 共有 registry）
 │   │   ├── registry.ts           # projects.json 読み書き
 │   │   ├── repo/                 # gitignore: clone 済みソース
@@ -307,14 +317,15 @@ autoDoc/
 │   │   └── tools/{query,mutate}.ts
 │   ├── agents/                   # Agent 実装（Claude + Codex 双方）
 │   │   ├── tsukai/               # 全 Agent クラス（barrel: index.ts）
-│   │   │   ├── claude{scaffold,decomposer,writer,checker,flowanalyzer,updater}.ts
-│   │   │   └── codex{scaffold,decomposer,writer,checker,flowanalyzer,updater}.ts
+│   │   │   ├── claude{scaffold,decomposer,writer,checker,flowanalyzer,prupdater}.ts
+│   │   │   └── codex{scaffold,decomposer,writer,checker,flowanalyzer,prupdater}.ts
 │   │   ├── instructions/         # Agent プロンプト
 │   │   │   ├── cn/               # 中国語プロンプト
 │   │   │   └── en/               # 英語プロンプト
 │   │   └── schemas/schema.ts     # Zod 出力スキーマ（UpdaterOutput 含む）
 │   ├── workflow/
-│   │   └── arranger.ts           # 全量パイプラインステートマシン
+│   │   ├── arranger.ts           # 全量パイプラインステートマシン
+│   │   └── updateOrchestrator.ts # PR 駆動の増分更新オーケストレーター
 │   └── skill-template/
 │       └── SKILL.md              # スリム版 doc-drill skill（/mcp を指す）
 ├── web/                          # Vue 3 フロントエンド
