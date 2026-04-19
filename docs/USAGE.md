@@ -55,16 +55,22 @@ pnpm start
 - **交互流程图**：点 **Flows**，查看端到端业务流程的时序图。
 - **搜索**：侧边栏搜索框跨所有层级按关键字查节点。
 
-## 5. 增量更新
+## 5. 增量更新（PR 驱动）
 
-源仓库有新 commit 后，你不需要删除旧文档——直接在首页粘贴**同一条 git URL** 再点开始：
+源仓库有新的 merged PR 或 commit 后，在首页点击项目卡片上的 **Update** 按钮（不是 Start），右侧会滑出 **Update Queue** 面板：
 
-- 后端先 `git fetch` 拉最新
-- 比对 head：
-  - **没变化** → 返回 `mode: noop`，零工作量
-  - **有变化** → 计算 diff，**Updater Agent** 局部改写受影响的 `.md` / `.json`，不重跑全量管线
+1. 选择模式：
+   - **Auto**：全自动，PR 逐条处理，无需干预
+   - **Manual**：每条 PR 都会弹出 chatbox 弹窗，展示 PR 标题、描述、改动文件列表，你可以输入额外提示词引导 agent。agent 跑完后进入 **awaiting-review** 状态，你可以：
+     - **Accept** — 确认这条修改，推进到下一条
+     - **Send follow-up** — 输入追加提示词让 agent 继续微调（session 续写，不丢上下文）
+2. 点 **Start Update**，后端会：
+   - `git fetch origin main` 拉最新
+   - 通过 `gh pr list`（GitHub 项目）或 `git log --first-parent`（非 GitHub）发现 cursor 之后所有新合并的 PR/commit
+   - 逐条串行处理：PrUpdater Agent 通过 MCP 工具自主导航文档树，做针对性修改（`patch_page` / `update_page` / `create_node` 等）
+   - 每条 PR 处理完后自动推进 cursor（`lastProcessedSha`），服务重启后从断点继续
 
-进度面板会显示 `Fetching latest commits...` → `Updater agent applying diff...` 两个阶段。
+进度通过 SSE 实时推送到前端，任务卡片会显示 idle → running（带 shimmer 动画）→ done / awaiting-review 的状态流转。
 
 ## 6. 让 Code Agent 直接读写文档（MCP）
 
@@ -177,16 +183,22 @@ The progress panel shows live phase + per-node status. If the server is killed m
 - **Flows**: open the Flows view for sequence-diagrams of end-to-end business flows.
 - **Search**: the sidebar search box matches node names and descriptions across all layers.
 
-### 5. Incremental update
+### 5. Incremental update (PR-driven)
 
-When upstream has new commits, **do not** delete the old docs. Just paste the **same git URL** on the home page and click Start again:
+When upstream has new merged PRs or commits, click the **Update** button on the project card (not Start). The **Update Queue** panel slides out on the right:
 
-- Backend does `git fetch` first
-- Compares heads:
-  - **No change** → returns `mode: noop`, zero work
-  - **Change** → computes the diff, hands it to the **Updater Agent** which patches affected `.md` / `.json` in place — no full rerun
+1. Pick a mode:
+   - **Auto**: fully automatic, PRs processed one by one with no user interaction
+   - **Manual**: each PR opens a chatbox dialog showing the PR title, description, and changed file list. You can type additional guidance for the agent. After the agent finishes, the task enters **awaiting-review** — you can:
+     - **Accept** — confirm the doc changes and advance to the next PR
+     - **Send follow-up** — type a refinement prompt; the agent continues its session (no context loss)
+2. Click **Start Update**. The backend will:
+   - `git fetch origin main`
+   - Discover all merged PRs/commits since the cursor via `gh pr list` (GitHub) or `git log --first-parent` (fallback)
+   - Process each one serially: PrUpdater Agent navigates the doc tree via MCP tools and applies targeted edits (`patch_page` / `update_page` / `create_node` etc.)
+   - After each PR, the cursor (`lastProcessedSha`) advances; restart the server and it picks up where it left off
 
-The progress panel shows `Fetching latest commits...` → `Updater agent applying diff...`.
+Progress streams in real-time via SSE. Task cards show idle → running (shimmer animation) → done / awaiting-review.
 
 ### 6. Let Code Agents read/write docs (MCP)
 
@@ -292,16 +304,22 @@ pnpm start
 - **フロー図**: Flows ビューで端々到端のビジネスフローをシーケンス図として表示。
 - **検索**: サイドバーの検索ボックスで全階層からキーワード検索。
 
-### 5. 増分更新
+### 5. 増分更新（PR 駆動）
 
-upstream に新しい commit がある場合、古いドキュメントを削除する必要はありません。ホームで**同じ git URL** を貼り付けて再度開始を押すだけ:
+upstream に新しくマージされた PR や commit がある場合、プロジェクトカードの **Update** ボタンをクリック（Start ではなく）。右側に **Update Queue** パネルがスライドアウトします:
 
-- バックエンドがまず `git fetch`
-- head を比較:
-  - **変更なし** → `mode: noop` で即返り、コストゼロ
-  - **変更あり** → diff を計算し、**Updater Agent** が影響する `.md` / `.json` を局所的に書き換え、全量パイプラインは再実行しません
+1. モードを選択:
+   - **Auto**: 完全自動。PR を 1 件ずつ順番に処理し、ユーザー操作不要
+   - **Manual**: 各 PR で chatbox ダイアログが開き、PR タイトル・説明・変更ファイルリストが表示されます。Agent への追加ガイダンスを入力できます。Agent 完了後 **awaiting-review** 状態に入り:
+     - **Accept** — 変更を確認し、次の PR に進む
+     - **Send follow-up** — 微調整プロンプトを追加入力（セッション継続、コンテキスト保持）
+2. **Start Update** をクリック。バックエンドが:
+   - `git fetch origin main` で最新取得
+   - `gh pr list`（GitHub プロジェクト）または `git log --first-parent`（フォールバック）でカーソル以降の全マージ PR/commit を検出
+   - 直列で 1 件ずつ処理: PrUpdater Agent が MCP ツール経由でドキュメントツリーを自律ナビゲーションし、標的編集を実行（`patch_page` / `update_page` / `create_node` 等）
+   - 各 PR 処理後にカーソル（`lastProcessedSha`）を更新、サーバー再起動後も中断地点から再開
 
-進捗パネルには `Fetching latest commits...` → `Updater agent applying diff...` と表示されます。
+進捗は SSE でリアルタイム配信。タスクカードが idle → running（シマーアニメーション）→ done / awaiting-review と状態遷移します。
 
 ### 6. Code Agent からドキュメントを読み書き（MCP）
 

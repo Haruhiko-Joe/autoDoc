@@ -125,26 +125,34 @@ gitUrl ──► git clone ──► src/souko/repo/{name}
                        projects.json + src/souko/doc/{name}
 ```
 
-### 增量更新：git diff 驱动
+### 增量更新：PR 驱动
 
 ```
-gitUrl (已存在) ──► git fetch + pull
-                          │
-                          ▼
-                  newHead == prevHead?
-                          │
-              ┌───────────┴───────────┐
-              ▼                       ▼
-            yes                       no
-              │                       │
-              ▼                       ▼
-       mode: "noop"           git diff prev..new
-                                       │
-                                       ▼
-                             Updater Agent (Read/Edit/Write)
-                                       │
-                                       ▼
-                          局部增删改 .md / .json + 更新 head
+手动触发 POST /api/update/start
+         │
+         ▼
+  UpdateOrchestrator (per-project lock)
+         │
+  git fetch origin main → 读取 lastProcessedSha (cursor)
+         │
+  ┌──────┴───────┐
+  │ GitHub 项目   │ 非 GitHub
+  │ gh pr list   │ git log
+  │ --state merged│ --first-parent
+  └──────┬───────┘
+         │
+    PR/Commit 队列 (按时间升序)
+         │
+    for each task (串行):
+      PrUpdater Agent + MCP 工具
+         │
+  ┌──────┴───────┐
+  │ Auto mode    │ Manual mode
+  │ → done       │ → awaiting-review
+  │ → next       │ → Accept / 追加提示词
+  └──────────────┘
+         │
+    推进 cursor → 下一条
 ```
 
 | Agent | 职责 | 验证 |
@@ -154,9 +162,9 @@ gitUrl (已存在) ──► git fetch + pull
 | **Writer** | 为每个叶子节点生成详细 Markdown 文档 | — |
 | **Checker** | 校验 Scaffold 和 Decomposer 产出的图结构完整性 | — |
 | **Flow Analyzer** | 提取 3–7 条典型业务交互流程 | — |
-| **Updater** | 接收 git diff 后局部增删改文档树 | — |
+| **PrUpdater** | 按 PR 粒度通过 MCP 工具自主导航并做针对性修改（影响评估 → 定位 → patch_page / update_page） | 人工审阅闸门（Manual 模式） |
 
-全量 Agent 由 **Arranger** 状态机统一调度，采用**滑动窗口并发模型**——并发会话数可在前端配置（默认 8）。按节点管理状态，支持崩溃恢复。**Updater** 是独立增量通道，基于 fs Read/Edit/Write 完成最小修改。
+全量 Agent 由 **Arranger** 状态机统一调度，采用**滑动窗口并发模型**——并发会话数可在前端配置（默认 8）。按节点管理状态，支持崩溃恢复。**PrUpdater** 是独立增量通道，按 PR 粒度工作：Agent 接收 commit metadata + diff，通过 MCP 工具（`get_top` → `search_nodes` → `get_page` → `patch_page`）自主导航文档树并做针对性修改。Manual 模式下每条 PR 都经过用户审阅闸门，支持 session 续写微调。
 
 ### Agent 后端可选
 
@@ -174,7 +182,7 @@ gitUrl (已存在) ──► git fetch + pull
 ## 核心特性
 
 - **🔗 git URL 一键接入** — 输入 SSH/HTTPS git URL，后端自动 clone、跟踪主分支 commit，统一存放在 `src/souko/`
-- **🔁 增量更新** — 同一个 URL 二次提交时，后端 fetch + 算 diff，由专门的 Updater Agent 局部修改文档，不重跑全量管线
+- **🔁 PR 粒度增量更新** — 通过 `gh pr list` 或 `git log` 自动发现所有新合并的 PR，由 PrUpdater Agent 通过 MCP 工具自主导航并做针对性修改。Auto 模式全自动、Manual 模式带审阅闸门 + session 续写微调
 - **🛰️ HTTP MCP 服务** — 同进程 `/mcp` 端点（Streamable HTTP）暴露完整 query + mutate 工具集，Code Agent 直接读写文档
 - **📜 文档版本控制** — 每次写入都带乐观锁 (`baseVersion`) + `.history/{file}.v{n}` 快照，支持 `revert` 工具回滚到任意历史版本
 - **🔗 交互式有向图** — 基于 [AntV G6](https://g6.antv.antgroup.com/)，支持 6 种语义边类型（调用、依赖、数据流、事件、继承、组合），边悬浮弹窗展示关系详情
@@ -230,6 +238,7 @@ gitUrl (已存在) ──► git fetch + pull
 | `create_node` | 给父图追加新节点（page → 同时建空 md；graph → 同时建子图占位） |
 | `update_node` | 修改父图中某节点的 name / description / codeScope / edges |
 | `delete_node` | 从父图移除节点（page 删 md；graph 递归删子目录） |
+| `patch_page` | 精准字符串匹配替换叶子 md 中的局部内容，比 update_page 更高效、更安全 |
 | `update_page` | 覆盖叶子 md 内容，使用 `pageVersions[ref]` 作为 baseVersion |
 | `revert` | 把某个历史版本作为新版本写回，不擦除中间版本 |
 
@@ -266,7 +275,7 @@ src/souko/
 
 - **走 MCP 工具**（推荐）：通过 `update_node` / `update_page` / `create_node` / `delete_node` 修改，自动带 version + 历史快照，适合让 Code Agent 自动维护
 - **直接编辑文件**：直接改 `src/souko/doc/{project}/` 下的 .md / .json，重启服务即可生效（绕过版本机制）
-- **触发增量更新**：在源码仓推一个新 commit 后再次提交同一个 git URL，Updater Agent 会自动检测 diff 并局部更新
+- **触发增量更新**：在首页点击 Update 按钮，PrUpdater Agent 会自动发现所有新合并的 PR 并逐条处理。Manual 模式下每条 PR 都经过审阅确认
 
 ## doc-drill: Code Agent 原生集成
 
@@ -297,7 +306,8 @@ autoDoc/
 ├── src/
 │   ├── server.ts                 # HTTP API + /mcp（同端口，stateless transport）
 │   ├── git/
-│   │   └── repoManager.ts        # git CLI 封装（clone / fetch / diff / projectNameFromUrl）
+│   │   ├── repoManager.ts        # git CLI 封装（clone / fetch / diff / projectNameFromUrl）
+│   │   └── prDiscovery.ts        # PR/commit 发现 + diff 工具
 │   ├── souko/                    # 项目仓（repo + doc + 共享 registry）
 │   │   ├── registry.ts           # projects.json 读写
 │   │   ├── repo/                 # gitignore：clone 来的源码
@@ -310,14 +320,15 @@ autoDoc/
 │   │   └── tools/{query,mutate}.ts
 │   ├── agents/                   # Agent 实现（Claude + Codex 双后端）
 │   │   ├── tsukai/               # 所有 Agent 类（barrel: index.ts）
-│   │   │   ├── claude{scaffold,decomposer,writer,checker,flowanalyzer,updater}.ts
-│   │   │   └── codex{scaffold,decomposer,writer,checker,flowanalyzer,updater}.ts
+│   │   │   ├── claude{scaffold,decomposer,writer,checker,flowanalyzer,prupdater}.ts
+│   │   │   └── codex{scaffold,decomposer,writer,checker,flowanalyzer,prupdater}.ts
 │   │   ├── instructions/         # 各 Agent 提示词
 │   │   │   ├── cn/               # 中文提示词
 │   │   │   └── en/               # 英文提示词
 │   │   └── schemas/schema.ts     # Zod 输出 schema（含 UpdaterOutput）
 │   ├── workflow/
-│   │   └── arranger.ts           # 全量管线状态机
+│   │   ├── arranger.ts           # 全量管线状态机
+│   │   └── updateOrchestrator.ts # PR 增量更新调度器
 │   └── skill-template/
 │       └── SKILL.md              # 瘦版 doc-drill skill（指向 /mcp）
 ├── web/                          # Vue 3 前端

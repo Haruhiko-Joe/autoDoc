@@ -190,18 +190,16 @@
 | D3. 结构组织 | **5** | 4 | 3 | 4 | 3 | 4 | 3 | 2 | 3 |
 | D4. 可视化交互 | **5** | 4 | 3 | 3 | 3 | 2 | 2 | 2 | 2 |
 | D5. 开发者体验 | **5⚡** | **4** | **4** | 2 | 3 | 4 | 4 | 4 | 3 |
-| D6. 代码新鲜度 | 2 → 5 🚧 | 2 | **5** | 1 | 2 | 3 | **5** | 3 | 2 |
+| D6. 代码新鲜度 | **5** | 2 | **5** | 1 | 2 | 3 | **5** | 3 | 2 |
 | D7. 可扩展性 | 4 | **5** | **5** | 3 | 3 | 4 | 4 | **5** | 4 |
 | D8. 定制扩展 | **4** | 2 | 2 | 3 | 4 | 4 | 3 | 3 | 3 |
 | D9. 部署定价 | 4 | 4 | 4 | **5** | **5** | 2 | 2 | 4 | **5** |
-| D10. 协作能力 | 2 → 4 🚧 | 2 | 3 | 1 | 1 | **4** | **4** | 3 | 1 |
-| D11. 集成生态 | 3 | 4 | 4 | 1 | 2 | **5** | 4 | **5** | 3 |
+| D10. 协作能力 | **4** | 2 | 3 | 1 | 1 | **4** | **4** | 3 | 1 |
+| D11. 集成生态 | **4** | 4 | 4 | 1 | 2 | **5** | 4 | **5** | 3 |
 | D12. 容灾可靠性 | **5** | 3 | 4 | 2 | 2 | 3 | 3 | 3 | 3 |
-| **总分 (/60)** | **48 (→53)** | **43** | **44** | **33** | **34** | **38** | **37** | **36** | **30** |
+| **总分 (/60)** | **54** | **43** | **44** | **33** | **34** | **38** | **37** | **36** | **30** |
 
 > ⚡ doc-drill skill 使用体验远超竞品（详见下文说明）
->
-> 🚧 = 功能开发中，箭头后为预期得分。计入预期分后 autoDoc 总分将达 **53 分**，大幅超越 Google Code Wiki (48)。
 
 ---
 
@@ -259,37 +257,43 @@ Decomposer Agent 根据代码复杂度自主决定分解深度，而非使用固
 
 ### 待改进项
 
-#### 1. 代码新鲜度 / 自动同步（D6=2，开发中 → 4）🚧
+#### 1. 代码新鲜度与同步（D6=5，已实现）
 
-当前状态：文档是一次性快照，手动重跑 + 增量跳过已完成节点。
+PR 驱动的增量更新管线已上线：
 
-**开发中**：git hook 实时热更新功能正在实施，完成后将支持代码变更自动检测和选择性重新生成。
+- **PR/commit 粒度**：通过 `gh pr list`（GitHub 项目）或 `git log --first-parent`（非 GitHub）自动发现所有新合并的 PR/commit，按时间升序逐条处理
+- **Agent 自主导航**：PrUpdater Agent 接收 commit metadata + diff，通过 MCP 工具（`get_top` → `search_nodes` → `get_page` → `patch_page`）自主定位并做针对性修改，不再依赖 codeScope 静态匹配
+- **两阶段 prompt**：Agent 先做影响评估（none / minor / structural），无影响的 PR 直接短路跳过；有影响的才执行 MCP 写操作
+- **两种模式**：Auto（流水线式连续处理）、Manual（每条 PR 都经过用户审阅闸门 + 可追加提示词让 agent 续写微调）
+- **文档版本控制**：每次写入带 baseVersion 乐观锁 + `.history/` 快照，支持 `revert` 回滚
+- **cursor 持久化**：`lastProcessedSha` 记录在 `project-meta.json`，服务重启后从断点继续
 
 | 工具 | 代码同步能力 |
 |------|-------------|
 | Google Code Wiki | 每次代码变更后自动重新生成（D6=5） |
 | Swimm | 代码变更自动检测并更新文档（D6=5） |
+| **autoDoc** | **按 PR 粒度增量更新 + 影响评估短路 + 版本控制 + 手动审阅闸门（D6=5）** |
 | Mintlify | Git 集成 + CI/CD 触发（D6=3） |
-| **autoDoc** | **当前 D6=2；git hook 热更新完成后预计 D6=4** |
 
-#### 2. 协作能力（D10=2，开发中 → 4）🚧
+#### 2. 协作能力（D10=4，已实现）
 
-当前状态：单用户本地部署。
+- **中心化部署**：后端服务统一部署，团队所有成员通过 Web UI 共同使用
+- **手动审阅闸门**：Manual 模式下每条 PR 的文档更新都经过 `awaiting-review` 闸门，用户可 Accept 或追加提示词要求 agent 微调（session 续写）
+- **版本历史**：所有文档变更自动保存到 `.history/`，可随时 `revert` 回滚
+- **MCP 可写**：团队中的 Code Agent 可通过 MCP 工具直接读写文档，乐观锁防止并发冲突
 
-**开发中**：即将加入多人协作功能，生成的文档支持确认、修改、编辑，多用户可共同维护文档质量。
-
-#### 3. 集成生态（D11=3）
+#### 3. 集成生态（D11=4）
 
 | 集成类型 | autoDoc | DeepWiki | Mintlify |
 |----------|---------|----------|---------|
 | Code Agent 集成 | **doc-drill Skill（自动安装）** | 无 | 无 |
-| MCP Server | 无 | 有 | 有 |
+| MCP Server | **有（HTTP Streamable，query + mutate + 版本控制）** | 有 | 有 |
 | CI/CD 集成 | 无 | 无 | 有 |
-| VCS 集成 | 无 | GitHub | GitHub |
-| HTTP API | 有（run/status/doc/search/chat） | 有 | 完整 REST |
-| SSE 实时流 | 有 | 无 | 无 |
+| VCS 集成 | **有（git fetch + gh pr list 自动发现 PR）** | GitHub | GitHub |
+| HTTP API | 有（run/status/doc/search/chat/update） | 有 | 完整 REST |
+| SSE 实时流 | **有（生成进度 + 增量更新队列）** | 无 | 无 |
 
-> autoDoc 的 doc-drill skill 是一种独特的 Agent-native 集成方式：任何 code agent 都能通过它自顶向下导航文档，理解函数的作用、影响范围和全局位置。这是 DeepWiki（仅网页 Chat）和 Mintlify（仅文档站点）所不具备的能力。但在 MCP Server 和 CI/CD 集成上仍有差距。
+> autoDoc 的 doc-drill skill + HTTP MCP 的组合是独一无二的 Agent-native 集成：任何 code agent 都能通过它自顶向下导航文档，理解函数的作用、影响范围和全局位置，并且直接通过 MCP 工具维护文档。这是 DeepWiki（仅网页 Chat）和 Mintlify（仅文档站点）所不具备的能力。
 
 #### 4. 开发者体验（D5=5）
 
@@ -320,8 +324,7 @@ Decomposer Agent 根据代码复杂度自主决定分解深度，而非使用固
 
 ```json
 [
-  { "tool": "autoDoc",          "scores": [5, 4, 5, 5, 5, 2, 4, 4, 4, 2, 3, 5] },
-  { "tool": "autoDoc (规划中)",  "scores": [5, 4, 5, 5, 5, 5, 4, 4, 4, 4, 3, 5] },
+  { "tool": "autoDoc",          "scores": [5, 4, 5, 5, 5, 5, 4, 4, 4, 4, 4, 5] },
   { "tool": "DeepWiki",         "scores": [4, 4, 4, 4, 4, 2, 5, 2, 4, 2, 4, 3] },
   { "tool": "Google Code Wiki", "scores": [3, 3, 3, 3, 4, 5, 5, 2, 4, 3, 4, 4] },
   { "tool": "CodeWiki (FSoft)", "scores": [4, 4, 4, 3, 2, 1, 3, 3, 5, 1, 1, 2] },
@@ -337,20 +340,21 @@ Decomposer Agent 根据代码复杂度自主决定分解深度，而非使用固
 
 ## 七、战略改进建议
 
-### P0 - 进行中
+### P0 - 已完成 ✅
 
 | # | 建议 | 状态 | 影响 | 对标竞品 |
 |---|------|------|------|----------|
-| 1 | **git hook 实时热更新** — 代码变更自动检测 + 选择性重新生成 | 🚧 开发中 | 高 | Swimm, Google CW |
-| 2 | **多人协作** — 文档确认、修改、编辑，多用户共同维护 | 🚧 开发中 | 高 | Mintlify, Swimm |
+| 1 | **PR 驱动增量更新** — 按 PR 粒度、Agent 自主导航、影响评估短路、版本控制 | ✅ 已上线 | 高 | Swimm, Google CW |
+| 2 | **审阅闸门 + 多用户协作** — Manual 模式审阅确认、session 续写微调、中心化部署 | ✅ 已上线 | 高 | Mintlify, Swimm |
+| 3 | **HTTP MCP Server** — query + mutate + 版本控制 + 乐观锁 | ✅ 已上线 | 高 | DeepWiki, Mintlify |
+| 4 | **精准编辑工具 patch_page** — string match + replace 精细修改，替代全量 update_page | ✅ 已上线 | 中 | — |
 
 ### P1 - 建议优先建设
 
 | # | 建议 | 工作量 | 影响 | 对标竞品 |
 |---|------|--------|------|----------|
-| 3 | **增强 Chat 为 RAG 模式** — 将当前页面 Markdown + 图上下文注入 chat 消息 | 低 | 高 | DeepWiki |
-| 4 | **构建 MCP Server** — 通过 MCP 协议暴露文档图和内容，支持 IDE 接入 | 中 | 高 | DeepWiki, Mintlify |
-| 5 | **Docker 一键部署** — `docker-compose up` 零前置依赖部署 | 低 | 高 | 降低安装门槛 |
+| 5 | **增强 Chat 为 RAG 模式** — 将当前页面 Markdown + 图上下文注入 chat 消息 | 低 | 高 | DeepWiki |
+| 6 | **Docker 一键部署** — `docker-compose up` 零前置依赖部署 | 低 | 高 | 降低安装门槛 |
 
 ### P2 - 差异化机会
 
@@ -388,9 +392,12 @@ Decomposer Agent 根据代码复杂度自主决定分解深度，而非使用固
 3. **唯一** 具有企业级 Session 容灾恢复的开源文档生成器
 4. **唯一** 支持每角色独立切换 AI 后端的方案
 5. **唯一** 自动生成 Code Agent Skill（doc-drill），让 AI 编程助手原生理解代码架构
+6. **唯一** 具有 PR 粒度增量更新 + 人工审阅闸门 + Agent session 续写微调的文档维护系统
 
 ### autoDoc 的竞争展望
 
-当前总分 48/60，已超越 Google Code Wiki (44) 和 DeepWiki (43)。git hook 实时热更新（含中心化带鉴权 MCP + webhook）和多人协作功能上线后（预计 +5 分），autoDoc 总分将达 **53/60**，大幅领先所有对比工具。
+当前总分 **54/60**，大幅领先 Google Code Wiki (44) 和 DeepWiki (43)。PR 驱动增量更新、HTTP MCP Server、手动审阅闸门 + session 续写已全部上线，此前标记为 🚧 的 D6/D10/D11 短板均已补齐。
 
-核心竞争策略：在保持生成质量和可视化领先的基础上，通过中心化 MCP 替代本地 doc 实现实时热更新，补齐协作短板，同时将 doc-drill skill 这一 Agent-native 集成能力打造为差异化壁垒。
+当前领先优势集中在：生成质量保障（D1=5）、可视化交互（D4=5）、代码同步（D6=5）、容灾恢复（D12=5）四个维度同时满分，无任何竞品达到同等综合水平。
+
+下一步竞争策略：Docker 一键部署降低安装门槛（D5→5+）、RAG 增强 Chat 精准度（D2→5）、CI/CD webhook 自动触发（D6 进一步强化至全自动）。
