@@ -8,13 +8,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Backend (root)
 pnpm dev              # Start backend server (port 3100) via tsx
 pnpm start            # Start backend + frontend concurrently
-npx tsc --noEmit      # Type-check backend
-
-# Frontend (web/)
-cd web && pnpm dev    # Start Vite dev server (proxies /api to :3100)
-cd web && pnpm build  # Type-check + build frontend
-cd web && npx vue-tsc --noEmit  # Type-check frontend only
-```
 
 No test suite exists yet (`pnpm test` is a stub).
 
