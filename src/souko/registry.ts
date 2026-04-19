@@ -6,6 +6,8 @@ export interface ProjectMeta {
   branch: string;
   head: string;
   lastUpdated: string;
+  lastProcessedSha?: string;
+  lastUpdateError?: string;
 }
 
 export interface RegistryFile {

@@ -5,6 +5,7 @@ import { fetchTopGraph, startRun, fetchStatus, fetchProjects, subscribeStatus, s
 import GraphView from '../components/GraphView.vue'
 import EdgeLegend from '../components/EdgeLegend.vue'
 import DocTree from '../components/DocTree.vue'
+import UpdateQueuePanel from '../components/UpdateQueuePanel.vue'
 import { useTheme } from '../composables/useTheme'
 import type { TopGraph, GraphNode } from '../types'
 
@@ -14,6 +15,7 @@ const route = useRoute()
 const router = useRouter()
 const topGraph = ref<TopGraph | null>(null)
 const gitUrl = ref('')
+const showUpdatePanel = ref(false)
 const maxConcurrency = ref(8)
 const agentBackends = reactive<AgentBackends>({
   scaffold: 'claude',
@@ -550,6 +552,7 @@ async function handleRetryErrors() {
           <span class="project-chip">{{ selectedProject }}</span>
           <span v-if="viewingRunningProject" class="live-badge">LIVE</span>
           <a class="flows-link" @click="router.push(`/${selectedProject}/flows`)">Interaction Flows &rarr;</a>
+          <button class="update-btn" @click="showUpdatePanel = !showUpdatePanel">Update</button>
         </div>
         <div class="canvas-graph">
           <GraphView :nodes="graphNodes()" @node-click="onNodeClick" />
@@ -583,6 +586,12 @@ async function handleRetryErrors() {
         <div class="canvas-empty error">{{ errorMsg }}</div>
       </template>
     </main>
+    <UpdateQueuePanel
+      v-if="selectedProject"
+      :project="selectedProject"
+      :visible="showUpdatePanel"
+      @close="showUpdatePanel = false"
+    />
   </div>
 </template>
 
@@ -1017,6 +1026,23 @@ async function handleRetryErrors() {
 
 .flows-link:hover {
   text-decoration: underline;
+}
+
+.update-btn {
+  padding: 4px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.update-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .live-badge {

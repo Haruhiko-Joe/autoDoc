@@ -80,4 +80,86 @@ export function registerQueryTools(mcp: McpServer, store: DocStore): void {
     async ({ project, paths }) =>
       json({ docs: await store.readDocs(project, paths) }),
   )
+
+  // ─── Structured reads (return version for baseVersion round-trip) ──
+
+  mcp.registerTool(
+    "get_top",
+    {
+      description:
+        "Get a project's top-level graph with version. Returns the full TopGraph object including `version` (needed as `baseVersion` for update_top) and the `nodes` array of top-level modules. Always call this first when exploring a project.",
+      inputSchema: {
+        project: z.string(),
+      },
+    },
+    async ({ project }) => json(await store.readTop(project)),
+  )
+
+  mcp.registerTool(
+    "get_graph",
+    {
+      description:
+        "Get a subgraph by nodeId. Returns the full Graph object including `version`, `pageVersions` (per-page version map), `codeScope`, `nodes`, and `description`. Use `version` as `baseVersion` for graph-level mutations; use `pageVersions[ref]` as `baseVersion` for update_page/patch_page.",
+      inputSchema: {
+        project: z.string(),
+        nodeId: z.string().describe("Slash-separated path, e.g. 'Core/SessionEngine'"),
+      },
+    },
+    async ({ project, nodeId }) => json(await store.readGraph(project, nodeId)),
+  )
+
+  mcp.registerTool(
+    "get_page",
+    {
+      description:
+        "Get a leaf markdown page's content and its version. Returns `{ content, version }` where `version` can be used directly as `baseVersion` for update_page or patch_page.",
+      inputSchema: {
+        project: z.string(),
+        nodeId: z.string().describe("Parent graph's nodeId, e.g. 'Core/SessionEngine'"),
+        ref: z.string().describe("The child's ref within the parent graph"),
+      },
+    },
+    async ({ project, nodeId, ref }) => json(await store.readPage(project, nodeId, ref)),
+  )
+
+  mcp.registerTool(
+    "search_nodes",
+    {
+      description:
+        "Search across all nodes (at every nesting level) by keyword. Matches against node names and descriptions (case-insensitive substring). Returns an array of matches with their full nodeId path, name, description, and type (graph or page).",
+      inputSchema: {
+        project: z.string(),
+        query: z.string().describe("Search keyword"),
+      },
+    },
+    async ({ project, query }) => json({ results: await store.searchNodes(project, query) }),
+  )
+
+  mcp.registerTool(
+    "list_history",
+    {
+      description:
+        "List all historical versions of a doc file. `relPath` is the on-disk relative path within the project, e.g. 'top.json', 'Core/Core.json', 'Core/SessionEngine.md'. Returns versions sorted newest-first with timestamp, source, and summary metadata when available.",
+      inputSchema: {
+        project: z.string(),
+        relPath: z.string(),
+      },
+    },
+    async ({ project, relPath }) => json({ versions: await store.listHistory(project, relPath) }),
+  )
+
+  mcp.registerTool(
+    "get_history",
+    {
+      description:
+        "Read the content of a specific historical version. Returns the raw file text at that version.",
+      inputSchema: {
+        project: z.string(),
+        relPath: z.string(),
+        version: z.number().int().min(0),
+      },
+    },
+    async ({ project, relPath, version }) =>
+      json({ content: await store.readHistorySnapshot(project, relPath, version) }),
+  )
 }

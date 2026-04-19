@@ -8,6 +8,7 @@ import {
 import { TopGraph, Graph } from "../agents/schemas/schema.js";
 import type { IChecker, IScaffold, IDecomposer, IWriter, IFlowAnalyzer, Language } from "../agents/schemas/schema.js";
 import { knowledgePathOf } from "../souko/registry.js";
+import { appendRunLog } from "../souko/runLog.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SKILL_TEMPLATE_DIR = path.resolve(__dirname, "..", "skill-template");
@@ -249,6 +250,7 @@ export class Arranger {
     this.knowledge = await this.loadKnowledge();
 
     await mkdir(this.docDir, { recursive: true });
+    await appendRunLog(this.projectName, `arranger run repo=${repoPath} backends=${JSON.stringify(this.agentBackends)} language=${this.language} concurrency=${this.maxConcurrency}`);
 
     const topExists = await this.fileExists(path.join(this.docDir, "top.json"));
     if (!topExists) {
@@ -258,11 +260,13 @@ export class Arranger {
       await this.runScaffold();
     } else {
       console.log("[Arranger] top.json already exists, skipping scaffold.");
+      await appendRunLog(this.projectName, `scaffold skip (top.json exists)`);
     }
 
     await this.resetRecoverableNodes();
     this.currentPhase = "processing";
     this.notify();
+    await appendRunLog(this.projectName, `phase=processing`);
     await this.processLoop();
 
     const counts = await this.countStatuses();
@@ -275,14 +279,17 @@ export class Arranger {
 
     this.currentPhase = "assembling";
     this.notify();
+    await appendRunLog(this.projectName, `phase=assembling`);
     await this.assembleSkill();
 
     this.currentPhase = "flows";
     this.notify();
+    await appendRunLog(this.projectName, `phase=flows`);
     await this.runFlowAnalysis();
 
     this.currentPhase = "idle";
     this.notify();
+    await appendRunLog(this.projectName, `arranger done`);
     console.log("[Arranger] Done.");
   }
 
@@ -342,6 +349,7 @@ export class Arranger {
   // ─── Scaffold + Checker ───
 
   private async runScaffold(): Promise<void> {
+    await appendRunLog(this.projectName, `scaffold invoke backend=${this.getBackend("scaffold")}`);
     const { topResult, finalSessionId } = await this.withRetry(async () => {
       const scaffold = this.makeScaffold();
       const { sessionId, result } = await scaffold.run(
@@ -354,6 +362,7 @@ export class Arranger {
 
       const checker = this.makeChecker();
       for (let retry = 0; ; retry++) {
+        await appendRunLog(this.projectName, `checker invoke scope=scaffold retry=${retry}`);
         const checkerPrompt = this.appendKnowledge([
           `Validate the scaffold output for the top-level module graph.`,
           `Repository root: ${this.repoPath}`,
@@ -370,11 +379,14 @@ export class Arranger {
 
         if (checkerResult.result.passed) {
           console.log("[Arranger] Scaffold check passed.");
+          await appendRunLog(this.projectName, `checker pass scope=scaffold`);
           break;
         }
         if (retry >= 5) throw new Error(`Scaffold check failed after 5 retries: ${JSON.stringify(checkerResult.result.issues)}`);
 
         console.log(`[Arranger] Scaffold check failed (retry ${retry + 1}/5)`);
+        await appendRunLog(this.projectName, `checker fail scope=scaffold retry=${retry + 1}`);
+        await appendRunLog(this.projectName, `scaffold continue retry=${retry + 1}`);
         const fixed = await scaffold.continue(buildScaffoldFixPrompt(checkerResult.result.issues));
         topResult = fixed.result;
         finalSessionId = fixed.sessionId;
@@ -593,6 +605,8 @@ export class Arranger {
 
     let rawGraph = existing?.rawGraph;
     if (!rawGraph) {
+      const mode = decomposer.getSessionId() ? "continue" : "run";
+      await appendRunLog(this.projectName, `decomposer invoke node=${nodeId} mode=${mode} backend=${this.getBackend("decomposer")}`);
       rawGraph = (await this.withSemaphore(() =>
         decomposer.getSessionId()
           ? decomposer.continue(prompt)
@@ -602,6 +616,8 @@ export class Arranger {
 
     for (let retry = 0; ; retry++) {
       const checkerPrompt = this.buildGraphCheckerPrompt(nodeId, rawGraph);
+      const checkerMode = checker.getSessionId() ? "continue" : "run";
+      await appendRunLog(this.projectName, `checker invoke scope=decomposer node=${nodeId} mode=${checkerMode} retry=${retry}`);
       const checkerResult = await this.withSemaphore(() =>
         checker.getSessionId()
           ? checker.continue(checkerPrompt)
@@ -610,11 +626,14 @@ export class Arranger {
 
       if (checkerResult.result.passed) {
         console.log(`[Arranger] Decomposer check passed: ${nodeId}`);
+        await appendRunLog(this.projectName, `checker pass scope=decomposer node=${nodeId}`);
         return { rawGraph, decomposer };
       }
       if (retry >= 5) throw new Error(`Decomposer check failed after 5 retries for ${nodeId}`);
 
       console.log(`[Arranger] Decomposer check failed: ${nodeId} (retry ${retry + 1}/5)`);
+      await appendRunLog(this.projectName, `checker fail scope=decomposer node=${nodeId} retry=${retry + 1}`);
+      await appendRunLog(this.projectName, `decomposer continue node=${nodeId} retry=${retry + 1}`);
       rawGraph = (await this.withSemaphore(() => decomposer.continue(buildDecomposerFixPrompt(checkerResult.result.issues)))).result;
     }
   }
@@ -635,6 +654,7 @@ export class Arranger {
     const ancestorContext = await this.buildAncestorContext(nodeId);
 
     console.log(`[Arranger] Processing graph task: ${nodeId}`);
+    await appendRunLog(this.projectName, `graph task start node=${nodeId}`);
     let rawGraph: RawGraphType;
     let decomposerSessionId: string;
 
@@ -657,6 +677,7 @@ export class Arranger {
     }
 
     console.log(`[Arranger] Decomposed: ${nodeId} → ${rawGraph.nodes.length} child nodes`);
+    await appendRunLog(this.projectName, `graph task done node=${nodeId} children=${rawGraph.nodes.length}`);
     await this.ensureChildGraphs(nodeId, rawGraph.nodes);
 
     const pageTasks = this.buildPageTasks(rawGraph.nodes);
@@ -679,15 +700,20 @@ export class Arranger {
     const pageNode = this.findPageNode(graph.nodes, ref);
     if (!pageNode) {
       console.error(`[Arranger] Missing page node for ${nodeId}/${ref}`);
+      await appendRunLog(this.projectName, `page task error node=${nodeId} ref=${ref} error=missing-page-node`);
       await this.updateGraph(nodeId, { status: "error" });
       return;
     }
+
+    await appendRunLog(this.projectName, `page task start node=${nodeId} ref=${ref}`);
 
     let content: string;
     try {
       content = await this.withRetry(() => this.writePage(pageNode, ancestorContext));
     } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
       console.error(`[Arranger] Write failed for ${nodeId}/${ref}:`, e);
+      await appendRunLog(this.projectName, `page task error node=${nodeId} ref=${ref} error=${msg.slice(0, 200)}`);
       await this.updatePageTask(nodeId, ref, { status: "error" });
       await this.updateGraph(nodeId, { status: "error" });
       return;
@@ -698,6 +724,7 @@ export class Arranger {
     await writeFile(path.join(destDir, `${ref}.md`), content);
 
     await this.updatePageTask(nodeId, ref, { status: "done" });
+    await appendRunLog(this.projectName, `page task done node=${nodeId} ref=${ref}`);
     await this.finishNodeIfReady(nodeId);
   }
 
@@ -709,6 +736,7 @@ export class Arranger {
     ancestorContext: AncestorContextType | null,
   ): Promise<string> {
     console.log(`[Arranger] Generating page: ${node.name}`);
+    await appendRunLog(this.projectName, `writer invoke node=${node.name} backend=${this.getBackend("writer")}`);
 
     const parts = [
       `Write comprehensive Markdown documentation for the module "${node.name}".`,
@@ -722,6 +750,7 @@ export class Arranger {
 
     const { result } = await writer.run(this.appendKnowledge(parts.join("\n")), this.repoPath);
     console.log(`[Arranger] Page generated: ${node.name}`);
+    await appendRunLog(this.projectName, `writer return node=${node.name} len=${result.content.length}`);
     return result.content;
   }
 
@@ -949,6 +978,7 @@ export class Arranger {
     }
 
     console.log("[Arranger] Running flow analysis...");
+    await appendRunLog(this.projectName, `flowAnalyzer invoke backend=${this.getBackend("flowAnalyzer")}`);
     const { result } = await this.withRetry(async () => {
       const analyzer = this.makeFlowAnalyzer();
       const prompt = `Analyze the documented codebase and produce 3-7 typical business interaction flows.\nRepository root: ${this.repoPath}`;

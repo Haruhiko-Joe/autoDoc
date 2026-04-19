@@ -7,11 +7,19 @@ import type { GraphNode, EdgeType } from '../types'
 
 const props = defineProps<{
   nodes: GraphNode[]
+  editable?: boolean
 }>()
 
 const emit = defineEmits<{
   nodeClick: [node: GraphNode]
+  nodeEdit: [node: GraphNode]
+  nodeDelete: [node: GraphNode]
+  edgeEdit: [source: string, edge: { target: string; type: EdgeType; description: string }]
+  edgeDelete: [source: string, edgeTarget: string, edgeType: EdgeType]
+  edgeCreate: [source: string, target: string]
 }>()
+
+const selectedNodeId = ref<string | null>(null)
 
 const { isDark } = useTheme()
 const containerRef = ref<HTMLDivElement>()
@@ -58,9 +66,14 @@ function escapeHtml(str: string): string {
 
 function renderCard(name: string, description: string, isFocused: boolean): string {
   const escapedName = escapeHtml(name)
-  return `<div class="node-card" data-node-id="${escapedName}">
+  const isSelected = props.editable && selectedNodeId.value === name
+  const editBtns = props.editable
+    ? `<span class="node-card-edit-btn" data-action="edit" data-node-id="${escapedName}" title="Edit">&#9998;</span>`
+    : ''
+  return `<div class="node-card${isSelected ? ' is-selected' : ''}" data-node-id="${escapedName}">
     <div class="node-card-header">
       <div class="node-card-name">${escapedName}</div>
+      ${editBtns}
       <span
         class="node-card-focus-trigger${isFocused ? ' is-active' : ''}"
         data-node-id="${escapedName}"
@@ -340,7 +353,25 @@ function createGraph() {
         }
       },
     },
-    behaviors: ['zoom-canvas', 'drag-canvas', 'drag-element'],
+    behaviors: props.editable
+      ? [
+          'zoom-canvas',
+          'drag-canvas',
+          'drag-element',
+          {
+            type: 'create-edge',
+            trigger: 'drag',
+            onCreate: (edge: { source: string | number; target: string | number }) => {
+              const src = String(edge.source)
+              const tgt = String(edge.target)
+              if (src !== tgt) {
+                emit('edgeCreate', src, tgt)
+              }
+              return undefined
+            },
+          },
+        ]
+      : ['zoom-canvas', 'drag-canvas', 'drag-element'],
   })
 
   graph.on(NodeEvent.CLICK, (evt) => {
@@ -350,8 +381,23 @@ function createGraph() {
     if (nativeTarget instanceof Element && nativeTarget.closest('.node-card-focus-trigger')) {
       return
     }
+    if (nativeTarget instanceof Element) {
+      const editBtn = nativeTarget.closest('[data-action="edit"]') as HTMLElement | null
+      if (editBtn) {
+        const nodeId = editBtn.dataset.nodeId
+        const found = props.nodes.find((n) => n.name === nodeId)
+        if (found) emit('nodeEdit', found)
+        return
+      }
+    }
     const nodeId = e.target?.id
     if (!nodeId) return
+    if (props.editable) {
+      selectedNodeId.value = selectedNodeId.value === nodeId ? null : nodeId
+      destroyGraph()
+      createGraph()
+      return
+    }
     const found = props.nodes.find((n) => n.name === nodeId)
     if (found) emit('nodeClick', found)
   })
@@ -387,6 +433,14 @@ function createGraph() {
   void graph.render().then(() => applyFocusMode())
 }
 
+function onKeyDown(e: KeyboardEvent) {
+  if (!props.editable || !selectedNodeId.value) return
+  if (e.key === 'Delete' || e.key === 'Backspace') {
+    const found = props.nodes.find((n) => n.name === selectedNodeId.value)
+    if (found) emit('nodeDelete', found)
+  }
+}
+
 function destroyGraph() {
   if (graph) {
     graph.destroy()
@@ -394,8 +448,14 @@ function destroyGraph() {
   }
 }
 
-onMounted(createGraph)
-onUnmounted(destroyGraph)
+onMounted(() => {
+  createGraph()
+  window.addEventListener('keydown', onKeyDown)
+})
+onUnmounted(() => {
+  destroyGraph()
+  window.removeEventListener('keydown', onKeyDown)
+})
 
 watch(
   () => props.nodes,
@@ -442,7 +502,11 @@ watch(isDark, () => {
           <button class="edge-popover-close" @click="closePopover">&times;</button>
         </div>
         <div class="edge-popover-desc">{{ popover.description }}</div>
-        <div class="edge-popover-detail">{{ popover.detail }}</div>
+        <div class="edge-popover-detail" v-if="popover.detail">{{ popover.detail }}</div>
+        <div class="edge-popover-actions" v-if="editable">
+          <button class="btn-sm" @click="$emit('edgeEdit', popover.source, { target: popover.target, type: popover.type, description: popover.description }); closePopover()">Edit</button>
+          <button class="btn-sm danger" @click="$emit('edgeDelete', popover.source, popover.target, popover.type); closePopover()">Delete</button>
+        </div>
       </div>
     </Transition>
   </div>
@@ -513,6 +577,28 @@ watch(isDark, () => {
   color: var(--accent);
   text-decoration: underline;
   text-underline-offset: 2px;
+}
+
+:global(.node-card.is-selected) {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent), 0 6px 20px var(--accent-shadow);
+}
+
+:global(.node-card-edit-btn) {
+  color: var(--text-disabled);
+  font-size: 14px;
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+:global(.node-card:hover .node-card-edit-btn) {
+  opacity: 1;
+}
+
+:global(.node-card-edit-btn:hover) {
+  color: var(--accent);
 }
 
 :global(.node-card-desc) {
@@ -622,5 +708,34 @@ watch(isDark, () => {
   font-size: 13px;
   color: var(--text-secondary);
   line-height: 1.7;
+}
+
+.edge-popover-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-light);
+}
+
+.btn-sm {
+  padding: 4px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 5px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.btn-sm:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.btn-sm.danger:hover {
+  border-color: var(--color-red);
+  color: var(--color-red);
 }
 </style>

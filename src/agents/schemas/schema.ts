@@ -165,6 +165,11 @@ export const AncestorContext = z.object({
   ancestors: z.array(AncestorLayer),
 })
 
+// --- PR Updater ---
+
+// PR updater emits a free-form Markdown report, streamed to the client.
+export type PrUpdaterDelta = (chunk: string) => void
+
 // --- Checker ---
 
 export const CheckerIssueType = z.enum([
@@ -232,6 +237,13 @@ export interface IKnowledge {
   restore(sessionId: string, workpath: string): void
   run(prompt: string, workpath: string): Promise<AgentResult<KnowledgeTurn>>
   continue(prompt: string): Promise<AgentResult<KnowledgeTurn>>
+}
+
+export interface IPrUpdater {
+  getSessionId(): string | undefined
+  restore(sessionId: string, workpath: string): void
+  run(prompt: string, workpath: string, onDelta?: PrUpdaterDelta): Promise<AgentResult<string>>
+  continue(prompt: string, onDelta?: PrUpdaterDelta): Promise<AgentResult<string>>
 }
 
 // --- Inferred types ---
