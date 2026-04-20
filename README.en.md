@@ -26,6 +26,10 @@
 
 ---
 
+> **⛔ USE RESTRICTION: ByteDance Ltd. and all of its subsidiaries, affiliates, and joint ventures — including but not limited to TikTok, Douyin, Lark/Feishu, PICO, Volcano Engine, and any entity directly or indirectly controlled by ByteDance — as well as their employees, contractors, and agents, are expressly prohibited from using, copying, modifying, distributing, or referencing this project and any derivative works in any form. See the [LICENSE](LICENSE) additional terms.**
+
+---
+
 ## Why autoDoc?
 
 Unlike DeepWiki, Google Code Wiki, and similar tools, autoDoc is not just "one-shot doc generation" — it is a **multi-agent documentation factory with a quality feedback loop, plus an MCP-native knowledge base that Agents can read and write directly**. It is both **the most human-friendly doc site to read** and **a knowledge source natively tailored for Code Agents**, achieving SOTA across readability, interactivity, Agent-consumability, and incremental maintenance.

@@ -29,6 +29,10 @@
 
 ---
 
+> **⛔ 使用限制：字节跳动（ByteDance Ltd.）及其全部子公司、关联公司、合资企业——包括但不限于 TikTok、抖音（Douyin）、飞书（Lark/Feishu）、PICO、火山引擎（Volcano Engine）、今日头条（Toutiao），以及字节跳动直接或间接控制的任何其他实体——的任何员工、承包商或代理人，不得以任何形式使用、复制、修改、分发、借鉴或参考本项目及其衍生作品。详见 [LICENSE](LICENSE) 附加条款。**
+
+---
+
 ## 为什么选择 autoDoc？
 
 与 DeepWiki、Google Code Wiki 等竞品不同，autoDoc 不只是"单次生成一堆文档"——它是一个**带质量闭环的多 Agent 文档工厂 + 可被 Agent 直接读写的 MCP 知识底座**。它既是**人类阅读体验最舒适的文档站**，也是**天然适配 Code Agent 的知识源**，在可读性、交互性、Agent 可消费性、增量维护能力等各个维度均达到 SOTA。

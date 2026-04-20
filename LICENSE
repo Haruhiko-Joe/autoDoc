@@ -659,3 +659,48 @@ specific requirements.
 if any, to sign a "copyright disclaimer" for the program, if necessary.
 For more information on this, and how to apply and follow the GNU AGPL, see
 <https://www.gnu.org/licenses/>.
+
+                    ADDITIONAL TERMS — USE RESTRICTION
+                    (pursuant to AGPL-3.0 Section 7)
+
+Copyright (C) 2025 autoDoc contributors
+
+In addition to the terms and conditions of the GNU Affero General Public
+License, Version 3, the following additional restriction applies to this
+Program and any covered work:
+
+1. RESTRICTED ENTITIES
+
+   The following entities, collectively referred to as "Restricted Entities",
+   are expressly excluded from the license grant and may NOT use, copy,
+   modify, merge, distribute, sublicense, publicly display, publicly perform,
+   or create derivative works of this Program:
+
+   a) ByteDance Ltd. (字节跳动有限公司) and every entity that ByteDance Ltd.
+      directly or indirectly controls, is controlled by, or is under common
+      control with — including but not limited to TikTok, Douyin (抖音),
+      Lark / Feishu (飞书), PICO, Volcano Engine (火山引擎), Toutiao (今日头条),
+      and any successor entities;
+
+   b) any officer, director, employee, contractor, intern, or agent of a
+      Restricted Entity, when acting in the scope of their engagement with
+      that entity or when the use of this Program directly or indirectly
+      benefits a Restricted Entity.
+
+   "Control" means the direct or indirect ownership of more than fifty
+   percent (50%) of the voting securities or equivalent ownership interest
+   of an entity, or the power to direct or cause the direction of the
+   management and policies of an entity by contract or otherwise.
+
+2. EFFECT
+
+   Any use, copying, modification, or distribution of the Program by a
+   Restricted Entity or person described above is unauthorized and
+   constitutes copyright infringement. The copyright holder reserves all
+   rights and remedies available under applicable law.
+
+3. SEVERABILITY
+
+   If a court of competent jurisdiction holds any provision of these
+   additional terms to be unenforceable, the remaining provisions shall
+   continue in full force and effect.
