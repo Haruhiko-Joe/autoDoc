@@ -2,7 +2,6 @@ import { readFile, writeFile, mkdir, readdir, stat, rm, open, rename } from "nod
 import path from "node:path"
 import ignore, { type Ignore } from "ignore"
 import { Graph, TopGraph, type GraphT, type TopGraphT } from "./schema.js"
-import { repoDirOf } from "../souko/registry.js"
 
 export class VersionMismatchError extends Error {
   constructor(
@@ -56,7 +55,10 @@ const MAX_SOURCE_FILE_BYTES = 1024 * 1024 // 1 MB
 const BINARY_SNIFF_BYTES = 8 * 1024
 
 export class DocStore {
-  constructor(public readonly docRoot: string) {}
+  constructor(
+    public readonly docRoot: string,
+    private readonly resolveRepoDir: (project: string) => string,
+  ) {}
 
   // ─── Path helpers ───────────────────────────────────────────
 
@@ -486,7 +488,7 @@ export class DocStore {
     if (!project || project.includes("..") || project.includes("/") || project.includes("\\")) {
       throw new Error(`Invalid project: ${project}`)
     }
-    return repoDirOf(project)
+    return this.resolveRepoDir(project)
   }
 
   private resolveWithinRepo(project: string, rel: string): string {

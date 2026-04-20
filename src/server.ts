@@ -16,6 +16,7 @@ import {
   upsertProject,
   knowledgePathOf,
   knowledgeDraftPathOf,
+  repoDirOf,
   type ProjectMeta,
 } from "./souko/registry.js";
 import * as git from "./git/repoManager.js";
@@ -30,7 +31,7 @@ import {
 
 const PORT = Number(process.env.PORT ?? 3100);
 
-const docStore = new DocStore(DOC_ROOT);
+const docStore = new DocStore(DOC_ROOT, repoDirOf);
 
 // ─── Knowledge elicitor sessions ─────────────────────────────
 
