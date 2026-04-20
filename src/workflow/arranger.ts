@@ -953,7 +953,8 @@ export class Arranger {
     // Register the autodoc MCP server in the target repo's .mcp.json so
     // Claude Code picks it up automatically. MCP_PUBLIC_URL lets ops override
     // the endpoint at deploy time (e.g. a central server behind a reverse proxy).
-    const mcpUrl = process.env.MCP_PUBLIC_URL ?? "http://localhost:3200/mcp";
+    const port = process.env.PORT ?? "3100";
+    const mcpUrl = process.env.MCP_PUBLIC_URL ?? `http://localhost:${port}/mcp`;
     const mcpConfigPath = path.join(this.repoPath, ".mcp.json");
     let existing: Record<string, unknown> = {};
     try {

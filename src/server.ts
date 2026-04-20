@@ -240,24 +240,42 @@ async function handleRun(body: RunBody): Promise<{ ok: boolean; project: string 
     throw new Error(`Project "${project}" is already generated. Delete it first to regenerate.`);
   }
 
-  // Always wipe any stale doc dir before a fresh run.
-  await rm(docDir, { recursive: true, force: true });
+  // Orphan docDir (has top.json but not in registry) = partial run from a prior
+  // crash. Keep it — arranger.run() skips scaffold when top.json exists and
+  // resetRecoverableNodes() flips stuck decomposing/writing/checking back to
+  // pending so the pipeline resumes from where it stopped.
+  const isResumable = await stat(path.join(docDir, "top.json"))
+    .then((s) => s.isFile())
+    .catch(() => false);
+  if (!isResumable) {
+    await rm(docDir, { recursive: true, force: true });
+  }
+  const hasKnowledge = await stat(knowledgePathOf(project))
+    .then((s) => s.isFile())
+    .catch(() => false);
+  const repoAlreadyCloned = await stat(repoDir)
+    .then((s) => s.isDirectory())
+    .catch(() => false);
+  const autoSkipKnowledge = isResumable || hasKnowledge || repoAlreadyCloned;
 
   state = { phase: "cloning", gitUrl, project, repoDir, docDir, config: body };
   broadcastStatus();
 
   (async () => {
     try {
-      const repoExists = await stat(repoDir).then((s) => s.isDirectory()).catch(() => false);
-      if (!repoExists) {
-        await rm(repoDir, { recursive: true, force: true });
+      if (!repoAlreadyCloned) {
         console.log(`[Run] cloning ${gitUrl} → ${repoDir}`);
         await git.clone(gitUrl, repoDir);
       } else {
         console.log(`[Run] repo already on disk at ${repoDir}, skipping clone`);
       }
       state = { phase: "awaiting-knowledge", gitUrl, project, repoDir, docDir, config: body };
-      broadcastStatus();
+      if (autoSkipKnowledge) {
+        console.log(`[Run] project already started (resumable=${isResumable}, hasKnowledge=${hasKnowledge}, repoCloned=${repoAlreadyCloned}), skipping knowledge elicitor`);
+        await handleRunContinue();
+      } else {
+        broadcastStatus();
+      }
     } catch (err) {
       state = { phase: "error", gitUrl, project, repoDir, docDir, message: String(err) };
       broadcastStatus();
@@ -272,8 +290,6 @@ async function handleRunContinue(): Promise<{ ok: boolean }> {
     throw new Error(`Cannot continue run: current phase is "${state.phase}"`);
   }
   const { gitUrl, project, repoDir, docDir, config } = state;
-  const head = await git.getHead(repoDir);
-  const branch = await git.getCurrentBranch(repoDir);
 
   const arranger = new Arranger({
     maxConcurrency: config.maxConcurrency,
@@ -285,8 +301,12 @@ async function handleRunContinue(): Promise<{ ok: boolean }> {
   arranger.onProgress(debouncedBroadcast);
   broadcastStatus();
 
+  const headPromise = git.getHead(repoDir);
+  const branchPromise = git.getCurrentBranch(repoDir);
+
   arranger.run(repoDir, docDir).then(
     async () => {
+      const [head, branch] = await Promise.all([headPromise, branchPromise]);
       await upsertProject(project, {
         sourceUrl: gitUrl,
         branch,
@@ -390,9 +410,9 @@ async function listProjects(): Promise<ProjectListEntry[]> {
       .catch(() => false);
     out.push({ name, hasDoc, ...meta });
   }
-  // Also surface doc directories that exist but aren't in the registry yet
-  // (e.g. legacy migrated docs). They appear with empty meta so the UI can
-  // still browse them.
+  // Also surface doc directories that exist but aren't in the registry yet —
+  // partial runs from a prior crash. Empty meta (no lastUpdated) is what lets
+  // the UI distinguish partial from complete.
   const dirs = await readdir(DOC_ROOT, { withFileTypes: true }).catch(() => []);
   for (const d of dirs) {
     if (!d.isDirectory()) continue;

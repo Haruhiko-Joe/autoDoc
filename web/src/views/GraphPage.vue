@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { fetchTopGraph, fetchSubGraph, fetchPage, createNode, updateNode, deleteNode, updatePage, revertDoc } from '../services/doc'
 import GraphView from '../components/GraphView.vue'
@@ -255,6 +255,63 @@ const pageSaving = ref(false)
 const conflictVisible = ref(false)
 const conflictServerContent = ref('')
 
+// ─── Split-mode scroll sync ───
+
+const splitEditorRef = ref<HTMLDivElement>()
+const splitPreviewRef = ref<HTMLDivElement>()
+let splitSyncCleanup: (() => void) | null = null
+
+function setupSplitScrollSync(editorScroller: HTMLElement, preview: HTMLElement): () => void {
+  let syncing = false
+  const sync = (src: HTMLElement, dst: HTMLElement) => {
+    if (syncing) return
+    const srcMax = src.scrollHeight - src.clientHeight
+    const dstMax = dst.scrollHeight - dst.clientHeight
+    if (srcMax <= 0 || dstMax <= 0) return
+    syncing = true
+    dst.scrollTop = (src.scrollTop / srcMax) * dstMax
+    requestAnimationFrame(() => { syncing = false })
+  }
+  const onEditorScroll = () => sync(editorScroller, preview)
+  const onPreviewScroll = () => sync(preview, editorScroller)
+  editorScroller.addEventListener('scroll', onEditorScroll, { passive: true })
+  preview.addEventListener('scroll', onPreviewScroll, { passive: true })
+  return () => {
+    editorScroller.removeEventListener('scroll', onEditorScroll)
+    preview.removeEventListener('scroll', onPreviewScroll)
+  }
+}
+
+async function attachSplitScrollSync() {
+  splitSyncCleanup?.()
+  splitSyncCleanup = null
+  await nextTick()
+  // CodeMirror mounts its scroller asynchronously; retry a few frames.
+  for (let i = 0; i < 10; i++) {
+    const scroller = splitEditorRef.value?.querySelector<HTMLElement>('.cm-scroller')
+    const preview = splitPreviewRef.value
+    if (scroller && preview) {
+      splitSyncCleanup = setupSplitScrollSync(scroller, preview)
+      return
+    }
+    await new Promise((r) => requestAnimationFrame(r))
+  }
+}
+
+watch(pageViewMode, (mode) => {
+  if (mode === 'split') {
+    attachSplitScrollSync()
+  } else {
+    splitSyncCleanup?.()
+    splitSyncCleanup = null
+  }
+})
+
+onUnmounted(() => {
+  splitSyncCleanup?.()
+  splitSyncCleanup = null
+})
+
 function getPageParentNodeId(): string {
   const parts = getPath().split('/')
   return parts.slice(0, -1).join('/')
@@ -429,10 +486,10 @@ async function handleRevert(version: number) {
           <MarkdownEditor v-model="pageEditContent" @save="savePage" />
         </div>
         <div class="canvas-page-split" v-else>
-          <div class="split-editor">
+          <div class="split-editor" ref="splitEditorRef">
             <MarkdownEditor v-model="pageEditContent" @save="savePage" />
           </div>
-          <div class="split-preview">
+          <div class="split-preview" ref="splitPreviewRef">
             <MarkdownView :content="pageEditContent" />
           </div>
         </div>

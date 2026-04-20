@@ -169,35 +169,12 @@ function setFocusMode(nodeId: string | null) {
   void applyFocusMode()
 }
 
-function onContainerPointerOverCapture(event: PointerEvent) {
-  const target = event.target
-  if (!(target instanceof Element)) return
-
-  const marker = target.closest('.node-card-focus-trigger')
-  if (!(marker instanceof HTMLElement)) return
-
-  const relatedTarget = event.relatedTarget
-  if (relatedTarget instanceof Element && marker.contains(relatedTarget)) return
-
-  const nodeId = marker.dataset.nodeId
-  if (!nodeId) return
-
-  setFocusMode(nodeId)
+function onContainerPointerOverCapture(_event: PointerEvent) {
+  // Focus is now click-toggled; hover no longer drives focus state.
 }
 
-function onContainerPointerOutCapture(event: PointerEvent) {
-  const target = event.target
-  if (!(target instanceof Element)) return
-
-  const marker = target.closest('.node-card-focus-trigger')
-  if (!(marker instanceof HTMLElement)) return
-
-  const relatedTarget = event.relatedTarget
-  if (relatedTarget instanceof Element && marker.contains(relatedTarget)) return
-
-  if (marker.dataset.nodeId === focusedNodeId.value) {
-    setFocusMode(null)
-  }
+function onContainerPointerOutCapture(_event: PointerEvent) {
+  // Focus is now click-toggled; hover no longer drives focus state.
 }
 
 function superellipsePositions(n: number, canvasW: number, canvasH: number) {
@@ -378,8 +355,15 @@ function createGraph() {
     closePopover()
     const e = evt as unknown as { target?: { id?: string }; nativeEvent?: { target?: EventTarget | null } }
     const nativeTarget = e.nativeEvent?.target
-    if (nativeTarget instanceof Element && nativeTarget.closest('.node-card-focus-trigger')) {
-      return
+    if (nativeTarget instanceof Element) {
+      const marker = nativeTarget.closest('.node-card-focus-trigger') as HTMLElement | null
+      if (marker) {
+        const nodeId = marker.dataset.nodeId
+        if (nodeId) {
+          setFocusMode(focusedNodeId.value === nodeId ? null : nodeId)
+        }
+        return
+      }
     }
     if (nativeTarget instanceof Element) {
       const editBtn = nativeTarget.closest('[data-action="edit"]') as HTMLElement | null

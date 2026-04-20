@@ -156,7 +156,6 @@ async function handleRun() {
       { name: project, hasDoc: false, sourceUrl: url, branch: '', head: '', lastUpdated: '' },
     ])
     startSSE()
-    await router.push({ name: 'knowledge', query: { project } })
   } catch (e) {
     errorMsg.value = e instanceof Error ? e.message : String(e)
   }
@@ -304,10 +303,15 @@ const runInProgress = computed(() => {
   const p = status.value.phase
   return p === 'cloning' || p === 'awaiting-knowledge' || p === 'running'
 })
-const runProjectExists = computed(() => {
+const runProjectComplete = computed(() => {
   const n = getProjectName(gitUrl.value)
   if (!n) return false
-  return projectEntries.value.some((p) => p.name === n && p.hasDoc)
+  return projectEntries.value.some((p) => p.name === n && !!p.lastUpdated)
+})
+const runProjectPartial = computed(() => {
+  const n = getProjectName(gitUrl.value)
+  if (!n) return false
+  return projectEntries.value.some((p) => p.name === n && p.hasDoc && !p.lastUpdated)
 })
 const visibleNodeStates = computed(() => (viewingRunningProject.value ? progress.value?.nodes : undefined))
 
@@ -403,11 +407,11 @@ async function handleRetryErrors() {
           </button>
           <button
             class="run-btn"
-            :disabled="runInProgress || !gitUrl.trim() || runProjectExists"
-            :title="runProjectExists ? 'Already generated — delete the project to regenerate.' : ''"
+            :disabled="runInProgress || !gitUrl.trim() || runProjectComplete"
+            :title="runProjectComplete ? 'Already generated — delete the project to regenerate.' : (runProjectPartial ? 'Resume the interrupted run from where it stopped.' : '')"
             @click="handleRun"
           >
-            {{ runInProgress ? '...' : (runProjectExists ? 'Generated' : 'Run') }}
+            {{ runInProgress ? '...' : (runProjectComplete ? 'Generated' : (runProjectPartial ? 'Resume' : 'Run')) }}
           </button>
         </div>
         <label class="input-label select-label">Saved Projects</label>
