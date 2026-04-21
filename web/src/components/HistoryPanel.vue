@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, toRef } from 'vue'
 import DiffView from './DiffView.vue'
-import { useDocHistory, type VersionEntry } from '../composables/useDocHistory'
+import { useDocHistory } from '../composables/useDocHistory'
 
 const props = defineProps<{
   project: string

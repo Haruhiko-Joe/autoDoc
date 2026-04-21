@@ -45,10 +45,15 @@ export function useUpdateQueue(project: Ref<string>) {
       if (awaitingReviewTaskId.value === event.taskId) awaitingReviewTaskId.value = null
     } else if (event.type === 'task-error' && event.taskId) {
       const t = tasks.value.find(t => t.id === event.taskId)
-      if (t) { t.status = 'error'; t.error = event.error }
-      isRunning.value = false
-      awaitingConfirmTaskId.value = null
-      awaitingReviewTaskId.value = null
+      const nextStatus = event.status ?? 'error'
+      if (t) { t.status = nextStatus; t.error = event.error }
+      if (nextStatus === 'awaiting-review') {
+        awaitingReviewTaskId.value = event.taskId
+      } else {
+        isRunning.value = false
+        awaitingConfirmTaskId.value = null
+        awaitingReviewTaskId.value = null
+      }
     } else if (event.type === 'task-skipped' && event.taskId) {
       const t = tasks.value.find(t => t.id === event.taskId)
       if (t) t.status = 'skipped'

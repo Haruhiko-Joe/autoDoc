@@ -184,13 +184,6 @@ function handleDeleteSelected() {
 
 // ─── Edge editing ───
 
-function openAddEdge(sourceNode: string) {
-  edgeDialogSource.value = sourceNode
-  edgeDialogTarget.value = undefined
-  edgeDialogPrefillTarget.value = ''
-  edgeDialogVisible.value = true
-}
-
 function handleEdgeCreate(source: string, target: string) {
   edgeDialogSource.value = source
   edgeDialogTarget.value = undefined

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import type { GraphNode, EdgeType } from '../types'
+import type { GraphNode } from '../types'
 
 const props = defineProps<{
   visible: boolean

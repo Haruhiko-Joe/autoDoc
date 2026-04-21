@@ -53,7 +53,7 @@ export type UpdateEvent =
   | { type: "task-text-delta"; taskId: string; delta: string }
   | { type: "task-awaiting-review"; taskId: string; markdown: string }
   | { type: "task-done"; taskId: string; markdown: string }
-  | { type: "task-error"; taskId: string; error: string }
+  | { type: "task-error"; taskId: string; error: string; status?: TaskStatus }
   | { type: "task-skipped"; taskId: string }
   | { type: "awaiting-confirm"; taskId: string }
   | { type: "finished" };
@@ -123,7 +123,7 @@ export async function startUpdate(project: string, options: StartUpdateOptions =
     const useGh = await isGhAvailable(repoDir);
     let items: (PrInfo | CommitInfo)[];
     if (useGh) {
-      items = await listMergedPrsSince(repoDir, cursor);
+      items = await listMergedPrsSince(repoDir, cursor, meta.branch || "main");
     } else {
       items = await listCommitsSince(repoDir, cursor);
     }
@@ -234,7 +234,7 @@ async function runQueue(project: string): Promise<void> {
       const msg = e instanceof Error ? e.message : String(e);
       task.status = "error";
       task.error = msg;
-      emit(project, { type: "task-error", taskId: task.id, error: msg });
+      emit(project, { type: "task-error", taskId: task.id, error: msg, status: "error" });
       await appendRunLog(project, `task error id=${task.id} error=${msg.slice(0, 200)}`);
 
       const meta = await getProject(project);
@@ -339,6 +339,7 @@ export async function chatOnTask(project: string, taskId: string, prompt: string
   if (!trimmed) throw new Error("Empty follow-up prompt");
 
   task.status = "running";
+  state.awaitingReview = false;
   const separator = `\n\n---\n\n**${state.language === "en" ? "You" : "你"}:** ${trimmed}\n\n`;
   task.markdown = (task.markdown ?? "") + separator;
   emit(project, { type: "task-start", taskId: task.id });
@@ -360,12 +361,15 @@ export async function chatOnTask(project: string, taskId: string, prompt: string
     task.sessionId = result.sessionId;
     task.markdown = (task.markdown ?? "");
     task.status = "awaiting-review";
+    state.awaitingReview = true;
     emit(project, { type: "task-awaiting-review", taskId: task.id, markdown: task.markdown });
     await appendRunLog(project, `task chat return id=${task.id} len=${result.result.length}`);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     task.status = "awaiting-review"; // keep the review gate so user can retry
-    emit(project, { type: "task-error", taskId: task.id, error: msg });
+    task.error = msg;
+    state.awaitingReview = true;
+    emit(project, { type: "task-error", taskId: task.id, error: msg, status: "awaiting-review" });
     await appendRunLog(project, `task chat error id=${task.id} error=${msg.slice(0, 200)}`);
     throw e;
   }

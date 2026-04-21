@@ -437,8 +437,9 @@ async function listProjects(): Promise<ProjectListEntry[]> {
 // ─── Doc file passthrough ────────────────────────────────────
 
 async function handleDocFile(docDir: string, filePath: string): Promise<{ content: string; type: string }> {
-  const full = path.resolve(docDir, filePath);
-  if (!full.startsWith(docDir)) throw new Error("Forbidden");
+  const base = path.resolve(docDir);
+  const full = path.resolve(base, filePath);
+  if (full !== base && !full.startsWith(base + path.sep)) throw new Error("Forbidden");
   const content = await readFile(full, "utf-8");
   const type = full.endsWith(".json") ? "application/json" : "text/plain";
   return { content, type };
@@ -742,6 +743,12 @@ const server = createServer(async (req, res) => {
       const parent = await docStore.readGraph(body.project, body.parentNodeId);
       if (parent.nodes.some((n: { name: string }) => n.name === body.node.name)) {
         throw new Error(`Sibling node already exists: ${body.node.name}`);
+      }
+      if (parent.nodes.some((n: { child: { ref: string } }) => n.child.ref === body.node.child.ref)) {
+        throw new Error(`Sibling child ref already exists: ${body.node.child.ref}`);
+      }
+      if (await docStore.childArtifactExists(body.project, body.parentNodeId, body.node.child.ref, body.node.child.type)) {
+        throw new Error(`Child artifact already exists: ${body.node.child.ref}`);
       }
       if (body.node.child.type === "page") {
         await docStore.createEmptyPage(body.project, body.parentNodeId, body.node.child.ref, body.initialContent ?? "");

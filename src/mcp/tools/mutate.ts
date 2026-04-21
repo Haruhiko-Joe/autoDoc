@@ -88,6 +88,12 @@ export function registerMutateTools(mcp: McpServer, store: DocStore): void {
       if (parent.nodes.some((n) => n.name === node.name)) {
         throw new Error(`Sibling node already exists: ${node.name}`)
       }
+      if (parent.nodes.some((n) => n.child.ref === node.child.ref)) {
+        throw new Error(`Sibling child ref already exists: ${node.child.ref}`)
+      }
+      if (await store.childArtifactExists(project, parentNodeId, node.child.ref, node.child.type)) {
+        throw new Error(`Child artifact already exists: ${node.child.ref}`)
+      }
 
       if (node.child.type === "page") {
         await store.createEmptyPage(project, parentNodeId, node.child.ref, initialContent ?? "")

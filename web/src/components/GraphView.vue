@@ -145,7 +145,7 @@ async function applyFocusMode() {
     edgeItems.map(({ id, source, target }) => ({
       id,
       style: {
-        opacity: !focusedIds || (focusedIds.has(source) && focusedIds.has(target)) ? 1 : FOCUS_DIM_OPACITY,
+        opacity: !activeId || source === activeId || target === activeId ? 1 : FOCUS_DIM_OPACITY,
       },
     })),
   )
@@ -155,7 +155,7 @@ async function applyFocusMode() {
       ...nodeIds.map((id) => [id, focusedIds?.has(id) ? 2 : 0] as const),
       ...edgeItems.map(({ id, source, target }) => [
         id,
-        focusedIds && focusedIds.has(source) && focusedIds.has(target) ? 1 : 0,
+        activeId && (source === activeId || target === activeId) ? 1 : 0,
       ] as const),
     ]),
   )
@@ -167,6 +167,11 @@ function setFocusMode(nodeId: string | null) {
   focusedNodeId.value = nodeId
   closePopover()
   void applyFocusMode()
+}
+
+function getFocusTrigger(target: EventTarget | null): HTMLElement | null {
+  if (!(target instanceof Element)) return null
+  return target.closest('.node-card-focus-trigger') as HTMLElement | null
 }
 
 function onContainerPointerOverCapture(_event: PointerEvent) {
@@ -356,7 +361,7 @@ function createGraph() {
     const e = evt as unknown as { target?: { id?: string }; nativeEvent?: { target?: EventTarget | null } }
     const nativeTarget = e.nativeEvent?.target
     if (nativeTarget instanceof Element) {
-      const marker = nativeTarget.closest('.node-card-focus-trigger') as HTMLElement | null
+      const marker = getFocusTrigger(nativeTarget)
       if (marker) {
         const nodeId = marker.dataset.nodeId
         if (nodeId) {

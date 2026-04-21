@@ -327,7 +327,19 @@ export class DocStore {
   ): Promise<void> {
     const filePath = this.pageFilePath(project, nodeId, ref)
     await mkdir(path.dirname(filePath), { recursive: true })
-    await writeFile(filePath, content)
+    await writeFile(filePath, content, { flag: "wx" })
+  }
+
+  async childArtifactExists(
+    project: string,
+    parentNodeId: string,
+    ref: string,
+    type: "page" | "graph",
+  ): Promise<boolean> {
+    const filePath = type === "page"
+      ? this.pageFilePath(project, parentNodeId, ref)
+      : this.graphFilePath(project, `${parentNodeId}/${ref}`)
+    return fileExists(filePath)
   }
 
   async createPlaceholderSubgraph(
@@ -346,7 +358,7 @@ export class DocStore {
       nodes: [],
       version: 0,
     }
-    await writeFile(filePath, JSON.stringify(placeholder, null, 2))
+    await writeFile(filePath, JSON.stringify(placeholder, null, 2), { flag: "wx" })
   }
 
   // ─── Deletes ────────────────────────────────────────────────

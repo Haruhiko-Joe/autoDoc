@@ -74,11 +74,11 @@ export async function isGhAvailable(repoDir: string): Promise<boolean> {
   }
 }
 
-export async function listMergedPrsSince(repoDir: string, sinceSha: string): Promise<PrInfo[]> {
+export async function listMergedPrsSince(repoDir: string, sinceSha: string, baseBranch: string): Promise<PrInfo[]> {
   const sinceDate = (await run(["show", "-s", "--format=%cI", sinceSha], repoDir)).trim();
   const raw = await runCmd("gh", [
     "pr", "list",
-    "--base", "main",
+    "--base", baseBranch,
     "--state", "merged",
     "--json", "number,title,body,mergeCommit,mergedAt",
     "--limit", "500",

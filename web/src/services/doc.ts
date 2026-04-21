@@ -262,6 +262,7 @@ export interface UpdateEvent {
   delta?: string
   markdown?: string
   error?: string
+  status?: UpdateTaskStatus
 }
 
 export async function startUpdateRun(

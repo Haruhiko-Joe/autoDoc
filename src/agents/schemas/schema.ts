@@ -43,6 +43,7 @@ export const TopGraph = z.object({
   sessionId: z.string(),
   description: z.string(),
   nodes: z.array(ScaffoldNode),
+  version: z.number().int().min(0).optional(),
 })
 
 // --- Decomposer (sub graph) ---
@@ -92,6 +93,8 @@ export const Graph = z.object({
   description: z.string(),
   codeScope: z.array(z.string()),
   nodes: z.array(GraphNode),
+  version: z.number().int().min(0).optional(),
+  pageVersions: z.record(z.string(), z.number()).optional(),
   decomposerSessionId: z.string().optional(),
   checkerSessionId: z.string().optional(),
   writerSessionIds: z.record(z.string(), z.string()).optional(),

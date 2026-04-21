@@ -402,6 +402,7 @@ export class Arranger {
       sessionId: finalSessionId,
       description: topResult.description,
       nodes: topResult.nodes,
+      version: 0,
     };
     await this.writeTopGraph(topGraph);
     console.log(`[Arranger] Scaffold complete. ${topResult.nodes.length} top-level modules.`);
@@ -414,6 +415,7 @@ export class Arranger {
         description: node.description,
         codeScope: node.codeScope,
         nodes: [],
+        version: 0,
       });
     }
   }
@@ -689,6 +691,7 @@ export class Arranger {
       status: hasPages ? "writing" : "done",
       sessionId: decomposerSessionId,
       nodes: rawGraph.nodes,
+      pageVersions: hasPages ? this.buildPageVersions(rawGraph.nodes, latest.pageVersions) : undefined,
       decomposerSessionId: undefined,
       checkerSessionId: undefined,
       writerSessionIds: undefined,
@@ -766,6 +769,14 @@ export class Arranger {
     );
   }
 
+  private buildPageVersions(nodes: GraphNodeType[], existing?: Record<string, number>): Record<string, number> {
+    return Object.fromEntries(
+      nodes
+        .filter((node) => node.child.type === "page")
+        .map((node) => [node.child.ref, existing?.[node.child.ref] ?? 0]),
+    );
+  }
+
   private findPageNode(nodes: GraphNodeType[], ref: string): GraphNodeType | undefined {
     return nodes.find((node) => node.child.type === "page" && node.child.ref === ref);
   }
@@ -793,6 +804,7 @@ export class Arranger {
         description: node.description,
         codeScope: node.codeScope,
         nodes: [],
+        version: 0,
       });
     }
   }
@@ -911,7 +923,7 @@ export class Arranger {
   private async writeGraph(nodeId: string, graph: GraphType): Promise<void> {
     const filePath = this.graphFilePath(nodeId);
     await mkdir(path.dirname(filePath), { recursive: true });
-    await writeFile(filePath, JSON.stringify(graph, null, 2));
+    await writeFile(filePath, JSON.stringify({ ...graph, version: graph.version ?? 0 }, null, 2));
   }
 
   private async updateGraph(nodeId: string, patch: Partial<GraphType>): Promise<void> {
@@ -931,7 +943,7 @@ export class Arranger {
 
   private async writeTopGraph(topGraph: TopGraphType): Promise<void> {
     const filePath = path.join(this.docDir, "top.json");
-    await writeFile(filePath, JSON.stringify(topGraph, null, 2));
+    await writeFile(filePath, JSON.stringify({ ...topGraph, version: topGraph.version ?? 0 }, null, 2));
   }
 
   // ─── Skill 组装 + Flow 分析 ───
