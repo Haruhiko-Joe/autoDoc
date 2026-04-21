@@ -1,7 +1,6 @@
-import { readFile, writeFile, mkdir, readdir, access, copyFile, cp } from "node:fs/promises";
+import { readFile, writeFile, mkdir, readdir, access, copyFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { build as esbuild } from "esbuild";
 import {
   claudeScaffold, claudeDecomposer, claudeChecker, claudeWriter, claudeFlowAnalyzer,
   codexScaffold, codexDecomposer, codexChecker, codexWriter, codexFlowAnalyzer,
@@ -954,64 +953,13 @@ export class Arranger {
 
   private async assembleSkill(): Promise<string> {
     const skillDir = path.join(this.repoPath, ".claude", "skills", "doc-drill");
-    const serverDir = path.join(skillDir, "server");
-    const docDir = path.join(skillDir, "doc");
-
     console.log(`[Arranger] Assembling doc-drill skill at ${skillDir}...`);
-    await mkdir(serverDir, { recursive: true });
-    await mkdir(docDir, { recursive: true });
-
+    await mkdir(skillDir, { recursive: true });
     await copyFile(
       path.join(SKILL_TEMPLATE_DIR, "SKILL.md"),
       path.join(skillDir, "SKILL.md"),
     );
-
-    // Bundle the stdio MCP server into a single .mjs with all deps inlined.
-    const bundlePath = path.join(serverDir, "mcp-stdio.mjs");
-    await esbuild({
-      entryPoints: [path.join(SKILL_TEMPLATE_DIR, "server", "main.ts")],
-      outfile: bundlePath,
-      bundle: true,
-      platform: "node",
-      format: "esm",
-      target: "node20",
-      banner: { js: "#!/usr/bin/env node" },
-      logLevel: "silent",
-    });
-
-    // Copy doc artifacts (top.json, flows.json, subgraph dirs with .json + .md
-    // pages) so the skill is readable offline. Skip .history/.tombstones to
-    // keep the payload small — history tools can be added later if needed.
-    const projectDocDir = path.join(docDir, this.projectName);
-    await mkdir(projectDocDir, { recursive: true });
-    await cp(this.docDir, projectDocDir, {
-      recursive: true,
-      filter: (src) => {
-        const base = path.basename(src);
-        return base !== ".history" && base !== ".tombstones";
-      },
-    });
-
-    // Register the autodoc MCP server in the target repo's .mcp.json as a
-    // stdio spawn. Claude Code auto-boots the bundled script — no autoDoc
-    // backend dependency.
-    const mcpConfigPath = path.join(this.repoPath, ".mcp.json");
-    let existing: Record<string, unknown> = {};
-    try {
-      existing = JSON.parse(await readFile(mcpConfigPath, "utf-8"));
-    } catch {
-      // no existing config; start fresh
-    }
-    const servers = (existing.mcpServers as Record<string, unknown> | undefined) ?? {};
-    servers.autodoc = {
-      type: "stdio",
-      command: "node",
-      args: [".claude/skills/doc-drill/server/mcp-stdio.mjs"],
-    };
-    existing.mcpServers = servers;
-    await writeFile(mcpConfigPath, JSON.stringify(existing, null, 2));
-
-    console.log(`[Arranger] Skill assembled. Bundled stdio MCP at ${bundlePath}`);
+    console.log(`[Arranger] Skill assembled at ${skillDir}`);
     return skillDir;
   }
 
