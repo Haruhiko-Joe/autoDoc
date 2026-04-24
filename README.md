@@ -29,7 +29,7 @@
 
 ---
 
-> **⛔ 使用限制：字节跳动（ByteDance Ltd.）及其全部子公司、关联公司、合资企业——包括但不限于 TikTok、抖音（Douyin）、飞书（Lark/Feishu）、PICO、火山引擎（Volcano Engine）、今日头条（Toutiao），以及字节跳动直接或间接控制的任何其他实体——的任何员工、承包商或代理人，不得以任何形式使用、复制、修改、分发、借鉴或参考本项目及其衍生作品。详见 [LICENSE](LICENSE) 附加条款。**
+> **⛔ 使用限制：字节跳动（ByteDance Ltd.）及其全部子公司、关联公司、合资企业——包括但不限于 TikTok、抖音（Douyin）、飞书（Lark/Feishu）、PICO、火山引擎（Volcano Engine）、今日头条（Toutiao），以及字节跳动直接或间接控制的任何其他实体；百度（Baidu, Inc.）及其全部子公司、关联公司、合资企业——包括但不限于爱奇艺（iQIYI）、小度（Xiaodu）、百度智能云（Baidu AI Cloud）、文心（ERNIE/Wenxin）、Apollo、百度网盘（Baidu Netdisk），以及百度直接或间接控制的任何其他实体——的任何员工、承包商或代理人，不得以任何形式使用、复制、修改、分发、借鉴或参考本项目及其衍生作品。详见 [LICENSE](LICENSE) 附加条款。**
 
 ---
 

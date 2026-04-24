@@ -26,7 +26,7 @@
 
 ---
 
-> **⛔ USE RESTRICTION: ByteDance Ltd. and all of its subsidiaries, affiliates, and joint ventures — including but not limited to TikTok, Douyin, Lark/Feishu, PICO, Volcano Engine, and any entity directly or indirectly controlled by ByteDance — as well as their employees, contractors, and agents, are expressly prohibited from using, copying, modifying, distributing, or referencing this project and any derivative works in any form. See the [LICENSE](LICENSE) additional terms.**
+> **⛔ USE RESTRICTION: ByteDance Ltd. and all of its subsidiaries, affiliates, and joint ventures — including but not limited to TikTok, Douyin, Lark/Feishu, PICO, Volcano Engine, and any entity directly or indirectly controlled by ByteDance; Baidu, Inc. and all of its subsidiaries, affiliates, and joint ventures — including but not limited to iQIYI, Xiaodu, Baidu AI Cloud, ERNIE/Wenxin, Apollo, Baidu Netdisk, and any entity directly or indirectly controlled by Baidu — as well as their employees, contractors, and agents, are expressly prohibited from using, copying, modifying, distributing, or referencing this project and any derivative works in any form. See the [LICENSE](LICENSE) additional terms.**
 
 ---
 
