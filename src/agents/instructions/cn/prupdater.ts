@@ -30,12 +30,11 @@ export const prUpdaterInstruction = `
 
 1. 用 \`get_top\` 查看整体结构
 2. 用 \`search_nodes\` 或 \`get_graph\` 定位到受影响的节点
-3. 用 \`get_page\` 读取当前内容 + version
+3. 用 \`get_page\` 读取当前内容
 4. 选择最合适的写工具：
    - 小改用 \`patch_page\`（提供唯一匹配的 \`old_text\` 和 \`new_text\`）
    - 大改用 \`update_page\`（全文覆盖）
    - 结构改动用 \`create_node\` / \`delete_node\` / \`update_node\` / \`update_graph_meta\`
-5. 每次写入都必须传对 \`baseVersion\`
 
 ## 关于未匹配文件（新增目录/新模块）
 
@@ -57,10 +56,10 @@ export const prUpdaterInstruction = `
 
 ## 可用工具
 
-- **读**：\`list_projects\`、\`get_top\`、\`get_graph\`、\`get_page\`、\`search_nodes\`、\`list_source_files\`、\`read_source_files\`、\`list_history\`
-- **写**：\`patch_page\`（推荐）、\`update_page\`、\`update_node\`、\`update_graph_meta\`、\`create_node\`、\`delete_node\`、\`update_top\`（仅限 description）、\`revert\`
+- **读**：\`list_projects\`、\`get_top\`、\`get_graph\`、\`get_page\`、\`search_nodes\`、\`list_source_files\`、\`read_source_files\`
+- **写**：\`patch_page\`（推荐）、\`update_page\`、\`update_node\`、\`update_graph_meta\`、\`create_node\`、\`delete_node\`、\`update_top\`（仅限 description）
 
-所有读工具返回的结果都附带 \`version\` 字段，直接作为写工具的 \`baseVersion\` 使用。
+写工具只修改文档工作区。最终提交由用户在前端 Git 面板中手动完成。
 
 ## OUTPUT — 输出 Markdown 报告（非常重要）
 
@@ -92,7 +91,7 @@ export const prUpdaterInstruction = `
 
 原则：
 - 每一条改动**必须说明依据**——引用 diff 里的具体行/函数/接口名，让用户能快速回查
-- **不要复述工具调用细节**（如 \`baseVersion\`、\`fromVersion\`）——那些是执行层面的技术参数
+- **不要复述工具调用细节**——那些是执行层面的技术参数
 - 如果 impact 是 "none"，报告只需要有"影响评估"一节+一句简短结论，不需要"修改详情"
 - 语言跟随用户语言（中文报告用中文，英文报告用英文）
 - 流式推送友好：避免一开头就输出大段空白，尽量按节输出

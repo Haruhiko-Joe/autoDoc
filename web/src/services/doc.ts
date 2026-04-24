@@ -149,89 +149,110 @@ export function subscribeStatus(onStatus: (status: RunStatus) => void): () => vo
 // ─── Doc editing ───
 
 export async function createNode(
-  project: string, parentNodeId: string, baseVersion: number,
+  project: string, parentNodeId: string,
   node: import('../types').GraphNode, initialContent?: string,
 ): Promise<import('../types').SubGraph> {
   const res = await fetch(`${API}/doc/create-node`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ project, parentNodeId, baseVersion, node, initialContent }),
+    body: JSON.stringify({ project, parentNodeId, node, initialContent }),
   })
   if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to create node')
   return res.json()
 }
 
 export async function updateNode(
-  project: string, parentNodeId: string, nodeName: string, baseVersion: number,
+  project: string, parentNodeId: string, nodeName: string,
   patch: { name?: string; description?: string; codeScope?: string[]; edges?: import('../types').GraphEdge[] },
 ): Promise<import('../types').SubGraph> {
   const res = await fetch(`${API}/doc/update-node`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ project, parentNodeId, nodeName, baseVersion, patch }),
+    body: JSON.stringify({ project, parentNodeId, nodeName, patch }),
   })
   if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to update node')
   return res.json()
 }
 
 export async function deleteNode(
-  project: string, parentNodeId: string, nodeName: string, baseVersion: number,
+  project: string, parentNodeId: string, nodeName: string,
 ): Promise<import('../types').SubGraph> {
   const res = await fetch(`${API}/doc/delete-node`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ project, parentNodeId, nodeName, baseVersion }),
+    body: JSON.stringify({ project, parentNodeId, nodeName }),
   })
   if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to delete node')
   return res.json()
 }
 
 export async function updatePage(
-  project: string, nodeId: string, ref: string, baseVersion: number, content: string,
-): Promise<{ version: number; graphVersion: number }> {
+  project: string, nodeId: string, ref: string, content: string,
+): Promise<{ ok: boolean }> {
   const res = await fetch(`${API}/doc/update-page`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ project, nodeId, ref, baseVersion, content }),
+    body: JSON.stringify({ project, nodeId, ref, content }),
   })
   if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to update page')
   return res.json()
 }
 
 export async function patchPage(
-  project: string, nodeId: string, ref: string, baseVersion: number,
+  project: string, nodeId: string, ref: string,
   edits: { old_text: string; new_text: string }[],
-): Promise<{ version: number; graphVersion: number; appliedCount: number }> {
+): Promise<{ appliedCount: number }> {
   const res = await fetch(`${API}/doc/patch-page`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ project, nodeId, ref, baseVersion, edits }),
+    body: JSON.stringify({ project, nodeId, ref, edits }),
   })
   if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to patch page')
   return res.json()
 }
 
-export async function revertDoc(
-  project: string, relPath: string, toVersion: number, baseVersion: number,
-): Promise<{ relPath: string; newVersion: number }> {
-  const res = await fetch(`${API}/doc/revert`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ project, relPath, toVersion, baseVersion }),
-  })
-  if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to revert')
-  return res.json()
+export interface DocGitHead {
+  sha: string
+  shortSha: string
+  date: string
+  message: string
 }
 
-export async function fetchHistory(
-  project: string, relPath: string,
-): Promise<{ versions: { version: number; ts: string; source?: { type: string; ref?: string }; summary?: string }[] }> {
-  const res = await fetch(`${API}/history?project=${encodeURIComponent(project)}&relPath=${encodeURIComponent(relPath)}`)
+export interface DocGitStatus {
+  dirty: boolean
+  fileCount: number
+  files: string[]
+  head?: DocGitHead
+}
+
+export interface DocGitCommitResult {
+  committed: boolean
+  sha?: string
+  shortSha?: string
+}
+
+export interface DocBlameLine {
+  line: number
+  sha: string
+  shortSha: string
+  author: string
+  time: string
+  message: string
+  content: string
+}
+
+export async function fetchDocGitStatus(project: string): Promise<DocGitStatus> {
+  const res = await fetch(`${API}/doc-git/status?project=${encodeURIComponent(project)}`)
   if (!res.ok) throw new Error(await res.text())
   return res.json()
 }
 
-export async function fetchHistoryDiff(
-  project: string, relPath: string, versionA: number, versionB: number,
-): Promise<{ contentA: string; contentB: string }> {
-  const res = await fetch(`${API}/history/diff`, {
+export async function commitDocGit(project: string, message: string): Promise<DocGitCommitResult> {
+  const res = await fetch(`${API}/doc-git/commit`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ project, relPath, versionA, versionB }),
+    body: JSON.stringify({ project, message }),
   })
+  if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to commit docs')
+  return res.json()
+}
+
+export async function fetchDocBlame(project: string, nodeId: string): Promise<{ lines: DocBlameLine[] }> {
+  const res = await fetch(`${API}/doc-git/blame?project=${encodeURIComponent(project)}&nodeId=${encodeURIComponent(nodeId)}`)
   if (!res.ok) throw new Error(await res.text())
   return res.json()
 }

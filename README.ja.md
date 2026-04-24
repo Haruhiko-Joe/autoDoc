@@ -73,7 +73,7 @@ pnpm start
 
 ### Codex Profile 設定
 
-Codex バックエンドは Agent ロール毎に [profiles](https://developers.openai.com/codex/config-reference) を分けてモデルパラメータを隔離します。`~/.codex/config.toml` に以下の 6 ロールそれぞれの profile を追加してください。名前は必ず `scaffold`、`decomposer`、`writer`、`checker`、`flowanalyzer`、`updater` にします:
+Codex バックエンドは Agent ロール毎に [profiles](https://developers.openai.com/codex/config-reference) を分けてモデルパラメータを隔離します。`~/.codex/config.toml` に各 role の profile を追加してください。名前は必ず `scaffold`、`decomposer`、`writer`、`checker`、`flowanalyzer`、`prupdater`、`knowledge` にします:
 
 ```toml
 [profiles.scaffold]
@@ -96,9 +96,13 @@ model_reasoning_effort = "high"
 model = "gpt-5.4"
 model_reasoning_effort = "medium"
 
-[profiles.updater]
+[profiles.prupdater]
 model = "gpt-5.4"
 model_reasoning_effort = "high"
+
+[profiles.knowledge]
+model = "gpt-5.4"
+model_reasoning_effort = "medium"
 ```
 
 必要に応じてモデルを差し替えたり、`model_reasoning_effort` / `service_tier` を調整可能です。全キーは公式 [Config Reference](https://developers.openai.com/codex/config-reference) を参照してください。
@@ -185,7 +189,7 @@ gitUrl ──► git clone ──► src/souko/repo/{name}
 - **🔗 git URL ワンクリック接続** — SSH/HTTPS git URL を入力するだけで、バックエンドが自動 clone・メインブランチの commit を追跡、すべて `src/souko/` 以下に集約
 - **🔁 PR 単位の増分更新** — `gh pr list`（または `git log` フォールバック）で新たにマージされた全 PR を自動検出し、PrUpdater Agent が MCP ツール経由で標的修正を実行。Auto モードは完全自動、Manual モードはレビューゲート + セッション継続による反復微調整付き
 - **🛰️ HTTP MCP サーバー** — 同一プロセスの `/mcp` エンドポイント（Streamable HTTP）が query + mutate の全ツールを公開、Code Agent から直接読み書き可能
-- **📜 ドキュメントバージョン管理** — 書き込みごとに楽観的ロック（`baseVersion`）と `.history/{file}.v{n}` スナップショット、`revert` ツールで任意の履歴版に巻き戻し可能
+- **📜 手動 Git commit と blame** — ドキュメント書き込みは未コミット変更だけを作成し、Git パネルで dirty 状態確認・手動 commit・preview/editing での blame 表示を行います
 - **🔗 インタラクティブ有向グラフ** — [AntV G6](https://g6.antv.antgroup.com/) ベース、6 種のセマンティックエッジ（呼び出し、依存、データフロー、イベント、継承、コンポジション）対応、ホバーで関係詳細を表示
 - **🔍 段階的開示** — トップレベル概要から、ノードをクリックしてリーフの Markdown まで階層的に掘り下げ
 - **🔄 インタラクションフロー図** — モジュール横断のビジネスフローを自動抽出し、参加者・ステップ・コード参照付きシーケンス図として描画
@@ -199,7 +203,7 @@ gitUrl ──► git clone ──► src/souko/repo/{name}
 
 バックエンドは `http://localhost:3100/mcp` にステートレス Streamable HTTP transport で `autodoc` という MCP サーバーを公開します。すべてのツールは `src/souko/doc/{project}/` 以下の実ファイルを操作します。
 
-### Claude Code への接続
+### Claude Code / Codex への接続
 
 ターゲットリポジトリのルートに `.mcp.json` を置くだけ:
 
@@ -214,6 +218,14 @@ gitUrl ──► git clone ──► src/souko/repo/{name}
 }
 ```
 
+Codex は project-scoped `.codex/config.toml` を使います。autoDoc は skill assemble 時に同等の設定を書き込みます:
+
+```toml
+[mcp_servers.autodoc]
+url = "http://localhost:3100/mcp"
+enabled_tools = ["list_projects", "get_top", "get_graph", "get_page", "search_nodes", "list_source_files", "read_source_files", "list_docs", "read_docs", "patch_page", "update_page", "update_node", "update_graph_meta", "create_node", "delete_node", "update_top"]
+```
+
 対応する [doc-drill skill](src/skill-template/SKILL.md) は **MCP ツールの呼び出し方だけ**を記述した薄い説明書で、autoDoc と一緒に配布されます。
 
 ### ツール一覧
@@ -222,15 +234,15 @@ gitUrl ──► git clone ──► src/souko/repo/{name}
 
 | ツール | 用途 |
 |---|---|
-| `list_projects` | 登録済みプロジェクトを列挙（sourceUrl / head / lastUpdated 付き） |
-| `get_top` | プロジェクトの top.json を取得（`version` 付き） |
-| `get_graph` | サブグラフを取得（`version` と `pageVersions` マップ付き） |
-| `get_page` | リーフの Markdown ページを読む（`version` 付き） |
+| `list_projects` | 利用可能な doc project を列挙（name / description） |
+| `get_top` | プロジェクトの top.json を取得 |
+| `get_graph` | サブグラフを取得（`codeScope`、`nodes`、`description`） |
+| `get_page` | リーフの Markdown ページを読む |
 | `search_nodes` | 全階層を横断してノード名・説明をキーワード検索 |
-| `list_history` | あるファイルの全履歴版を列挙 |
-| `get_history` | 指定した履歴版の内容を取得 |
+| `list_source_files` / `read_source_files` | regex でソースを探して読む |
+| `list_docs` / `read_docs` | nodeId で文書原文を一括列挙/読み取り |
 
-#### Mutate（`baseVersion` による楽観的ロックが必須）
+#### Mutate（プロジェクト単位の lock で直列化）
 
 | ツール | 用途 |
 |---|---|
@@ -240,10 +252,9 @@ gitUrl ──► git clone ──► src/souko/repo/{name}
 | `update_node` | 親グラフ内ノードの name / description / codeScope / edges を更新 |
 | `delete_node` | 親グラフからノードを削除（page なら md を削除、graph ならサブツリーを再帰削除） |
 | `patch_page` | リーフ md 内の局所テキストを文字列マッチ＆置換で精密編集、update_page より効率的で安全 |
-| `update_page` | リーフ md を上書き、`pageVersions[ref]` を baseVersion として使用 |
-| `revert` | 履歴版を新しい版として書き戻し、中間版は消さない |
+| `update_page` | リーフ md を上書き |
 
-書き込みフロー: **read → version を取得 → baseVersion 付きで書き込み → サーバー側で旧版を `.history/` にスナップショット → version+1 → 永続化**。バージョン不一致は `VersionMismatch` を返し、クライアントに再読→再試行を促します。
+書き込みフロー: **read → mutate tool が working tree を変更 → frontend Git panel で dirty 状態を確認 → ユーザーが手動 commit**。mutate tool は `baseVersion` を受け取らず、自動 commit もしません。並行書き込みは project-level lock で直列化されます。
 
 > ⚠️ `/mcp` はデフォルトで無認証・CORS 開放です。本番運用前にアクセス制御を追加するかループバックにバインドしてください。
 
@@ -263,7 +274,6 @@ src/souko/
     │   ├── flows.json
     │   ├── {Module}/
     │   │   ├── {Module}.json
-    │   │   ├── .history/        # 履歴スナップショット
     │   │   ├── {Leaf}.md
     │   │   └── {SubModule}/...
     │   └── ...
@@ -274,19 +284,19 @@ src/souko/
 
 各モジュールのドキュメントは自己完結型の独立ユニットです。編集方法は 3 通り:
 
-- **MCP ツール経由**（推奨）: `update_node` / `update_page` / `create_node` / `delete_node` — 自動的に version と履歴スナップショットが管理される、Code Agent による自動メンテに最適
-- **ファイルを直接編集**: `src/souko/doc/{project}/` 以下の `.md` / `.json` を直接編集、サーバー再起動で反映（version 機構はバイパス）
+- **MCP ツール経由**（推奨）: `update_node` / `update_page` / `create_node` / `delete_node` — ドキュメント working tree を変更し、frontend Git panel で手動 commit します
+- **ファイルを直接編集**: `src/souko/doc/{project}/` 以下の `.md` / `.json` を直接編集、refresh で反映され未コミット変更として表示されます
 - **増分更新のトリガー**: ホーム画面で Update ボタンをクリックすると、PrUpdater Agent が新しくマージされた全 PR を自動検出し、1 件ずつ処理します。Manual モードでは各 PR がレビュー確認ゲートを通過します
 
 ## doc-drill: Code Agent ネイティブ統合
 
-autoDoc はスリム版 [doc-drill](src/skill-template/SKILL.md) skill をターゲットリポジトリの `.claude/skills/doc-drill/` に自動インストールし、同リポジトリの `.mcp.json` にローカル MCP サーバーへの参照を書き込みます。任意の Code Agent がこれを通じて:
+autoDoc はスリム版 [doc-drill](src/skill-template/SKILL.md) skill をターゲットリポジトリの `.claude/skills/doc-drill/` に自動インストールし、Claude Code 用の `.mcp.json` と Codex 用の `.codex/config.toml` にローカル HTTP MCP サーバーへの参照を書き込みます。任意の Code Agent がこれを通じて:
 
 - **段階的ブラウジング** — `list_projects` → `get_top` → `get_graph` → `get_page`、lazy load でコンテキスト節約
 - **関係追跡** — 6 種のセマンティックエッジに沿ってモジュール間のコールチェーンとデータフローを追跡
 - **キーワード検索** — `search_nodes` で全ドキュメント階層を横断検索
 - **ビジネスフローナビ** — `flows.json` を通じてエンドツーエンドのインタラクションシナリオを理解
-- **直接メンテナンス** — mutate ツールでドキュメントをその場で追加削除変更、`list_history` / `revert` で確認・巻き戻し
+- **直接メンテナンス** — mutate ツールでドキュメントをその場で追加削除変更し、最後に autoDoc frontend の Git panel で手動 commit
 
 > これは DeepWiki（Web チャットのみ）や Google Code Wiki（Web ブラウジングのみ）にはない、Agent ネイティブな統合能力です。
 
@@ -316,8 +326,9 @@ autoDoc/
 │   │   └── projects.json         # gitignore: 共有 registry
 │   ├── mcp/                      # HTTP MCP サーバー（HTTP API と同一プロセス）
 │   │   ├── server.ts             # buildMcpServer(store)
-│   │   ├── docStore.ts           # ドキュメント読み書き + version + .history スナップショット
-│   │   ├── schema.ts             # Zod schemas（version / pageVersions 含む）
+│   │   ├── docStore.ts           # ドキュメント読み書き + project-level lock
+│   │   ├── docGit.ts             # doc Git status / commit / blame
+│   │   ├── schema.ts             # Zod schemas
 │   │   └── tools/{query,mutate}.ts
 │   ├── agents/                   # Agent 実装（Claude + Codex 双方）
 │   │   ├── tsukai/               # 全 Agent クラス（barrel: index.ts）

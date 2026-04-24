@@ -93,10 +93,7 @@ function acceptNow() {
 }
 
 function handleKeydown(e: KeyboardEvent) {
-  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-    e.preventDefault()
-    if (inputEnabled.value) submitPrimary()
-  } else if (e.key === 'Escape') {
+  if (e.key === 'Escape') {
     e.preventDefault()
     emit('close')
   }
@@ -199,7 +196,7 @@ function handleKeydown(e: KeyboardEvent) {
 
         <div class="input-actions">
           <p class="shortcut-hint">
-            <kbd>&#8984;</kbd>+<kbd>Enter</kbd> {{ mode === 'review' && !instructions.trim() ? 'accept' : 'send' }} &nbsp;·&nbsp; <kbd>Esc</kbd> close
+            <kbd>Esc</kbd> close
           </p>
           <div class="btn-group">
             <!-- confirm mode: initial prompt gate -->

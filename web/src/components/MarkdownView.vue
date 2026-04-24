@@ -2,23 +2,82 @@
 import { ref, watch } from 'vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
+import type { DocBlameLine } from '../services/doc'
 
 const props = defineProps<{
   content: string
+  showGitInfo?: boolean
+  blameLines?: DocBlameLine[]
 }>()
 
 const html = ref('')
+const blocks = ref<Array<{ html: string; startLine: number; endLine: number; blame?: DocBlameLine }>>([])
 
 function render(md: string) {
-  html.value = DOMPurify.sanitize(marked.parse(md) as string)
+  const parsed = marked.parse(md, { async: false })
+  html.value = DOMPurify.sanitize(parsed)
+  blocks.value = buildBlocks(md)
+}
+
+function renderFragment(md: string): string {
+  const parsed = marked.parse(md, { async: false })
+  return DOMPurify.sanitize(parsed)
+}
+
+function blameForRange(startLine: number, endLine: number): DocBlameLine | undefined {
+  const lines = props.blameLines ?? []
+  return lines.find((line) =>
+    line.line >= startLine && line.line <= endLine && line.content.trim().length > 0,
+  ) ?? lines.find((line) => line.line >= startLine && line.line <= endLine)
+}
+
+function buildBlocks(md: string): Array<{ html: string; startLine: number; endLine: number; blame?: DocBlameLine }> {
+  const tokens = marked.lexer(md)
+  const result: Array<{ html: string; startLine: number; endLine: number; blame?: DocBlameLine }> = []
+  let line = 1
+
+  for (const token of tokens) {
+    const raw = token.raw
+    const lineCount = Math.max(1, raw.split('\n').length - (raw.endsWith('\n') ? 1 : 0))
+    const startLine = line
+    const endLine = line + lineCount - 1
+    result.push({
+      html: renderFragment(raw),
+      startLine,
+      endLine,
+      blame: blameForRange(startLine, endLine),
+    })
+    line = endLine + 1
+  }
+
+  return result
+}
+
+function blameTitle(blame?: DocBlameLine): string {
+  if (!blame) return 'No git info'
+  const when = blame.time ? new Date(blame.time).toLocaleString() : 'working tree'
+  return `${blame.author} · ${when}\n${blame.shortSha} · ${blame.message}`
 }
 
 render(props.content)
-watch(() => props.content, render)
+watch(() => [props.content, props.blameLines], () => render(props.content), { deep: true })
 </script>
 
 <template>
-  <article class="markdown-body" v-html="html" />
+  <article v-if="showGitInfo" class="markdown-body blame-body">
+    <section
+      v-for="block in blocks"
+      :key="`${block.startLine}-${block.endLine}`"
+      class="blame-block"
+    >
+      <div class="blame-content" v-html="block.html" />
+      <div class="blame-chip" :title="blameTitle(block.blame)">
+        <span>{{ block.blame?.shortSha ?? 'n/a' }}</span>
+        <strong>{{ block.blame?.author ?? 'Unknown' }}</strong>
+      </div>
+    </section>
+  </article>
+  <article v-else class="markdown-body" v-html="html" />
 </template>
 
 <style scoped>
@@ -97,5 +156,68 @@ watch(() => props.content, render)
 
 .markdown-body :deep(a) {
   color: var(--accent);
+}
+
+.blame-body {
+  max-width: 1040px;
+}
+
+.blame-block {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 172px;
+  gap: 18px;
+  align-items: start;
+  border-radius: 8px;
+  padding: 2px 0;
+}
+
+.blame-block:hover {
+  background: var(--bg-surface-alt);
+}
+
+.blame-content {
+  min-width: 0;
+}
+
+.blame-chip {
+  position: sticky;
+  top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 8px;
+  padding: 6px 8px;
+  border-left: 2px solid var(--border-strong);
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.25;
+  cursor: default;
+}
+
+.blame-chip span {
+  color: var(--accent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.blame-chip strong {
+  color: var(--text-primary);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 920px) {
+  .blame-block {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+
+  .blame-chip {
+    position: static;
+    flex-direction: row;
+    gap: 8px;
+    margin: -4px 0 10px;
+  }
 }
 </style>

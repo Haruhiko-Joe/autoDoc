@@ -90,12 +90,12 @@ function renderMd(md: string): string {
         </div>
       </div>
       <div class="chat-input-area">
-        <input
+        <textarea
           v-model="input"
           class="chat-input"
           placeholder="Type a message..."
           :disabled="loading"
-          @keydown.enter="send"
+          rows="2"
         />
         <button class="chat-send" :disabled="loading || !input.trim()" @click="send">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -264,12 +264,15 @@ function renderMd(md: string): string {
   flex: 1;
   padding: 9px 14px;
   border: 1px solid var(--border-strong);
-  border-radius: 20px;
+  border-radius: 12px;
   font-size: 14px;
   outline: none;
   min-width: 0;
   background: var(--bg-body);
   color: var(--text-primary);
+  font-family: inherit;
+  resize: none;
+  line-height: 1.5;
 }
 
 .chat-input:focus {

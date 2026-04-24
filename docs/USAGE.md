@@ -89,22 +89,22 @@ autoDoc 自带一个 HTTP MCP server，挂在同进程同端口的 `/mcp` 上，
 }
 ```
 
-然后在 Claude Code 里开这个仓库，Agent 就能调用下面的工具，仅为demo使用，真实场景请使用中心化部署+鉴权配置，避免被意外修改：
+然后在 Claude Code 里开这个仓库，Agent 就能调用下面的工具。Codex 也可以用 autoDoc 写入的 `.codex/config.toml` 连接同一个 HTTP MCP。下面配置仅为 demo 使用，真实场景请使用中心化部署+鉴权配置，避免被意外修改：
 
 | 类型 | 工具 | 说明 |
 |---|---|---|
 | Query | `list_projects` | 列出所有项目 |
 | Query | `get_top` / `get_graph` / `get_page` | 逐层读取结构和叶子文档 |
 | Query | `search_nodes` | 按关键字搜 |
-| Query | `list_history` / `get_history` | 查看历史版本 |
+| Query | `list_source_files` / `read_source_files` | 定位并读取源码 |
+| Query | `list_docs` / `read_docs` | 批量读取文档原文 |
 | Mutate | `update_top` / `update_graph_meta` / `update_node` | 修改图元数据或节点 |
 | Mutate | `create_node` / `delete_node` | 增删节点 |
-| Mutate | `update_page` | 覆写叶子 md |
-| Mutate | `revert` | 回滚到历史版本 |
+| Mutate | `patch_page` / `update_page` | 局部替换或覆写叶子 md |
 
-所有 mutate 工具都带**乐观锁**：写的时候要带 `baseVersion`，版本不对会返回 `VersionMismatch`，让 Agent 重读重试。每次写入自动在 `.history/` 里留一份快照，随时可以 `revert` 回去。
+所有 mutate 工具共用**项目级锁**：写操作会串行执行，只产生未提交变更，不自动 commit。用户在前端 Git 面板里审阅 dirty 状态并手动提交；blame 信息也从 Git 提供。
 
-同时，autoDoc 会把一份超薄的 `doc-drill` skill 自动写进目标仓库的 `.claude/skills/doc-drill/`，告诉 Agent 怎么用这些 MCP 工具。
+同时，autoDoc 会把一份超薄的 `doc-drill` skill 自动写进目标仓库的 `.claude/skills/doc-drill/`，并写入 Claude Code / Codex 对应的 MCP 配置，告诉 Agent 怎么用这些 MCP 工具。
 
 > ⚠️ `/mcp` 默认无鉴权、CORS 开放，只适合本地/内网。部署到 公网/团队使用 请加访问控制或绑定 loopback。
 
@@ -130,8 +130,8 @@ cd web && npx vue-tsc --noEmit   # 前端
 - **粘了 URL 后一直转圈？** 确认系统 `git` 能在命令行手动 clone 这个仓库（SSH key / HTTPS 凭证都是你本机的 git 在管，autoDoc 不做额外鉴权）。
 - **`mode: noop` 是什么意思？** 远端没新 commit，没活可干，直接返回，没浪费一次 Agent 调用。
 - **想强制重生成怎么办？** 删掉 `src/souko/doc/{项目名}/` 和 `src/souko/projects.json` 里对应条目，再次提交同一 URL 就会走全量分支。
-- **文档想人肉改？** 直接编辑 `src/souko/doc/{项目名}/` 下的 `.md` 或 `.json`，刷新即可（但会跳过 MCP 的 version 机制）。更推荐让 Agent 通过 MCP 改，能走历史快照。
-- **Codex 后端报错找不到 profile？** 参考 README 里的 Codex Profile 配置，`~/.codex/config.toml` 里必须有 `scaffold` / `decomposer` / `writer` / `checker` / `flowanalyzer` / `updater` 这六个 profile 名。
+- **文档想人肉改？** 直接编辑 `src/souko/doc/{项目名}/` 下的 `.md` 或 `.json`，刷新即可，改动会显示在 Git 面板里等待手动提交。
+- **Codex 后端报错找不到 profile？** 参考 README 里的 Codex Profile 配置，`~/.codex/config.toml` 里必须有 `scaffold` / `decomposer` / `writer` / `checker` / `flowanalyzer` / `prupdater` / `knowledge` 这些 profile 名。
 
 ---
 
@@ -217,22 +217,22 @@ Drop an `.mcp.json` into the root of any repository you want to use the docs fro
 }
 ```
 
-Open that repo in Claude Code and the Agent will have access to:
+Open that repo in Claude Code and the Agent will have access to these tools. Codex can use the `.codex/config.toml` that autoDoc writes to connect to the same HTTP MCP server:
 
 | Kind | Tool | Purpose |
 |---|---|---|
 | Query | `list_projects` | List all registered projects |
 | Query | `get_top` / `get_graph` / `get_page` | Read structure and leaf docs layer by layer |
 | Query | `search_nodes` | Keyword search |
-| Query | `list_history` / `get_history` | Inspect historical versions |
+| Query | `list_source_files` / `read_source_files` | Locate and read source files |
+| Query | `list_docs` / `read_docs` | Batch-read raw docs |
 | Mutate | `update_top` / `update_graph_meta` / `update_node` | Patch metadata or a node |
 | Mutate | `create_node` / `delete_node` | Add or remove nodes |
-| Mutate | `update_page` | Overwrite a leaf md |
-| Mutate | `revert` | Roll back to a historical version |
+| Mutate | `patch_page` / `update_page` | Patch or overwrite a leaf md |
 
-Every mutate tool enforces **optimistic locking**: writes must carry `baseVersion`, mismatches return `VersionMismatch`, and every write is snapshotted into `.history/` for `revert`.
+Every mutate tool shares a **project-level lock**: writes are serialized, dirty the working tree, and never auto-commit. The user reviews dirty status and commits from the frontend Git panel; blame data also comes from Git.
 
-autoDoc also installs a thin `doc-drill` skill into the target repo's `.claude/skills/doc-drill/` that tells Agents how to use these tools.
+autoDoc also installs a thin `doc-drill` skill into the target repo's `.claude/skills/doc-drill/` and writes the Claude Code / Codex MCP config that tells Agents how to use these tools.
 
 > ⚠️ `/mcp` is unauthenticated and CORS-open by default — suitable for local/intranet use only. Put it behind access control or bind to loopback before public deployment.
 
@@ -251,8 +251,8 @@ cd web && npx vue-tsc --noEmit    # type-check frontend
 - **Stuck spinning after pasting a URL?** Make sure your system `git` can clone that repo manually — autoDoc uses your existing SSH key / HTTPS credentials, it does no extra auth.
 - **What is `mode: noop`?** Upstream has no new commits, so nothing to do — skipped without touching an Agent.
 - **How do I force a full regen?** Delete `src/souko/doc/{name}/` and the matching entry in `src/souko/projects.json`, then resubmit the same URL.
-- **Can I edit docs by hand?** Yes — edit `.md` / `.json` directly under `src/souko/doc/{name}/`, but that bypasses MCP versioning. Prefer the MCP mutate tools if you want history snapshots.
-- **Codex says profile not found?** Check your `~/.codex/config.toml`: it must define profiles named exactly `scaffold`, `decomposer`, `writer`, `checker`, `flowanalyzer`, `updater`.
+- **Can I edit docs by hand?** Yes — edit `.md` / `.json` directly under `src/souko/doc/{name}/`, refresh, and commit the resulting dirty changes from the Git panel.
+- **Codex says profile not found?** Check your `~/.codex/config.toml`: it must define profiles named exactly `scaffold`, `decomposer`, `writer`, `checker`, `flowanalyzer`, `prupdater`, `knowledge`.
 
 ---
 
@@ -338,22 +338,22 @@ autoDoc は同一プロセス同一ポートの `/mcp` に HTTP MCP サーバー
 }
 ```
 
-そのリポジトリを Claude Code で開けば、Agent が以下のツールを使えます:
+そのリポジトリを Claude Code で開けば、Agent が以下のツールを使えます。Codex は autoDoc が書き込む `.codex/config.toml` から同じ HTTP MCP server に接続できます:
 
 | 種類 | ツール | 用途 |
 |---|---|---|
 | Query | `list_projects` | 全プロジェクト一覧 |
 | Query | `get_top` / `get_graph` / `get_page` | 構造とリーフを階層的に読む |
 | Query | `search_nodes` | キーワード検索 |
-| Query | `list_history` / `get_history` | 履歴版の確認 |
+| Query | `list_source_files` / `read_source_files` | ソースファイルの探索と読み取り |
+| Query | `list_docs` / `read_docs` | ドキュメント原文の一括読み取り |
 | Mutate | `update_top` / `update_graph_meta` / `update_node` | メタデータやノードの更新 |
 | Mutate | `create_node` / `delete_node` | ノード追加削除 |
-| Mutate | `update_page` | リーフ md の上書き |
-| Mutate | `revert` | 履歴版へ巻き戻し |
+| Mutate | `patch_page` / `update_page` | リーフ md の局所修正または上書き |
 
-すべての mutate ツールは**楽観的ロック**付き: 書き込み時に `baseVersion` を渡し、不一致なら `VersionMismatch` が返って再読→再試行します。書き込み毎に `.history/` にスナップショットが残るので、いつでも `revert` で戻せます。
+すべての mutate ツールは**project-level lock**を共有します。書き込みは直列化され、working tree を dirty にするだけで自動 commit はしません。ユーザーが frontend Git panel で dirty 状態を確認して手動 commit します。blame 情報も Git から取得します。
 
-autoDoc はスリム版 `doc-drill` skill を対象リポジトリの `.claude/skills/doc-drill/` にも自動インストールし、Agent にツールの使い方を教えます。
+autoDoc はスリム版 `doc-drill` skill を対象リポジトリの `.claude/skills/doc-drill/` にも自動インストールし、Claude Code / Codex 用の MCP 設定も書き込んで Agent にツールの使い方を教えます。
 
 > ⚠️ `/mcp` はデフォルトで無認証・CORS 開放です。ローカル / 社内ネットワーク向け。公開環境に出す前にアクセス制御を追加するかループバックに bind してください。
 
@@ -372,5 +372,5 @@ cd web && npx vue-tsc --noEmit    # frontend 型チェック
 - **URL を貼ってもぐるぐる回ったまま？** システムの `git` がそのリポジトリをコマンドラインから手動で clone できるか確認してください。autoDoc は追加認証を行わず、既存の SSH key / HTTPS 認証をそのまま使います。
 - **`mode: noop` とは？** upstream に新 commit がない、つまり何もする必要がない状態。Agent を 1 回も呼ばずに終わります。
 - **強制的に全量再生成したい？** `src/souko/doc/{プロジェクト名}/` と `src/souko/projects.json` の該当エントリを削除してから、同じ URL を再投入してください。
-- **ドキュメントを手で編集したい？** `src/souko/doc/{プロジェクト名}/` 配下の `.md` / `.json` を直接編集できます。ただし MCP の version 管理はバイパスされます。履歴スナップショットを残したいなら MCP mutate ツール経由がおすすめ。
-- **Codex が profile が見つからないと言う？** `~/.codex/config.toml` に `scaffold` / `decomposer` / `writer` / `checker` / `flowanalyzer` / `updater` という名前の profile がすべて必要です。
+- **ドキュメントを手で編集したい？** `src/souko/doc/{プロジェクト名}/` 配下の `.md` / `.json` を直接編集できます。refresh 後、Git panel に未コミット変更として表示されます。
+- **Codex が profile が見つからないと言う？** `~/.codex/config.toml` に `scaffold` / `decomposer` / `writer` / `checker` / `flowanalyzer` / `prupdater` / `knowledge` という名前の profile がすべて必要です。

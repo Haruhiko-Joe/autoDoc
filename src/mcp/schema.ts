@@ -49,7 +49,6 @@ export const TopGraph = z
   .object({
     description: z.string(),
     nodes: z.array(ScaffoldNode),
-    version: z.number().int().min(0).default(0),
   })
   .loose()
 
@@ -58,8 +57,6 @@ export const Graph = z
     description: z.string(),
     codeScope: z.array(z.string()),
     nodes: z.array(GraphNode),
-    version: z.number().int().min(0).default(0),
-    pageVersions: z.record(z.string(), z.number()).optional(),
   })
   .loose()
 

@@ -73,7 +73,7 @@ Paste a git URL in the frontend and generation begins. **For the full onboarding
 
 ### Codex Profile Configuration
 
-The Codex backend uses [profiles](https://developers.openai.com/codex/config-reference) per Agent role to isolate model parameters. Add one profile per role to `~/.codex/config.toml`. Names must be exactly `scaffold`, `decomposer`, `writer`, `checker`, `flowanalyzer`, `updater`:
+The Codex backend uses [profiles](https://developers.openai.com/codex/config-reference) per Agent role to isolate model parameters. Add one profile per role to `~/.codex/config.toml`. Names must be exactly `scaffold`, `decomposer`, `writer`, `checker`, `flowanalyzer`, `prupdater`, `knowledge`:
 
 ```toml
 [profiles.scaffold]
@@ -96,9 +96,13 @@ model_reasoning_effort = "high"
 model = "gpt-5.4"
 model_reasoning_effort = "medium"
 
-[profiles.updater]
+[profiles.prupdater]
 model = "gpt-5.4"
 model_reasoning_effort = "high"
+
+[profiles.knowledge]
+model = "gpt-5.4"
+model_reasoning_effort = "medium"
 ```
 
 Replace models or tweak `model_reasoning_effort` / `service_tier` as needed. See the official [Config Reference](https://developers.openai.com/codex/config-reference) for all keys.
@@ -185,7 +189,7 @@ Each Agent role independently uses **Claude** (Claude Agent SDK) or **Codex** (O
 - **🔗 One-step git URL ingestion** — paste an SSH/HTTPS git URL; backend auto-clones, tracks the main branch head, keeps everything under `src/souko/`
 - **🔁 Per-PR incremental updates** — discovers all newly merged PRs via `gh pr list` (or `git log` fallback) and PrUpdater Agent navigates docs via MCP tools for targeted edits. Auto mode runs hands-free; Manual mode adds a review gate with session continuation for iterative refinement
 - **🛰️ HTTP MCP server** — same-process `/mcp` endpoint (Streamable HTTP) exposes the full query + mutate toolset for direct Code Agent access
-- **📜 Document version control** — every write carries optimistic locking (`baseVersion`) and snapshots to `.history/{file}.v{n}`; `revert` restores any historical version
+- **📜 Manual Git commits and blame** — doc writes only create uncommitted changes; the Git panel shows dirty status, commits manually, and surfaces Git blame in preview/editing views
 - **🔗 Interactive directed graphs** — [AntV G6](https://g6.antv.antgroup.com/) with 6 semantic edge types (calls, depends, data-flow, event, extends, composes) and hover popovers
 - **🔍 Progressive disclosure** — start at the top-level overview, drill into nodes down to leaf Markdown
 - **🔄 Interaction flow diagrams** — cross-module business flows auto-extracted and rendered as sequence diagrams with participants, steps, and code references
@@ -199,7 +203,7 @@ Each Agent role independently uses **Claude** (Claude Agent SDK) or **Codex** (O
 
 The backend exposes an MCP server named `autodoc` at `http://localhost:3100/mcp` as a stateless Streamable HTTP transport. All tools operate on real files under `src/souko/doc/{project}/`.
 
-### Wire it up in Claude Code
+### Wire it up in Claude Code / Codex
 
 Drop an `.mcp.json` into the target repo root:
 
@@ -214,6 +218,14 @@ Drop an `.mcp.json` into the target repo root:
 }
 ```
 
+Codex uses project-scoped `.codex/config.toml`; autoDoc writes the equivalent config when assembling the skill:
+
+```toml
+[mcp_servers.autodoc]
+url = "http://localhost:3100/mcp"
+enabled_tools = ["list_projects", "get_top", "get_graph", "get_page", "search_nodes", "list_source_files", "read_source_files", "list_docs", "read_docs", "patch_page", "update_page", "update_node", "update_graph_meta", "create_node", "delete_node", "update_top"]
+```
+
 The matching [doc-drill skill](src/skill-template/SKILL.md) is a thin instruction set that only describes **how to call the MCP tools**, and ships with autoDoc.
 
 ### Tool list
@@ -222,15 +234,15 @@ The matching [doc-drill skill](src/skill-template/SKILL.md) is a thin instructio
 
 | Tool | Purpose |
 |---|---|
-| `list_projects` | List all registered projects (with sourceUrl / head / lastUpdated) |
-| `get_top` | Read a project's top.json (with `version`) |
-| `get_graph` | Read a sub-graph (with `version` and the `pageVersions` map) |
-| `get_page` | Read a leaf Markdown page (with its `version`) |
+| `list_projects` | List available doc projects (name / description) |
+| `get_top` | Read a project's top.json |
+| `get_graph` | Read a sub-graph with `codeScope`, `nodes`, and `description` |
+| `get_page` | Read a leaf Markdown page |
 | `search_nodes` | Search node names/descriptions across all levels |
-| `list_history` | List all historical versions of a file |
-| `get_history` | Read a specific historical version |
+| `list_source_files` / `read_source_files` | Locate and read source files by regex |
+| `list_docs` / `read_docs` | Batch-list/read raw docs by nodeId |
 
-#### Mutate (optimistic lock via `baseVersion`)
+#### Mutate (serialized by project lock)
 
 | Tool | Purpose |
 |---|---|
@@ -240,10 +252,9 @@ The matching [doc-drill skill](src/skill-template/SKILL.md) is a thin instructio
 | `update_node` | Update a node's name / description / codeScope / edges in its parent graph |
 | `delete_node` | Remove a node from its parent graph (page deletes the md; graph recursively deletes its subtree) |
 | `patch_page` | Targeted string-match-and-replace edits to a leaf md, more efficient and safer than update_page |
-| `update_page` | Overwrite a leaf md; uses `pageVersions[ref]` as baseVersion |
-| `revert` | Write a historical version back as a new version, keeping intermediate versions intact |
+| `update_page` | Overwrite a leaf md |
 
-Write flow: **read → obtain version → write with baseVersion → server snapshots the old version to `.history/` → version+1 → persist**. A version mismatch returns `VersionMismatch` so the client re-reads and retries.
+Write flow: **read → mutate tools dirty the working tree → review dirty status in the frontend Git panel → user commits manually**. Mutate tools no longer accept `baseVersion` and never auto-commit; concurrent writes are serialized by the project-level lock.
 
 > ⚠️ `/mcp` is unauthenticated and CORS-open by default. Add access control or bind to loopback before production use.
 
@@ -263,7 +274,6 @@ src/souko/
     │   ├── flows.json
     │   ├── {Module}/
     │   │   ├── {Module}.json
-    │   │   ├── .history/        # Historical snapshots
     │   │   ├── {Leaf}.md
     │   │   └── {SubModule}/...
     │   └── ...
@@ -274,19 +284,19 @@ src/souko/
 
 Each module's documentation is a self-contained unit. Three ways to edit it:
 
-- **Via MCP tools** (recommended): `update_node` / `update_page` / `create_node` / `delete_node` — automatic version tracking and history snapshots; ideal for Code Agents
-- **Direct file edits**: edit `.md` / `.json` under `src/souko/doc/{project}/`; restart the server to pick it up (bypasses version control)
+- **Via MCP tools** (recommended): `update_node` / `update_page` / `create_node` / `delete_node` — writes dirty the doc working tree and wait for a manual commit in the frontend Git panel
+- **Direct file edits**: edit `.md` / `.json` under `src/souko/doc/{project}/`; refresh to pick it up and show it as uncommitted
 - **Trigger an incremental update**: click the Update button on the home page; PrUpdater Agent automatically discovers all newly merged PRs and processes them one by one. Manual mode gates each PR behind a review confirmation
 
 ## doc-drill: Native Code Agent Integration
 
-autoDoc installs the thin [doc-drill](src/skill-template/SKILL.md) skill into the target repo's `.claude/skills/doc-drill/` and writes an `.mcp.json` pointing at the local MCP server. Any Code Agent can then:
+autoDoc installs the thin [doc-drill](src/skill-template/SKILL.md) skill into the target repo's `.claude/skills/doc-drill/`, then writes Claude Code's `.mcp.json` and Codex's `.codex/config.toml` to point at the local HTTP MCP server. Any Code Agent can then:
 
 - **Browse progressively** — `list_projects` → `get_top` → `get_graph` → `get_page`, lazy-loaded, context-efficient
 - **Trace relationships** — follow the 6 semantic edge types to trace call chains and data flows
 - **Keyword search** — `search_nodes` across all doc layers
 - **Navigate business flows** — understand end-to-end interactions via `flows.json`
-- **Maintain directly** — edit docs in place via mutate tools, and use `list_history` / `revert` to inspect or roll back
+- **Maintain directly** — edit docs in place via mutate tools, then let the user commit from autoDoc's frontend Git panel
 
 > This Agent-native integration is something DeepWiki (web chat only) and Google Code Wiki (web browsing only) do not offer.
 
@@ -316,8 +326,9 @@ autoDoc/
 │   │   └── projects.json         # gitignored: shared registry
 │   ├── mcp/                      # HTTP MCP server (same process as HTTP API)
 │   │   ├── server.ts             # buildMcpServer(store)
-│   │   ├── docStore.ts           # doc read/write + version + .history snapshots
-│   │   ├── schema.ts             # Zod schemas (with version / pageVersions)
+│   │   ├── docStore.ts           # doc read/write + project-level lock
+│   │   ├── docGit.ts             # doc Git status / commit / blame
+│   │   ├── schema.ts             # Zod schemas
 │   │   └── tools/{query,mutate}.ts
 │   ├── agents/                   # Agent implementations (Claude + Codex)
 │   │   ├── tsukai/               # All Agent classes (barrel: index.ts)

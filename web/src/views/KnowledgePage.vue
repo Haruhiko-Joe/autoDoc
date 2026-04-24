@@ -156,12 +156,6 @@ async function saveAndStart() {
   }
 }
 
-function handleInputKey(e: KeyboardEvent) {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault()
-    sendReply()
-  }
-}
 
 async function syncServerPhase() {
   try {
@@ -260,10 +254,9 @@ onMounted(async () => {
           <textarea
             v-model="userInput"
             class="reply-input"
-            :placeholder="initialized ? 'Reply to the Elicitor. Enter to send, Shift+Enter for newline.' : 'Describe what you want to change about the default docs. Enter to send.'"
+            :placeholder="initialized ? 'Reply to the Elicitor.' : 'Describe what you want to change about the default docs.'"
             :disabled="loading"
             rows="3"
-            @keydown="handleInputKey"
           />
           <div class="chat-input-row">
             <p v-if="errorMsg" class="chat-error">{{ errorMsg }}</p>
@@ -391,6 +384,7 @@ onMounted(async () => {
   flex-direction: column;
   border-right: 1px solid var(--border);
   min-width: 0;
+  min-height: 0;
 }
 
 .chat-log {
@@ -475,6 +469,7 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .reply-input {

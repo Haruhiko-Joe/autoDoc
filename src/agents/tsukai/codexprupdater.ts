@@ -6,8 +6,27 @@ import { prUpdaterInstructionEn } from "../instructions/en/prupdater.js";
 
 const MCP_URL = process.env.AUTODOC_MCP_URL ?? `http://localhost:${process.env.PORT ?? 3100}/mcp`;
 
+const AUTODOC_TOOLS = [
+  "list_projects",
+  "get_top",
+  "get_graph",
+  "get_page",
+  "search_nodes",
+  "list_source_files",
+  "read_source_files",
+  "list_docs",
+  "read_docs",
+  "patch_page",
+  "update_page",
+  "update_node",
+  "update_graph_meta",
+  "create_node",
+  "delete_node",
+  "update_top",
+];
+
 const MCP_SERVERS_CONFIG = {
-  autodoc: { url: MCP_URL },
+  autodoc: { url: MCP_URL, enabled_tools: AUTODOC_TOOLS },
 };
 
 export class codexPrUpdater implements IPrUpdater {

@@ -14,8 +14,8 @@
   "license": "AGPL-3.0-only",
   "packageManager": "pnpm@10.33.0",
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.110",
-    "@modelcontextprotocol/sdk": "^1.0.4",
+    "@anthropic-ai/claude-agent-sdk": "^0.2.119",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@openai/codex-sdk": "^0.121.0",
     "dotenv": "^17.4.2",
     "ignore": "^7.0.5",
@@ -24,8 +24,8 @@
   },
   "devDependencies": {
     "@types/node": "^24.12.2",
-    "esbuild": "^0.24.0",
+    "esbuild": "^0.24.2",
     "tsx": "^4.21.0",
-    "typescript": "^6.0.2"
+    "typescript": "^6.0.3"
   }
 }
