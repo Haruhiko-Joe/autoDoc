@@ -22,6 +22,7 @@ import {
 import * as git from "./git/repoManager.js";
 import { claudeKnowledge, codexKnowledge } from "./agents/tsukai/index.js";
 import { DocStore } from "./mcp/docStore.js";
+import { DocGit } from "./mcp/docGit.js";
 import { buildMcpServer } from "./mcp/server.js";
 import {
   startUpdate, continueUpdate, skipTask, cancelUpdate, acceptTask, chatOnTask,
@@ -31,7 +32,8 @@ import {
 
 const PORT = Number(process.env.PORT ?? 3100);
 
-const docStore = new DocStore(DOC_ROOT, repoDirOf);
+const docGit = new DocGit(DOC_ROOT);
+const docStore = new DocStore(DOC_ROOT, repoDirOf, docGit);
 
 // ─── Knowledge elicitor sessions ─────────────────────────────
 
@@ -734,99 +736,60 @@ const server = createServer(async (req, res) => {
         res.write(`data: ${JSON.stringify(event)}\n\n`);
       });
       req.on("close", unsub);
+    // ─── Doc git endpoints ───
+    } else if (req.method === "GET" && url.pathname === "/api/doc-git/status") {
+      const project = url.searchParams.get("project");
+      if (!project) {
+        res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "project required" }));
+        return;
+      }
+      const status = await docGit.status(project);
+      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(status));
+    } else if (req.method === "POST" && url.pathname === "/api/doc-git/commit") {
+      const body = (await parseBody(req)) as { project: string; message: string };
+      if (!body.project || !body.message?.trim()) {
+        res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "project and message required" }));
+        return;
+      }
+      const result = await docGit.commitAll(body.project, body.message);
+      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(result));
+    } else if (req.method === "GET" && url.pathname === "/api/doc-git/blame") {
+      const project = url.searchParams.get("project");
+      const nodeId = url.searchParams.get("nodeId");
+      if (!project || nodeId == null) {
+        res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "project and nodeId required" }));
+        return;
+      }
+      const rel = await docStore.resolveNodeId(project, nodeId);
+      const lines = await docGit.blame(project, rel);
+      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ lines }));
     // ─── Doc mutation endpoints ───
     } else if (req.method === "POST" && url.pathname === "/api/doc/create-node") {
       const body = (await parseBody(req)) as {
-        project: string; parentNodeId: string; baseVersion: number;
+        project: string; parentNodeId: string;
         node: import("./mcp/schema.js").GraphNodeT; initialContent?: string;
       };
-      const parent = await docStore.readGraph(body.project, body.parentNodeId);
-      if (parent.nodes.some((n: { name: string }) => n.name === body.node.name)) {
-        throw new Error(`Sibling node already exists: ${body.node.name}`);
-      }
-      if (parent.nodes.some((n: { child: { ref: string } }) => n.child.ref === body.node.child.ref)) {
-        throw new Error(`Sibling child ref already exists: ${body.node.child.ref}`);
-      }
-      if (await docStore.childArtifactExists(body.project, body.parentNodeId, body.node.child.ref, body.node.child.type)) {
-        throw new Error(`Child artifact already exists: ${body.node.child.ref}`);
-      }
-      if (body.node.child.type === "page") {
-        await docStore.createEmptyPage(body.project, body.parentNodeId, body.node.child.ref, body.initialContent ?? "");
-      } else {
-        await docStore.createPlaceholderSubgraph(body.project, body.parentNodeId, body.node.child.ref, body.node.description, body.node.codeScope);
-      }
-      const nextPV = { ...(parent.pageVersions ?? {}) };
-      if (body.node.child.type === "page") nextPV[body.node.child.ref] = 0;
-      try {
-        const written = await docStore.writeGraph(body.project, body.parentNodeId, {
-          ...parent, nodes: [...parent.nodes, body.node],
-          pageVersions: Object.keys(nextPV).length > 0 ? nextPV : parent.pageVersions,
-        }, body.baseVersion);
-        res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(written));
-      } catch (e) {
-        if (body.node.child.type === "page") await docStore.deletePageFile(body.project, body.parentNodeId, body.node.child.ref).catch(() => {});
-        else await docStore.deleteSubgraphDir(body.project, `${body.parentNodeId}/${body.node.child.ref}`).catch(() => {});
-        throw e;
-      }
+      const written = await docStore.createNode(body.project, body.parentNodeId, body.node, body.initialContent);
+      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(written));
     } else if (req.method === "POST" && url.pathname === "/api/doc/update-node") {
       const body = (await parseBody(req)) as {
-        project: string; parentNodeId: string; nodeName: string; baseVersion: number;
+        project: string; parentNodeId: string; nodeName: string;
         patch: { name?: string; description?: string; codeScope?: string[]; edges?: import("./mcp/schema.js").GraphEdgeT[] };
       };
-      const parent = await docStore.readGraph(body.project, body.parentNodeId);
-      const idx = parent.nodes.findIndex((n: { name: string }) => n.name === body.nodeName);
-      if (idx < 0) throw new Error(`Node not found: ${body.nodeName}`);
-      const current = parent.nodes[idx]!;
-      const merged = { ...current, ...body.patch, child: current.child };
-      const nextNodes = parent.nodes.slice();
-      nextNodes[idx] = merged;
-      const written = await docStore.writeGraph(body.project, body.parentNodeId, { ...parent, nodes: nextNodes }, body.baseVersion);
+      const written = await docStore.updateNode(body.project, body.parentNodeId, body.nodeName, body.patch);
       res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(written));
     } else if (req.method === "POST" && url.pathname === "/api/doc/delete-node") {
-      const body = (await parseBody(req)) as { project: string; parentNodeId: string; nodeName: string; baseVersion: number };
-      const parent = await docStore.readGraph(body.project, body.parentNodeId);
-      const target = parent.nodes.find((n: { name: string }) => n.name === body.nodeName);
-      if (!target) throw new Error(`Node not found: ${body.nodeName}`);
-      const nextPV = { ...(parent.pageVersions ?? {}) };
-      if (target.child.type === "page") delete nextPV[target.child.ref];
-      const written = await docStore.writeGraph(body.project, body.parentNodeId, {
-        ...parent, nodes: parent.nodes.filter((n: { name: string }) => n.name !== body.nodeName),
-        pageVersions: target.child.type === "page" ? nextPV : parent.pageVersions,
-      }, body.baseVersion);
-      if (target.child.type === "page") await docStore.deletePageFile(body.project, body.parentNodeId, target.child.ref);
-      else await docStore.deleteSubgraphDir(body.project, `${body.parentNodeId}/${target.child.ref}`);
+      const body = (await parseBody(req)) as { project: string; parentNodeId: string; nodeName: string };
+      const written = await docStore.deleteNode(body.project, body.parentNodeId, body.nodeName);
       res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(written));
     } else if (req.method === "POST" && url.pathname === "/api/doc/update-page") {
-      const body = (await parseBody(req)) as { project: string; nodeId: string; ref: string; baseVersion: number; content: string };
-      const result = await docStore.writePage(body.project, body.nodeId, body.ref, body.content, body.baseVersion);
-      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(result));
+      const body = (await parseBody(req)) as { project: string; nodeId: string; ref: string; content: string };
+      await docStore.writePage(body.project, body.nodeId, body.ref, body.content);
+      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true }));
     } else if (req.method === "POST" && url.pathname === "/api/doc/patch-page") {
-      const body = (await parseBody(req)) as { project: string; nodeId: string; ref: string; baseVersion: number; edits: { old_text: string; new_text: string }[] };
-      const result = await docStore.patchPage(body.project, body.nodeId, body.ref, body.edits, body.baseVersion);
+      const body = (await parseBody(req)) as { project: string; nodeId: string; ref: string; edits: { old_text: string; new_text: string }[] };
+      const result = await docStore.patchPage(body.project, body.nodeId, body.ref, body.edits);
       res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(result));
-    } else if (req.method === "POST" && url.pathname === "/api/doc/revert") {
-      const body = (await parseBody(req)) as { project: string; relPath: string; toVersion: number; baseVersion: number };
-      const result = await docStore.revert(body.project, body.relPath, body.toVersion, body.baseVersion);
-      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(result));
-    } else if (req.method === "GET" && url.pathname === "/api/history") {
-      const project = url.searchParams.get("project");
-      const relPath = url.searchParams.get("relPath");
-      if (!project || !relPath) {
-        res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "project and relPath required" }));
-        return;
-      }
-      const versions = await docStore.listHistory(project, relPath);
-      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ versions }));
-    } else if (req.method === "POST" && url.pathname === "/api/history/diff") {
-      const body = (await parseBody(req)) as { project: string; relPath: string; versionA: number; versionB: number };
-      const { project, relPath, versionA, versionB } = body;
-      if (!project || !relPath || versionA == null || versionB == null) {
-        res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "project, relPath, versionA, versionB required" }));
-        return;
-      }
-      const contentA = await docStore.readHistorySnapshot(project, relPath, versionA);
-      const contentB = await docStore.readHistorySnapshot(project, relPath, versionB);
-      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ contentA, contentB }));
     } else if (req.method === "GET" && url.pathname.startsWith("/api/doc/")) {
       let docDir: string | undefined;
       const project = url.searchParams.get("project");
@@ -837,6 +800,10 @@ const server = createServer(async (req, res) => {
         return;
       }
       const filePath = url.pathname.slice("/api/doc/".length);
+      if (filePath.split("/").some(seg => seg.startsWith("."))) {
+        res.writeHead(403, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "Forbidden" }));
+        return;
+      }
       const { content, type } = await handleDocFile(docDir, filePath);
       res.writeHead(200, { "Content-Type": type }).end(content);
     } else {

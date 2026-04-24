@@ -15,8 +15,6 @@ const AUTODOC_TOOLS = [
   "mcp__autodoc__read_source_files",
   "mcp__autodoc__list_docs",
   "mcp__autodoc__read_docs",
-  "mcp__autodoc__list_history",
-  "mcp__autodoc__get_history",
   "mcp__autodoc__patch_page",
   "mcp__autodoc__update_page",
   "mcp__autodoc__update_node",
@@ -24,7 +22,6 @@ const AUTODOC_TOOLS = [
   "mcp__autodoc__create_node",
   "mcp__autodoc__delete_node",
   "mcp__autodoc__update_top",
-  "mcp__autodoc__revert",
 ];
 
 export class claudePrUpdater implements IPrUpdater {

@@ -63,10 +63,10 @@ API endpoints: `POST /api/update/{start,continue,skip,cancel}`, `POST /api/updat
 
 The `autodoc` MCP server exposes tools for agents to read/write doc artifacts:
 
-- **Query tools** (`src/mcp/tools/query.ts`): `list_projects`, `get_top`, `get_graph`, `get_page`, `search_nodes`, `list_source_files`, `read_source_files`, `list_docs`, `read_docs`, `list_history`, `get_history`
-- **Mutation tools** (`src/mcp/tools/mutate.ts`): `patch_page` (string match + replace), `update_page`, `update_node`, `update_graph_meta`, `create_node`, `delete_node` (preserves `.history` via `.tombstones/`), `update_top`, `revert`
+- **Query tools** (`src/mcp/tools/query.ts`): `list_projects`, `get_top`, `get_graph`, `get_page`, `search_nodes`, `list_source_files`, `read_source_files`, `list_docs`, `read_docs`
+- **Mutation tools** (`src/mcp/tools/mutate.ts`): `patch_page` (string match + replace), `update_page`, `update_node`, `update_graph_meta`, `create_node`, `delete_node`, `update_top`
 
-All write tools enforce optimistic locking via `baseVersion` (must match current `version` from read tools). The doc-drill skill template at `src/skill-template/SKILL.md` documents these tools for agent consumption.
+All write tools share the project-level document lock and only dirty the documentation working tree. Users commit accumulated doc changes manually through `/api/doc-git/commit`; blame data comes from `/api/doc-git/blame`. The doc-drill skill template at `src/skill-template/SKILL.md` documents the MCP tools for agent consumption.
 
 ### Frontend: Vue 3 + TypeScript
 
@@ -101,4 +101,4 @@ Project matching: `path.basename(repoPath)` maps to `web/doc/{name}/`. Re-runnin
 - The `codeScope` field on graph nodes tracks which source files/directories each module covers; child scopes must be subsets of parent scopes
 - `CheckerIssueType` enum: `broken-target`, `empty-content`, `invalid-path`
 - Task status lifecycle: `idle → running → done` (auto) or `idle → running → awaiting-review → done` (manual, with optional follow-up loops back to running)
-- Runtime logs go to `log/{project}.txt` (gitignored); JSONL mutation history in `src/souko/updateLog.ts`
+- Runtime logs go to `log/{project}.txt` (gitignored); PR update reports are appended through `src/souko/updateLog.ts`

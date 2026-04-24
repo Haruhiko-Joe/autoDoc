@@ -1,4 +1,3 @@
-import { cp, mkdir } from "node:fs/promises";
 import path from "node:path";
 import {
   fetchLatest, isGhAvailable, listMergedPrsSince, listCommitsSince,
@@ -6,7 +5,7 @@ import {
   type PrInfo, type CommitInfo,
 } from "../git/prDiscovery.js";
 import { withProjectLock } from "./locks.js";
-import { getProject, upsertProject, repoDirOf, docDirOf } from "../souko/registry.js";
+import { getProject, upsertProject, repoDirOf } from "../souko/registry.js";
 import { appendUpdateLog, type UpdateLogEntry } from "../souko/updateLog.js";
 import { appendRunLog } from "../souko/runLog.js";
 import { claudePrUpdater } from "../agents/tsukai/claudeprupdater.js";
@@ -77,22 +76,6 @@ export function subscribe(project: string, fn: UpdateEventListener): () => void 
 
 export function getUpdateState(project: string): UpdateState | undefined {
   return states.get(project);
-}
-
-// ─── Snapshot ───
-
-const SNAPSHOT_DIR = ".snapshots";
-const MAX_SNAPSHOTS = 20;
-
-async function snapshotDocDir(project: string, sha: string): Promise<void> {
-  const docDir = docDirOf(project);
-  const snapshotBase = path.join(docDir, SNAPSHOT_DIR);
-  await mkdir(snapshotBase, { recursive: true });
-  const dest = path.join(snapshotBase, sha.slice(0, 12));
-  await cp(docDir, dest, {
-    recursive: true,
-    filter: (src) => !src.includes(SNAPSHOT_DIR),
-  }).catch(() => {});
 }
 
 // ─── Core ───
@@ -193,7 +176,6 @@ async function runQueue(project: string): Promise<void> {
     await appendRunLog(project, `task start id=${task.id} sha=${task.sha.slice(0, 12)} files=${task.filesChanged}${task.userInstructions ? " with-instructions" : ""}`);
 
     try {
-      await snapshotDocDir(project, task.sha);
       const repoDir = repoDirOf(project);
       const diff = await diffPatch(repoDir, task.sha);
       const changedFiles = await diffNameOnly(repoDir, task.sha);

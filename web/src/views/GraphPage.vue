@@ -1,15 +1,14 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { fetchTopGraph, fetchSubGraph, fetchPage, createNode, updateNode, deleteNode, updatePage, revertDoc } from '../services/doc'
+import { fetchTopGraph, fetchSubGraph, fetchPage, createNode, updateNode, deleteNode, updatePage, fetchDocBlame, type DocBlameLine } from '../services/doc'
 import GraphView from '../components/GraphView.vue'
 import GraphToolbar from '../components/GraphToolbar.vue'
 import NodeFormDialog from '../components/NodeFormDialog.vue'
 import EdgeFormDialog from '../components/EdgeFormDialog.vue'
 import MarkdownView from '../components/MarkdownView.vue'
 import MarkdownEditor from '../components/MarkdownEditor.vue'
-import ConflictDialog from '../components/ConflictDialog.vue'
-import HistoryPanel from '../components/HistoryPanel.vue'
+import DocGitPanel from '../components/DocGitPanel.vue'
 import EdgeLegend from '../components/EdgeLegend.vue'
 import DocTree from '../components/DocTree.vue'
 import type { TopGraph, SubGraph, GraphNode, GraphEdge, EdgeType } from '../types'
@@ -32,17 +31,13 @@ const edgeDialogSource = ref('')
 const edgeDialogTarget = ref<{ target: string; type: EdgeType; description: string } | undefined>()
 const edgeDialogPrefillTarget = ref('')
 
-// History panel
-const showHistory = ref(false)
+const showGitPanel = ref(false)
+const gitInfoEnabled = ref(false)
+const blameLines = ref<DocBlameLine[]>([])
+const gitRefreshToken = ref(0)
 
-function getHistoryRelPath(): string {
-  const p = getPath()
-  if (subGraph.value) {
-    const parts = p.split('/')
-    const last = parts[parts.length - 1]
-    return `${p}/${last}.json`
-  }
-  return `${p}.md`
+function refreshGitStatus() {
+  gitRefreshToken.value++
 }
 
 function getPath(): string {
@@ -85,6 +80,7 @@ async function load() {
     try {
       if (!topGraph.value) topGraph.value = await fetchTopGraph(project)
       pageContent.value = await fetchPage(project, getPath())
+      await loadBlame()
     } catch {
       error.value = 'Failed to load document.'
     }
@@ -98,6 +94,22 @@ watch(() => [route.params.path, route.params.project], () => {
   topGraph.value = null
   editMode.value = false
   load()
+})
+
+async function loadBlame() {
+  if (!gitInfoEnabled.value || !pageContent.value) {
+    blameLines.value = []
+    return
+  }
+  try {
+    blameLines.value = (await fetchDocBlame(getProject(), getPath())).lines
+  } catch {
+    blameLines.value = []
+  }
+}
+
+watch(gitInfoEnabled, () => {
+  void loadBlame()
 })
 
 function onNodeClick(node: { child?: GraphNode['child'] }) {
@@ -144,7 +156,7 @@ async function handleNodeSubmit(data: { name: string; description: string; codeS
   try {
     if (nodeDialogTarget.value) {
       // Edit existing node
-      subGraph.value = await updateNode(project, nodeId, nodeDialogTarget.value.name, subGraph.value.version, {
+      subGraph.value = await updateNode(project, nodeId, nodeDialogTarget.value.name, {
         name: data.name,
         description: data.description,
         codeScope: data.codeScope,
@@ -158,8 +170,9 @@ async function handleNodeSubmit(data: { name: string; description: string; codeS
         edges: [],
         child: { type: data.childType, ref: data.childRef },
       }
-      subGraph.value = await createNode(project, nodeId, subGraph.value.version, node)
+      subGraph.value = await createNode(project, nodeId, node)
     }
+    refreshGitStatus()
     nodeDialogVisible.value = false
   } catch (e) {
     alert(e instanceof Error ? e.message : 'Operation failed')
@@ -169,8 +182,9 @@ async function handleNodeSubmit(data: { name: string; description: string; codeS
 async function handleDeleteNode(node: GraphNode) {
   if (!subGraph.value || !confirm(`Delete "${node.name}"?`)) return
   try {
-    subGraph.value = await deleteNode(getProject(), getNodeId(), node.name, subGraph.value.version)
+    subGraph.value = await deleteNode(getProject(), getNodeId(), node.name)
     selectedNodeId.value = null
+    refreshGitStatus()
   } catch (e) {
     alert(e instanceof Error ? e.message : 'Delete failed')
   }
@@ -219,7 +233,8 @@ async function handleEdgeSubmit(data: { target: string; type: EdgeType; descript
   }
 
   try {
-    subGraph.value = await updateNode(project, nodeId, sourceNodeName, subGraph.value.version, { edges: newEdges })
+    subGraph.value = await updateNode(project, nodeId, sourceNodeName, { edges: newEdges })
+    refreshGitStatus()
     edgeDialogVisible.value = false
   } catch (e) {
     alert(e instanceof Error ? e.message : 'Edge operation failed')
@@ -232,7 +247,8 @@ async function handleEdgeDelete(source: string, edgeTarget: string, edgeType: Ed
   if (!sourceNode) return
   const newEdges = sourceNode.edges.filter(e => !(e.target === edgeTarget && e.type === edgeType))
   try {
-    subGraph.value = await updateNode(getProject(), getNodeId(), source, subGraph.value.version, { edges: newEdges })
+    subGraph.value = await updateNode(getProject(), getNodeId(), source, { edges: newEdges })
+    refreshGitStatus()
   } catch (e) {
     alert(e instanceof Error ? e.message : 'Delete edge failed')
   }
@@ -243,10 +259,7 @@ async function handleEdgeDelete(source: string, edgeTarget: string, edgeType: Ed
 type PageViewMode = 'preview' | 'edit' | 'split'
 const pageViewMode = ref<PageViewMode>('preview')
 const pageEditContent = ref('')
-const pageVersion = ref(0)
 const pageSaving = ref(false)
-const conflictVisible = ref(false)
-const conflictServerContent = ref('')
 
 // ─── Split-mode scroll sync ───
 
@@ -321,74 +334,22 @@ watch(pageContent, (val) => {
   }
 })
 
-async function loadPageVersion() {
-  try {
-    const parentNodeId = getPageParentNodeId()
-    const sub = await fetchSubGraph(getProject(), parentNodeId)
-    const ref = getPageRef()
-    pageVersion.value = sub.pageVersions?.[ref] ?? 0
-  } catch {
-    pageVersion.value = 0
-  }
-}
-
 function enterPageEdit() {
   pageEditContent.value = pageContent.value
   pageViewMode.value = 'edit'
-  loadPageVersion()
 }
 
 async function savePage() {
   pageSaving.value = true
   try {
-    const result = await updatePage(getProject(), getPageParentNodeId(), getPageRef(), pageVersion.value, pageEditContent.value)
-    pageVersion.value = result.version
+    await updatePage(getProject(), getPageParentNodeId(), getPageRef(), pageEditContent.value)
     pageContent.value = pageEditContent.value
+    refreshGitStatus()
+    await loadBlame()
   } catch (e) {
-    const msg = e instanceof Error ? e.message : ''
-    if (msg.includes('Version mismatch')) {
-      try {
-        conflictServerContent.value = await fetchPage(getProject(), getPath())
-      } catch {
-        conflictServerContent.value = '(failed to load server version)'
-      }
-      conflictVisible.value = true
-    } else {
-      alert(msg || 'Save failed')
-    }
+    alert(e instanceof Error ? e.message : 'Save failed')
   } finally {
     pageSaving.value = false
-  }
-}
-
-async function handleConflictOverwrite() {
-  conflictVisible.value = false
-  await loadPageVersion()
-  await savePage()
-}
-
-function handleConflictDiscard() {
-  conflictVisible.value = false
-  pageEditContent.value = conflictServerContent.value
-  pageContent.value = conflictServerContent.value
-  loadPageVersion()
-}
-
-async function handleRevert(version: number) {
-  const relPath = getHistoryRelPath()
-  try {
-    let currentVersion = 0
-    if (subGraph.value) {
-      currentVersion = subGraph.value.version
-    } else {
-      await loadPageVersion()
-      currentVersion = pageVersion.value
-    }
-    await revertDoc(getProject(), relPath, version, currentVersion)
-    await load()
-    showHistory.value = false
-  } catch (e) {
-    alert(e instanceof Error ? e.message : 'Revert failed')
   }
 }
 </script>
@@ -430,7 +391,7 @@ async function handleRevert(version: number) {
             >
               {{ editMode ? 'Done' : 'Edit' }}
             </button>
-            <button class="history-toggle" @click="showHistory = !showHistory">History</button>
+            <button class="git-toggle" @click="showGitPanel = !showGitPanel">Git</button>
           </div>
         </div>
         <div class="canvas-graph">
@@ -467,23 +428,39 @@ async function handleRevert(version: number) {
               <button class="mode-btn" :class="{ active: pageViewMode === 'edit' }" @click="enterPageEdit()">Edit</button>
               <button class="mode-btn" :class="{ active: pageViewMode === 'split' }" @click="enterPageEdit(); pageViewMode = 'split'">Split</button>
             </div>
+            <button
+              class="git-info-toggle"
+              :class="{ active: gitInfoEnabled }"
+              @click="gitInfoEnabled = !gitInfoEnabled"
+            >Git Info</button>
+            <button class="git-toggle" @click="showGitPanel = !showGitPanel">Git</button>
             <button v-if="pageViewMode !== 'preview'" class="btn-save" :disabled="pageSaving" @click="savePage">
               {{ pageSaving ? 'Saving...' : 'Save' }}
             </button>
           </div>
         </div>
         <div class="canvas-page" v-if="pageViewMode === 'preview'">
-          <MarkdownView :content="pageContent" />
+          <MarkdownView :content="pageContent" :show-git-info="gitInfoEnabled" :blame-lines="blameLines" />
         </div>
         <div class="canvas-page-edit" v-else-if="pageViewMode === 'edit'">
-          <MarkdownEditor v-model="pageEditContent" @save="savePage" />
+          <MarkdownEditor
+            v-model="pageEditContent"
+            :show-git-info="gitInfoEnabled"
+            :blame-lines="blameLines"
+            @save="savePage"
+          />
         </div>
         <div class="canvas-page-split" v-else>
           <div class="split-editor" ref="splitEditorRef">
-            <MarkdownEditor v-model="pageEditContent" @save="savePage" />
+            <MarkdownEditor
+              v-model="pageEditContent"
+              :show-git-info="gitInfoEnabled"
+              :blame-lines="blameLines"
+              @save="savePage"
+            />
           </div>
           <div class="split-preview" ref="splitPreviewRef">
-            <MarkdownView :content="pageEditContent" />
+            <MarkdownView :content="pageEditContent" :show-git-info="gitInfoEnabled" :blame-lines="blameLines" />
           </div>
         </div>
       </template>
@@ -505,21 +482,13 @@ async function handleRevert(version: number) {
       @close="edgeDialogVisible = false"
       @submit="handleEdgeSubmit"
     />
-    <ConflictDialog
-      :visible="conflictVisible"
-      :local-content="pageEditContent"
-      :server-content="conflictServerContent"
-      @overwrite="handleConflictOverwrite"
-      @discard="handleConflictDiscard"
-      @close="conflictVisible = false"
-    />
-    <HistoryPanel
-      v-if="subGraph || pageContent"
+    <DocGitPanel
+      v-if="getProject()"
       :project="getProject()"
-      :rel-path="getHistoryRelPath()"
-      :visible="showHistory"
-      @close="showHistory = false"
-      @revert="handleRevert"
+      :visible="showGitPanel"
+      :refresh-token="gitRefreshToken"
+      @close="showGitPanel = false"
+      @committed="loadBlame"
     />
   </div>
 </template>
@@ -636,7 +605,8 @@ async function handleRevert(version: number) {
 .status-badge.checking { background: var(--badge-active-bg); color: var(--accent); }
 
 .edit-toggle,
-.history-toggle {
+.git-toggle,
+.git-info-toggle {
   padding: 4px 14px;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -650,12 +620,14 @@ async function handleRevert(version: number) {
 }
 
 .edit-toggle:hover,
-.history-toggle:hover {
+.git-toggle:hover,
+.git-info-toggle:hover {
   border-color: var(--accent);
   color: var(--accent);
 }
 
-.edit-toggle.active {
+.edit-toggle.active,
+.git-info-toggle.active {
   background: var(--accent);
   color: #fff;
   border-color: var(--accent);

@@ -6,6 +6,7 @@ import GraphView from '../components/GraphView.vue'
 import EdgeLegend from '../components/EdgeLegend.vue'
 import DocTree from '../components/DocTree.vue'
 import UpdateQueuePanel from '../components/UpdateQueuePanel.vue'
+import DocGitPanel from '../components/DocGitPanel.vue'
 import { useTheme } from '../composables/useTheme'
 import type { TopGraph, GraphNode } from '../types'
 
@@ -16,6 +17,7 @@ const router = useRouter()
 const topGraph = ref<TopGraph | null>(null)
 const gitUrl = ref('')
 const showUpdatePanel = ref(false)
+const showGitPanel = ref(false)
 const maxConcurrency = ref(8)
 const agentBackends = reactive<AgentBackends>({
   scaffold: 'claude',
@@ -557,6 +559,7 @@ async function handleRetryErrors() {
           <span v-if="viewingRunningProject" class="live-badge">LIVE</span>
           <a class="flows-link" @click="router.push(`/${selectedProject}/flows`)">Interaction Flows &rarr;</a>
           <button class="update-btn" @click="showUpdatePanel = !showUpdatePanel">Update</button>
+          <button class="update-btn" @click="showGitPanel = !showGitPanel">Git</button>
         </div>
         <div class="canvas-graph">
           <GraphView :nodes="graphNodes()" @node-click="onNodeClick" />
@@ -595,6 +598,12 @@ async function handleRetryErrors() {
       :project="selectedProject"
       :visible="showUpdatePanel"
       @close="showUpdatePanel = false"
+    />
+    <DocGitPanel
+      v-if="selectedProject"
+      :project="selectedProject"
+      :visible="showGitPanel"
+      @close="showGitPanel = false"
     />
   </div>
 </template>

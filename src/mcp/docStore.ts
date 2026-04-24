@@ -1,37 +1,17 @@
-import { readFile, writeFile, mkdir, readdir, stat, rm, open, rename } from "node:fs/promises"
+import { readFile, writeFile, mkdir, readdir, stat, rm, open } from "node:fs/promises"
 import path from "node:path"
 import ignore, { type Ignore } from "ignore"
-import { Graph, TopGraph, type GraphT, type TopGraphT } from "./schema.js"
-
-export class VersionMismatchError extends Error {
-  constructor(
-    public readonly relPath: string,
-    public readonly expected: number,
-    public readonly actual: number,
-  ) {
-    super(
-      `Version mismatch for ${relPath}: client supplied baseVersion=${expected}, server has version=${actual}. Re-read the file and retry.`,
-    )
-    this.name = "VersionMismatchError"
-  }
-}
-
-export interface SnapshotSource {
-  type: "commit" | "pr" | "manual" | "agent"
-  ref?: string
-}
-
-export interface SnapshotMeta {
-  source?: SnapshotSource
-  summary?: string
-}
-
-export interface HistoryEntry {
-  version: number
-  ts: string
-  source?: SnapshotSource
-  summary?: string
-}
+import {
+  Graph,
+  TopGraph,
+  type GraphEdgeT,
+  type GraphNodeT,
+  type GraphT,
+  type ScaffoldNodeT,
+  type TopGraphT,
+} from "./schema.js"
+import { DocGit } from "./docGit.js"
+import { withDocProjectLock } from "./docLock.js"
 
 export interface SourceReadRequest {
   path: string
@@ -58,6 +38,7 @@ export class DocStore {
   constructor(
     public readonly docRoot: string,
     private readonly resolveRepoDir: (project: string) => string,
+    public readonly docGit: DocGit,
   ) {}
 
   // ─── Path helpers ───────────────────────────────────────────
@@ -94,10 +75,6 @@ export class DocStore {
     return this.resolveWithin(project, path.join(...parts, `${ref}.md`))
   }
 
-  private historyDir(filePath: string): string {
-    return path.join(path.dirname(filePath), ".history")
-  }
-
   // ─── Listings ───────────────────────────────────────────────
 
   async listProjects(): Promise<{ name: string; description: string }[]> {
@@ -131,11 +108,9 @@ export class DocStore {
     project: string,
     nodeId: string,
     ref: string,
-  ): Promise<{ content: string; version: number }> {
-    const graph = await this.readGraph(project, nodeId)
-    const version = graph.pageVersions?.[ref] ?? 0
+  ): Promise<{ content: string }> {
     const content = await readFile(this.pageFilePath(project, nodeId, ref), "utf-8")
-    return { content, version }
+    return { content }
   }
 
   async searchNodes(
@@ -175,63 +150,83 @@ export class DocStore {
     return results
   }
 
-  // ─── Snapshot ──────────────────────────────────────────────
-
-  private async snapshot(filePath: string, version: number, meta?: SnapshotMeta): Promise<void> {
-    try {
-      const data = await readFile(filePath)
-      const dir = this.historyDir(filePath)
-      await mkdir(dir, { recursive: true })
-      const base = path.basename(filePath)
-      const ext = path.extname(base)
-      const stem = base.slice(0, base.length - ext.length)
-      await writeFile(path.join(dir, `${stem}.v${version}${ext}`), data)
-      const entry: HistoryEntry = {
-        version,
-        ts: new Date().toISOString(),
-        ...(meta?.source ? { source: meta.source } : {}),
-        ...(meta?.summary ? { summary: meta.summary } : {}),
-      }
-      const metaFile = path.join(dir, "_meta.jsonl")
-      await writeFile(metaFile, JSON.stringify(entry) + "\n", { flag: "a" })
-    } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e
-    }
-  }
-
   // ─── Top writes ─────────────────────────────────────────────
 
-  async writeTop(project: string, next: TopGraphT, baseVersion: number): Promise<TopGraphT> {
+  async writeTop(project: string, next: TopGraphT): Promise<TopGraphT> {
+    return withDocProjectLock(project, () => this.writeTopUnlocked(project, next))
+  }
+
+  async updateTop(
+    project: string,
+    patch: { description?: string; nodes?: ScaffoldNodeT[] },
+  ): Promise<TopGraphT> {
+    return withDocProjectLock(project, async () => {
+      const current = await this.readTop(project)
+      return this.writeTopUnlocked(project, {
+        ...current,
+        ...(patch.description !== undefined ? { description: patch.description } : {}),
+        ...(patch.nodes !== undefined ? { nodes: patch.nodes } : {}),
+      })
+    })
+  }
+
+  private async writeTopUnlocked(project: string, next: TopGraphT): Promise<TopGraphT> {
     const filePath = this.topFilePath(project)
-    const current = await this.readTop(project)
-    if (current.version !== baseVersion) {
-      throw new VersionMismatchError("top.json", baseVersion, current.version)
-    }
-    await this.snapshot(filePath, current.version)
-    const written: TopGraphT = { ...next, version: baseVersion + 1 }
     await mkdir(path.dirname(filePath), { recursive: true })
-    await writeFile(filePath, JSON.stringify(written, null, 2))
-    return written
+    await writeFile(filePath, JSON.stringify(next, null, 2))
+    return next
   }
 
   // ─── Graph writes ───────────────────────────────────────────
 
-  async writeGraph(
+  async writeGraph(project: string, nodeId: string, next: GraphT): Promise<GraphT> {
+    return withDocProjectLock(project, () => this.writeGraphUnlocked(project, nodeId, next))
+  }
+
+  async updateGraphMeta(
     project: string,
     nodeId: string,
-    next: GraphT,
-    baseVersion: number,
+    patch: { description?: string; codeScope?: string[] },
   ): Promise<GraphT> {
+    return withDocProjectLock(project, async () => {
+      const current = await this.readGraph(project, nodeId)
+      return this.writeGraphUnlocked(project, nodeId, {
+        ...current,
+        ...(patch.description !== undefined ? { description: patch.description } : {}),
+        ...(patch.codeScope !== undefined ? { codeScope: patch.codeScope } : {}),
+      })
+    })
+  }
+
+  async updateNode(
+    project: string,
+    parentNodeId: string,
+    nodeName: string,
+    patch: { name?: string; description?: string; codeScope?: string[]; edges?: GraphEdgeT[] },
+  ): Promise<GraphT> {
+    return withDocProjectLock(project, async () => {
+      const parent = await this.readGraph(project, parentNodeId)
+      const idx = parent.nodes.findIndex((n) => n.name === nodeName)
+      if (idx < 0) throw new Error(`Node not found: ${nodeName}`)
+      const current = parent.nodes[idx]
+      if (!current) throw new Error(`Node not found: ${nodeName}`)
+      const nextNodes = parent.nodes.slice()
+      nextNodes[idx] = {
+        name: patch.name ?? current.name,
+        description: patch.description ?? current.description,
+        codeScope: patch.codeScope ?? current.codeScope,
+        edges: patch.edges ?? current.edges,
+        child: current.child,
+      }
+      return this.writeGraphUnlocked(project, parentNodeId, { ...parent, nodes: nextNodes })
+    })
+  }
+
+  private async writeGraphUnlocked(project: string, nodeId: string, next: GraphT): Promise<GraphT> {
     const filePath = this.graphFilePath(project, nodeId)
-    const current = await this.readGraph(project, nodeId)
-    if (current.version !== baseVersion) {
-      throw new VersionMismatchError(nodeId, baseVersion, current.version)
-    }
-    await this.snapshot(filePath, current.version)
-    const written: GraphT = { ...next, version: baseVersion + 1 }
     await mkdir(path.dirname(filePath), { recursive: true })
-    await writeFile(filePath, JSON.stringify(written, null, 2))
-    return written
+    await writeFile(filePath, JSON.stringify(next, null, 2))
+    return next
   }
 
   // ─── Page writes ────────────────────────────────────────────
@@ -241,34 +236,8 @@ export class DocStore {
     nodeId: string,
     ref: string,
     content: string,
-    baseVersion: number,
-  ): Promise<{ version: number; graphVersion: number }> {
-    const graph = await this.readGraph(project, nodeId)
-    const currentPageVersion = graph.pageVersions?.[ref] ?? 0
-    if (currentPageVersion !== baseVersion) {
-      throw new VersionMismatchError(
-        `${nodeId}/${ref}.md`,
-        baseVersion,
-        currentPageVersion,
-      )
-    }
-
-    const pageFile = this.pageFilePath(project, nodeId, ref)
-    await this.snapshot(pageFile, currentPageVersion)
-    await mkdir(path.dirname(pageFile), { recursive: true })
-    await writeFile(pageFile, content)
-
-    // Bump pageVersions in parent graph (separate version lane from graph.version).
-    const graphFile = this.graphFilePath(project, nodeId)
-    await this.snapshot(graphFile, graph.version)
-    const nextGraph: GraphT = {
-      ...graph,
-      pageVersions: { ...(graph.pageVersions ?? {}), [ref]: currentPageVersion + 1 },
-      version: graph.version + 1,
-    }
-    await writeFile(graphFile, JSON.stringify(nextGraph, null, 2))
-
-    return { version: currentPageVersion + 1, graphVersion: nextGraph.version }
+  ): Promise<void> {
+    await withDocProjectLock(project, () => this.writePageUnlocked(project, nodeId, ref, content))
   }
 
   async patchPage(
@@ -276,50 +245,50 @@ export class DocStore {
     nodeId: string,
     ref: string,
     edits: { old_text: string; new_text: string }[],
-    baseVersion: number,
-  ): Promise<{ version: number; graphVersion: number; appliedCount: number }> {
-    const graph = await this.readGraph(project, nodeId)
-    const currentPageVersion = graph.pageVersions?.[ref] ?? 0
-    if (currentPageVersion !== baseVersion) {
-      throw new VersionMismatchError(
-        `${nodeId}/${ref}.md`,
-        baseVersion,
-        currentPageVersion,
-      )
-    }
+  ): Promise<{ appliedCount: number }> {
+    return withDocProjectLock(project, async () => {
+      const pageFile = this.pageFilePath(project, nodeId, ref)
+      let content = await readFile(pageFile, "utf-8")
 
-    const pageFile = this.pageFilePath(project, nodeId, ref)
-    let content = await readFile(pageFile, "utf-8")
-
-    for (const edit of edits) {
-      const count = content.split(edit.old_text).length - 1
-      if (count === 0) {
-        throw new Error(`TextNotFound: "${edit.old_text.slice(0, 80)}"`)
+      for (const edit of edits) {
+        const count = content.split(edit.old_text).length - 1
+        if (count === 0) {
+          throw new Error(`TextNotFound: "${edit.old_text.slice(0, 80)}"`)
+        }
+        if (count > 1) {
+          throw new Error(`AmbiguousMatch: "${edit.old_text.slice(0, 80)}" matches ${count} times`)
+        }
+        content = content.replace(edit.old_text, edit.new_text)
       }
-      if (count > 1) {
-        throw new Error(`AmbiguousMatch: "${edit.old_text.slice(0, 80)}" matches ${count} times`)
-      }
-      content = content.replace(edit.old_text, edit.new_text)
-    }
 
-    await this.snapshot(pageFile, currentPageVersion)
-    await writeFile(pageFile, content)
-
-    const graphFile = this.graphFilePath(project, nodeId)
-    await this.snapshot(graphFile, graph.version)
-    const nextGraph: GraphT = {
-      ...graph,
-      pageVersions: { ...(graph.pageVersions ?? {}), [ref]: currentPageVersion + 1 },
-      version: graph.version + 1,
-    }
-    await writeFile(graphFile, JSON.stringify(nextGraph, null, 2))
-
-    return { version: currentPageVersion + 1, graphVersion: nextGraph.version, appliedCount: edits.length }
+      await writeFile(pageFile, content)
+      return { appliedCount: edits.length }
+    })
   }
 
-  // ─── Create helpers (no version check — used internally by create_node) ─
+  private async writePageUnlocked(
+    project: string,
+    nodeId: string,
+    ref: string,
+    content: string,
+  ): Promise<void> {
+    const pageFile = this.pageFilePath(project, nodeId, ref)
+    await mkdir(path.dirname(pageFile), { recursive: true })
+    await writeFile(pageFile, content)
+  }
+
+  // ─── Create helpers ─────────────────────────────────────────
 
   async createEmptyPage(
+    project: string,
+    nodeId: string,
+    ref: string,
+    content: string,
+  ): Promise<void> {
+    await withDocProjectLock(project, () => this.createEmptyPageUnlocked(project, nodeId, ref, content))
+  }
+
+  private async createEmptyPageUnlocked(
     project: string,
     nodeId: string,
     ref: string,
@@ -349,6 +318,18 @@ export class DocStore {
     description: string,
     codeScope: string[],
   ): Promise<void> {
+    await withDocProjectLock(project, () =>
+      this.createPlaceholderSubgraphUnlocked(project, parentNodeId, ref, description, codeScope),
+    )
+  }
+
+  private async createPlaceholderSubgraphUnlocked(
+    project: string,
+    parentNodeId: string,
+    ref: string,
+    description: string,
+    codeScope: string[],
+  ): Promise<void> {
     const childNodeId = `${parentNodeId}/${ref}`
     const filePath = this.graphFilePath(project, childNodeId)
     await mkdir(path.dirname(filePath), { recursive: true })
@@ -356,142 +337,122 @@ export class DocStore {
       description,
       codeScope,
       nodes: [],
-      version: 0,
     }
     await writeFile(filePath, JSON.stringify(placeholder, null, 2), { flag: "wx" })
+  }
+
+  async createNode(
+    project: string,
+    parentNodeId: string,
+    node: GraphNodeT,
+    initialContent?: string,
+  ): Promise<GraphT> {
+    return withDocProjectLock(project, async () => {
+      const parentFile = this.graphFilePath(project, parentNodeId)
+      const originalParent = await readFile(parentFile, "utf-8")
+      const parent = Graph.parse(JSON.parse(originalParent))
+
+      if (parent.nodes.some((n) => n.name === node.name)) {
+        throw new Error(`Sibling node already exists: ${node.name}`)
+      }
+      if (parent.nodes.some((n) => n.child.ref === node.child.ref)) {
+        throw new Error(`Sibling child ref already exists: ${node.child.ref}`)
+      }
+      if (await this.childArtifactExists(project, parentNodeId, node.child.ref, node.child.type)) {
+        throw new Error(`Child artifact already exists: ${node.child.ref}`)
+      }
+
+      let childCreated = false
+      try {
+        if (node.child.type === "page") {
+          await this.createEmptyPageUnlocked(project, parentNodeId, node.child.ref, initialContent ?? "")
+        } else {
+          await this.createPlaceholderSubgraphUnlocked(
+            project,
+            parentNodeId,
+            node.child.ref,
+            node.description,
+            node.codeScope,
+          )
+        }
+        childCreated = true
+
+        return await this.writeGraphUnlocked(project, parentNodeId, {
+          ...parent,
+          nodes: [...parent.nodes, node],
+        })
+      } catch (e) {
+        await writeFile(parentFile, originalParent).catch(() => {})
+        if (childCreated) {
+          if (node.child.type === "page") {
+            await this.deletePageFileUnlocked(project, parentNodeId, node.child.ref).catch(() => {})
+          } else {
+            await this.deleteSubgraphDirUnlocked(project, `${parentNodeId}/${node.child.ref}`).catch(() => {})
+          }
+        }
+        throw e
+      }
+    })
   }
 
   // ─── Deletes ────────────────────────────────────────────────
 
   async deletePageFile(project: string, nodeId: string, ref: string): Promise<void> {
+    await withDocProjectLock(project, () => this.deletePageFileUnlocked(project, nodeId, ref))
+  }
+
+  private async deletePageFileUnlocked(project: string, nodeId: string, ref: string): Promise<void> {
     const filePath = this.pageFilePath(project, nodeId, ref)
-    try {
-      const graph = await this.readGraph(project, nodeId)
-      const version = graph.pageVersions?.[ref] ?? 0
-      await this.snapshot(filePath, version)
-    } catch {
-      // best-effort snapshot
-    }
     await rm(filePath, { force: true })
   }
 
   async deleteSubgraphDir(project: string, nodeId: string): Promise<void> {
+    await withDocProjectLock(project, () => this.deleteSubgraphDirUnlocked(project, nodeId))
+  }
+
+  private async deleteSubgraphDirUnlocked(project: string, nodeId: string): Promise<void> {
     const graphFile = this.graphFilePath(project, nodeId)
-    try {
-      const graph = await this.readGraph(project, nodeId)
-      await this.snapshot(graphFile, graph.version)
-    } catch {
-      // best-effort snapshot
-    }
     const dir = path.dirname(graphFile)
-    const histDir = path.join(dir, ".history")
-    try {
-      const histStat = await stat(histDir)
-      if (histStat.isDirectory()) {
-        const subgraphName = path.basename(dir)
-        const parentDir = path.dirname(dir)
-        const tombDir = path.join(parentDir, ".tombstones", subgraphName, `${Date.now()}`)
-        await mkdir(tombDir, { recursive: true })
-        await rename(histDir, path.join(tombDir, ".history"))
-      }
-    } catch {
-      // no .history to preserve
-    }
     await rm(dir, { recursive: true, force: true })
   }
 
-  // ─── History ────────────────────────────────────────────────
+  async deleteNode(project: string, parentNodeId: string, nodeName: string): Promise<GraphT> {
+    return withDocProjectLock(project, async () => {
+      const parentFile = this.graphFilePath(project, parentNodeId)
+      const originalParent = await readFile(parentFile, "utf-8")
+      const parent = Graph.parse(JSON.parse(originalParent))
+      const target = parent.nodes.find((n) => n.name === nodeName)
+      if (!target) throw new Error(`Node not found: ${nodeName}`)
 
-  async readHistorySnapshot(
-    project: string,
-    relPath: string,
-    version: number,
-  ): Promise<string> {
-    const full = this.resolveWithin(project, relPath)
-    const dir = this.historyDir(full)
-    const base = path.basename(full)
-    const ext = path.extname(base)
-    const stem = base.slice(0, base.length - ext.length)
-    return await readFile(path.join(dir, `${stem}.v${version}${ext}`), "utf-8")
+      try {
+        const written = await this.writeGraphUnlocked(project, parentNodeId, {
+          ...parent,
+          nodes: parent.nodes.filter((n) => n.name !== nodeName),
+        })
+        if (target.child.type === "page") {
+          await this.deletePageFileUnlocked(project, parentNodeId, target.child.ref)
+        } else {
+          await this.deleteSubgraphDirUnlocked(project, `${parentNodeId}/${target.child.ref}`)
+        }
+        return written
+      } catch (e) {
+        await writeFile(parentFile, originalParent).catch(() => {})
+        throw e
+      }
+    })
   }
 
-  async listHistory(project: string, relPath: string): Promise<HistoryEntry[]> {
-    const full = this.resolveWithin(project, relPath)
-    const dir = this.historyDir(full)
-    const base = path.basename(full)
-    const ext = path.extname(base)
-    const stem = base.slice(0, base.length - ext.length)
+  // ─── Git-backed helpers ────────────────────────────────────
 
-    const metaMap = new Map<number, HistoryEntry>()
-    try {
-      const raw = await readFile(path.join(dir, "_meta.jsonl"), "utf-8")
-      for (const line of raw.split("\n")) {
-        if (!line.trim()) continue
-        const entry = JSON.parse(line) as HistoryEntry
-        metaMap.set(entry.version, entry)
-      }
-    } catch {
-      // no _meta.jsonl yet
-    }
-
-    const entries: HistoryEntry[] = []
-    try {
-      const files = await readdir(dir)
-      const re = new RegExp(`^${escapeForRegex(stem)}\\.v(\\d+)${escapeForRegex(ext)}$`)
-      for (const f of files) {
-        const m = f.match(re)
-        if (!m) continue
-        const version = parseInt(m[1]!, 10)
-        const meta = metaMap.get(version)
-        entries.push(meta ?? { version, ts: "" })
-      }
-    } catch {
-      // no .history dir
-    }
-    entries.sort((a, b) => b.version - a.version)
-    return entries
+  async resolveNodeId(project: string, nodeId: string): Promise<string> {
+    return this.resolveNodeIdToRelPath(project, nodeId)
   }
 
-  // ─── Revert ─────────────────────────────────────────────────
-
-  async revert(
-    project: string,
-    relPath: string,
-    toVersion: number,
-    baseVersion: number,
-  ): Promise<{ relPath: string; newVersion: number }> {
-    const snapshot = await this.readHistorySnapshot(project, relPath, toVersion)
-
-    if (relPath === "top.json") {
-      const parsed = TopGraph.parse(JSON.parse(snapshot))
-      const written = await this.writeTop(project, parsed, baseVersion)
-      return { relPath, newVersion: written.version }
-    }
-
-    if (relPath.endsWith(".json")) {
-      const parts = relPath.split("/")
-      const fileName = parts.pop()!
-      const stemFromFile = fileName.slice(0, -5)
-      const lastDir = parts[parts.length - 1]
-      if (stemFromFile !== lastDir) {
-        throw new Error(`Unexpected graph file layout: ${relPath}`)
-      }
-      const nodeId = parts.join("/")
-      const parsed = Graph.parse(JSON.parse(snapshot))
-      const written = await this.writeGraph(project, nodeId, parsed, baseVersion)
-      return { relPath, newVersion: written.version }
-    }
-
-    if (relPath.endsWith(".md")) {
-      const parts = relPath.split("/")
-      const fileName = parts.pop()!
-      const ref = fileName.slice(0, -3)
-      const nodeId = parts.join("/")
-      const { version } = await this.writePage(project, nodeId, ref, snapshot, baseVersion)
-      return { relPath, newVersion: version }
-    }
-
-    throw new Error(`Unsupported revert target: ${relPath}`)
+  private async resolveNodeIdToRelPath(project: string, nodeId: string): Promise<string> {
+    const abs = await this.resolveDocFile(project, nodeId)
+    if (!abs) throw new Error(`Doc not found: ${nodeId}`)
+    const base = this.projectDir(project)
+    return path.relative(base, abs).split(path.sep).join("/")
   }
 
   // ─── Source code access ─────────────────────────────────────
@@ -689,7 +650,6 @@ export class DocStore {
     }
     const parts = nodeId.split("/").filter(Boolean)
     if (parts.length === 0) return null
-    // Prefer leaf page .md; fall back to subgraph .json
     let pageFile: string
     try {
       pageFile = this.resolveWithin(project, path.join(...parts) + ".md")
@@ -707,10 +667,6 @@ export class DocStore {
     if (await fileExists(graphFile)) return graphFile
     return null
   }
-}
-
-function escapeForRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
 
 async function fileExists(p: string): Promise<boolean> {

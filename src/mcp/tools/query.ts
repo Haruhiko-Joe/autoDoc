@@ -81,13 +81,13 @@ export function registerQueryTools(mcp: McpServer, store: DocStore): void {
       json({ docs: await store.readDocs(project, paths) }),
   )
 
-  // ─── Structured reads (return version for baseVersion round-trip) ──
+  // ─── Structured reads ──────────────────────────────────────
 
   mcp.registerTool(
     "get_top",
     {
       description:
-        "Get a project's top-level graph with version. Returns the full TopGraph object including `version` (needed as `baseVersion` for update_top) and the `nodes` array of top-level modules. Always call this first when exploring a project.",
+        "Get a project's top-level graph. Returns the full TopGraph object including the `nodes` array of top-level modules. Always call this first when exploring a project.",
       inputSchema: {
         project: z.string(),
       },
@@ -99,7 +99,7 @@ export function registerQueryTools(mcp: McpServer, store: DocStore): void {
     "get_graph",
     {
       description:
-        "Get a subgraph by nodeId. Returns the full Graph object including `version`, `pageVersions` (per-page version map), `codeScope`, `nodes`, and `description`. Use `version` as `baseVersion` for graph-level mutations; use `pageVersions[ref]` as `baseVersion` for update_page/patch_page.",
+        "Get a subgraph by nodeId. Returns the full Graph object including `codeScope`, `nodes`, and `description`.",
       inputSchema: {
         project: z.string(),
         nodeId: z.string().describe("Slash-separated path, e.g. 'Core/SessionEngine'"),
@@ -112,7 +112,7 @@ export function registerQueryTools(mcp: McpServer, store: DocStore): void {
     "get_page",
     {
       description:
-        "Get a leaf markdown page's content and its version. Returns `{ content, version }` where `version` can be used directly as `baseVersion` for update_page or patch_page.",
+        "Get a leaf markdown page's content. Returns `{ content }`.",
       inputSchema: {
         project: z.string(),
         nodeId: z.string().describe("Parent graph's nodeId, e.g. 'Core/SessionEngine'"),
@@ -133,33 +133,5 @@ export function registerQueryTools(mcp: McpServer, store: DocStore): void {
       },
     },
     async ({ project, query }) => json({ results: await store.searchNodes(project, query) }),
-  )
-
-  mcp.registerTool(
-    "list_history",
-    {
-      description:
-        "List all historical versions of a doc file. `relPath` is the on-disk relative path within the project, e.g. 'top.json', 'Core/Core.json', 'Core/SessionEngine.md'. Returns versions sorted newest-first with timestamp, source, and summary metadata when available.",
-      inputSchema: {
-        project: z.string(),
-        relPath: z.string(),
-      },
-    },
-    async ({ project, relPath }) => json({ versions: await store.listHistory(project, relPath) }),
-  )
-
-  mcp.registerTool(
-    "get_history",
-    {
-      description:
-        "Read the content of a specific historical version. Returns the raw file text at that version.",
-      inputSchema: {
-        project: z.string(),
-        relPath: z.string(),
-        version: z.number().int().min(0),
-      },
-    },
-    async ({ project, relPath, version }) =>
-      json({ content: await store.readHistorySnapshot(project, relPath, version) }),
   )
 }

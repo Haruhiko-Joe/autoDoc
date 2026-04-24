@@ -76,7 +76,7 @@ pnpm start
 
 ### Codex Profile 配置
 
-Codex 后端按 Agent 角色使用 [profiles](https://developers.openai.com/codex/config-reference) 隔离模型参数。在 `~/.codex/config.toml` 中为以下六个角色各添加一段 profile，名字必须严格为 `scaffold`、`decomposer`、`writer`、`checker`、`flowanalyzer`、`updater`：
+Codex 后端按 Agent 角色使用 [profiles](https://developers.openai.com/codex/config-reference) 隔离模型参数。在 `~/.codex/config.toml` 中为以下角色各添加一段 profile，名字必须严格为 `scaffold`、`decomposer`、`writer`、`checker`、`flowanalyzer`、`prupdater`、`knowledge`：
 
 ```toml
 [profiles.scaffold]
@@ -99,9 +99,13 @@ model_reasoning_effort = "high"
 model = "gpt-5.4"
 model_reasoning_effort = "medium"
 
-[profiles.updater]
+[profiles.prupdater]
 model = "gpt-5.4"
 model_reasoning_effort = "high"
+
+[profiles.knowledge]
+model = "gpt-5.4"
+model_reasoning_effort = "medium"
 ```
 
 可以按需替换为其他模型或调整 `model_reasoning_effort`、`service_tier` 等字段。完整可选键参见官方 [Config Reference](https://developers.openai.com/codex/config-reference)。
@@ -188,7 +192,7 @@ gitUrl ──► git clone ──► src/souko/repo/{name}
 - **🔗 git URL 一键接入** — 输入 SSH/HTTPS git URL，后端自动 clone、跟踪主分支 commit，统一存放在 `src/souko/`
 - **🔁 PR 粒度增量更新** — 通过 `gh pr list` 或 `git log` 自动发现所有新合并的 PR，由 PrUpdater Agent 通过 MCP 工具自主导航并做针对性修改。Auto 模式全自动、Manual 模式带审阅闸门 + session 续写微调
 - **🛰️ HTTP MCP 服务** — 同进程 `/mcp` 端点（Streamable HTTP）暴露完整 query + mutate 工具集，Code Agent 直接读写文档
-- **📜 文档版本控制** — 每次写入都带乐观锁 (`baseVersion`) + `.history/{file}.v{n}` 快照，支持 `revert` 工具回滚到任意历史版本
+- **📜 手动 Git 提交与 blame** — 文档写入只产生未提交变更；前端 Git 面板负责查看 dirty 状态、手动提交，并在预览/编辑中展示 Git blame 信息
 - **🔗 交互式有向图** — 基于 [AntV G6](https://g6.antv.antgroup.com/)，支持 6 种语义边类型（调用、依赖、数据流、事件、继承、组合），边悬浮弹窗展示关系详情
 - **🔍 渐进式披露** — 从顶层架构总览出发，点击节点逐层深入至叶子 Markdown 文档
 - **🔄 交互流程图** — 自动提取跨模块业务流程，以时序图形式展示参与者、步骤和代码引用
@@ -202,7 +206,7 @@ gitUrl ──► git clone ──► src/souko/repo/{name}
 
 后端在 `http://localhost:3100/mcp` 上以 stateless Streamable HTTP transport 暴露一个 MCP server，名为 `autodoc`。所有工具操作的对象都是 `src/souko/doc/{project}/` 下的真实文件。
 
-### 在 Claude Code 里接入
+### 在 Claude Code / Codex 里接入
 
 在目标仓库根放一个 `.mcp.json`：
 
@@ -217,6 +221,14 @@ gitUrl ──► git clone ──► src/souko/repo/{name}
 }
 ```
 
+Codex 使用项目级 `.codex/config.toml`，autoDoc 会在装配 skill 时写入同等配置：
+
+```toml
+[mcp_servers.autodoc]
+url = "http://localhost:3100/mcp"
+enabled_tools = ["list_projects", "get_top", "get_graph", "get_page", "search_nodes", "list_source_files", "read_source_files", "list_docs", "read_docs", "patch_page", "update_page", "update_node", "update_graph_meta", "create_node", "delete_node", "update_top"]
+```
+
 配套的 [doc-drill skill](src/skill-template/SKILL.md) 是一份**只讲怎么调 MCP 工具**的说明书，随 autoDoc 一起分发到目标仓库。
 
 ### 工具一览
@@ -225,15 +237,15 @@ gitUrl ──► git clone ──► src/souko/repo/{name}
 
 | 工具 | 用途 |
 |---|---|
-| `list_projects` | 列出所有已注册的项目（含 sourceUrl / head / lastUpdated） |
-| `get_top` | 拿到一个项目的 top.json（含 `version`） |
-| `get_graph` | 拿到子图（含 `version` 与 `pageVersions` map） |
-| `get_page` | 读取叶子 Markdown 页（含其 `version`） |
+| `list_projects` | 列出可用文档项目（name / description） |
+| `get_top` | 拿到一个项目的 top.json |
+| `get_graph` | 拿到子图（含 `codeScope`、`nodes`、`description`） |
+| `get_page` | 读取叶子 Markdown 页 |
 | `search_nodes` | 跨所有层级按关键字搜索节点名/描述 |
-| `list_history` | 列出某个文件的全部历史版本 |
-| `get_history` | 读取指定历史版本的内容 |
+| `list_source_files` / `read_source_files` | 按 regex 定位并读取源码 |
+| `list_docs` / `read_docs` | 按 nodeId 批量列出/读取文档原文 |
 
-#### Mutate（强制 baseVersion 乐观锁）
+#### Mutate（项目级锁串行写入）
 
 | 工具 | 用途 |
 |---|---|
@@ -243,10 +255,9 @@ gitUrl ──► git clone ──► src/souko/repo/{name}
 | `update_node` | 修改父图中某节点的 name / description / codeScope / edges |
 | `delete_node` | 从父图移除节点（page 删 md；graph 递归删子目录） |
 | `patch_page` | 精准字符串匹配替换叶子 md 中的局部内容，比 update_page 更高效、更安全 |
-| `update_page` | 覆盖叶子 md 内容，使用 `pageVersions[ref]` 作为 baseVersion |
-| `revert` | 把某个历史版本作为新版本写回，不擦除中间版本 |
+| `update_page` | 覆盖叶子 md 内容 |
 
-写入流程：**read → 拿 version → 带 baseVersion 写入 → 服务器 snapshot 旧版到 `.history/` → version+1 → 持久化**。版本不匹配会返回 `VersionMismatch` 让客户端重读重试。
+写入流程：**read → mutate 工具写入工作区 → 前端 Git 面板审阅 dirty 状态 → 用户手动提交**。mutate 工具不再接收 `baseVersion`，也不再自动 commit；并发写入由项目级锁串行化。
 
 > ⚠️ 当前 `/mcp` 默认无鉴权且开启了 CORS。生产部署前请加访问控制或绑定 loopback。
 
@@ -266,7 +277,6 @@ src/souko/
     │   ├── flows.json
     │   ├── {Module}/
     │   │   ├── {Module}.json
-    │   │   ├── .history/        # 历史版本快照
     │   │   ├── {Leaf}.md
     │   │   └── {SubModule}/...
     │   └── ...
@@ -277,19 +287,19 @@ src/souko/
 
 每个模块的文档是自包含的独立单元。三种修改方式：
 
-- **走 MCP 工具**（推荐）：通过 `update_node` / `update_page` / `create_node` / `delete_node` 修改，自动带 version + 历史快照，适合让 Code Agent 自动维护
-- **直接编辑文件**：直接改 `src/souko/doc/{project}/` 下的 .md / .json，重启服务即可生效（绕过版本机制）
+- **走 MCP 工具**（推荐）：通过 `update_node` / `update_page` / `create_node` / `delete_node` 修改，所有写入会进入文档工作区，等待前端 Git 面板手动提交
+- **直接编辑文件**：直接改 `src/souko/doc/{project}/` 下的 .md / .json，刷新即可生效，并同样显示为未提交变更
 - **触发增量更新**：在首页点击 Update 按钮，PrUpdater Agent 会自动发现所有新合并的 PR 并逐条处理。Manual 模式下每条 PR 都经过审阅确认
 
 ## doc-drill: Code Agent 原生集成
 
-autoDoc 自动把瘦版 [doc-drill](src/skill-template/SKILL.md) skill 安装到目标仓库的 `.claude/skills/doc-drill/`，同时往该仓库的 `.mcp.json` 写入指向本地 MCP server 的配置。任何 Code Agent 都能通过它：
+autoDoc 自动把瘦版 [doc-drill](src/skill-template/SKILL.md) skill 安装到目标仓库的 `.claude/skills/doc-drill/`，同时写入 Claude Code 的 `.mcp.json` 和 Codex 的 `.codex/config.toml`，指向本地 HTTP MCP server。任何 Code Agent 都能通过它：
 
 - **渐进式浏览** — `list_projects` → `get_top` → `get_graph` → `get_page`，lazy load，节省上下文
 - **关系追踪** — 沿 6 种语义边追踪模块间调用链和数据流
 - **关键词搜索** — `search_nodes` 跨所有文档层级搜索
 - **业务流程导航** — 通过 `flows.json` 理解端到端交互场景
-- **直接维护** — 用 mutate 工具就地增删改文档，并通过 `list_history` / `revert` 回看与回滚
+- **直接维护** — 用 mutate 工具就地增删改文档，最后由用户在 autoDoc 前端 Git 面板手动提交
 
 > 这是 DeepWiki（仅网页 Chat）和 Google Code Wiki（仅网页浏览）不具备的 Agent-native 集成能力。
 
@@ -319,8 +329,9 @@ autoDoc/
 │   │   └── projects.json         # gitignore：共享 registry
 │   ├── mcp/                      # HTTP MCP server（与 HTTP API 同进程）
 │   │   ├── server.ts             # buildMcpServer(store)
-│   │   ├── docStore.ts           # 文档读写 + version + .history 快照
-│   │   ├── schema.ts             # Zod schemas（含 version / pageVersions）
+│   │   ├── docStore.ts           # 文档读写 + 项目级锁
+│   │   ├── docGit.ts             # 文档 Git status / commit / blame
+│   │   ├── schema.ts             # Zod schemas
 │   │   └── tools/{query,mutate}.ts
 │   ├── agents/                   # Agent 实现（Claude + Codex 双后端）
 │   │   ├── tsukai/               # 所有 Agent 类（barrel: index.ts）
