@@ -38,7 +38,7 @@ export const RawTopGraph = z.object({
 })
 
 export const TopGraph = z.object({
-  status: z.literal("done"),
+  status: z.enum(["awaiting-review", "done"]),
   retryCount: z.number().int().min(0),
   sessionId: z.string(),
   description: z.string(),
@@ -81,6 +81,7 @@ export const GraphStatus = z.enum([
   "decomposing",
   "writing",
   "checking",
+  "awaiting-review",
   "done",
   "error",
 ])
@@ -136,7 +137,9 @@ export const FlowAnalyzerOutput = z.object({
 
 export const KnowledgeTurn = z.object({
   draft: z.string(),
+  status: z.enum(["needs-input", "ready"]),
   question: z.string(),
+  completionReason: z.string(),
 })
 
 // --- AncestorContext (passed to Decomposer & Writer from depth ≥ 2) ---

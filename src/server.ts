@@ -3,11 +3,11 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { readFile, writeFile, readdir, stat, rm, mkdir, rename } from "node:fs/promises";
 import path from "node:path";
 process.setMaxListeners(0);
-import OpenAI from "openai";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 
 import { Arranger, type Progress, type AgentBackend, type AgentBackends } from "./workflow/arranger.js";
-import type { Language, IKnowledge } from "./agents/schemas/schema.js";
+import { GraphStore } from "./workflow/arranger/graphStore.js";
+import type { GraphNode, Language, IKnowledge, KnowledgeTurn } from "./agents/schemas/schema.js";
 import {
   REPO_ROOT,
   DOC_ROOT,
@@ -17,6 +17,7 @@ import {
   knowledgePathOf,
   knowledgeDraftPathOf,
   repoDirOf,
+  assertProjectName,
   type ProjectMeta,
 } from "./souko/registry.js";
 import * as git from "./git/repoManager.js";
@@ -24,11 +25,22 @@ import { claudeKnowledge, codexKnowledge } from "./agents/tsukai/index.js";
 import { DocStore } from "./mcp/docStore.js";
 import { DocGit } from "./mcp/docGit.js";
 import { buildMcpServer } from "./mcp/server.js";
+import { parseBody, sendJson, type HttpContext, type RouteHandler } from "./http/types.js";
+import { createMcpRoutes } from "./http/mcpRoutes.js";
+import { createRunRoutes, type RunBody } from "./http/runRoutes.js";
+import { createStatusRoutes } from "./http/statusRoutes.js";
+import { createChatRoutes } from "./http/chatRoutes.js";
 import {
-  startUpdate, continueUpdate, skipTask, cancelUpdate, acceptTask, chatOnTask,
-  getUpdateState, subscribe as subscribeUpdate,
-  type UpdateEvent,
-} from "./workflow/updateOrchestrator.js";
+  createKnowledgeRoutes,
+  type KnowledgeFinalizeBody,
+  type KnowledgeMessageBody,
+  type KnowledgeStartBody,
+} from "./http/knowledgeRoutes.js";
+import { createSearchRoutes } from "./http/searchRoutes.js";
+import { createUpdateRoutes } from "./http/updateRoutes.js";
+import { createDocGitRoutes } from "./http/docGitRoutes.js";
+import { createDocRoutes } from "./http/docRoutes.js";
+import { createDecompositionReviewRoutes } from "./http/decompositionReviewRoutes.js";
 
 const PORT = Number(process.env.PORT ?? 3100);
 
@@ -43,12 +55,6 @@ interface KnowledgeSession {
 }
 
 const knowledgeSessions = new Map<string, KnowledgeSession>();
-
-function validateProjectName(project: string): void {
-  if (!project || project.includes("/") || project.includes("\\") || project.startsWith(".")) {
-    throw new Error("Invalid project");
-  }
-}
 
 async function readExistingDraftOrKnowledge(project: string): Promise<string> {
   try {
@@ -74,8 +80,8 @@ function buildKnowledgeFirstPrompt(
   const draftBody = existingDraft.trim() ? existingDraft : (language === "en" ? "(empty — nothing yet)" : "（空白，尚未开始）");
   const userLabel = language === "en" ? "## User's first message" : "## 用户首条消息";
   const instruction = language === "en"
-    ? "Fold the user's message into the draft (consult the repo as needed via Read/Grep/Glob), then produce the updated full draft and one focused follow-up question."
-    : "把用户这条消息吸纳进草稿（按需用 Read/Grep/Glob 看仓库），然后输出更新后的完整草稿，并给出一个聚焦的后续问题。";
+    ? "Fold the user's message into the draft (consult the repo as needed via Read/Grep/Glob), then produce the updated full draft and decide whether one more focused question is valuable or the user can save and start generation now."
+    : "把用户这条消息吸纳进草稿（按需用 Read/Grep/Glob 看仓库），然后输出更新后的完整草稿，并判断是否还值得追问一个聚焦问题，还是可以建议用户保存并开始生成。";
   return [header, "", draftLabel, draftBody, "", userLabel, userMessage, "", instruction].join("\n");
 }
 
@@ -89,7 +95,7 @@ function makeKnowledgeAgent(backend: AgentBackend, language: Language): IKnowled
 }
 
 async function handleKnowledgeGet(project: string): Promise<{ exists: boolean; content?: string; draftExists?: boolean }> {
-  validateProjectName(project);
+  assertProjectName(project);
   let content: string | undefined;
   try {
     content = await readFile(knowledgePathOf(project), "utf-8");
@@ -102,20 +108,13 @@ async function handleKnowledgeGet(project: string): Promise<{ exists: boolean; c
   return { exists: content !== undefined, content, draftExists };
 }
 
-interface KnowledgeStartBody {
-  project: string;
-  userMessage: string;
-  language?: Language;
-  agentBackend?: AgentBackend;
-}
-
-async function handleKnowledgeStart(body: KnowledgeStartBody): Promise<{ sessionId: string; draft: string; question: string }> {
-  validateProjectName(body.project);
+async function handleKnowledgeStart(body: KnowledgeStartBody): Promise<KnowledgeTurn & { sessionId: string }> {
+  assertProjectName(body.project);
   if (!body.userMessage || typeof body.userMessage !== "string" || !body.userMessage.trim()) {
     throw new Error("Missing userMessage");
   }
   const language: Language = body.language ?? "zh";
-  const backend: AgentBackend = body.agentBackend ?? "claude";
+  const backend: AgentBackend = body.agentBackend ?? "codex";
   const repoDir = path.join(REPO_ROOT, body.project);
   const repoExists = await stat(repoDir).then((s) => s.isDirectory()).catch(() => false);
   if (!repoExists) {
@@ -130,12 +129,7 @@ async function handleKnowledgeStart(body: KnowledgeStartBody): Promise<{ session
   await writeDraft(body.project, result.draft);
   knowledgeSessions.set(sessionId, { agent, project: body.project });
 
-  return { sessionId, draft: result.draft, question: result.question };
-}
-
-interface KnowledgeMessageBody {
-  sessionId: string;
-  userReply: string;
+  return { sessionId, ...result };
 }
 
 class KnowledgeSessionExpiredError extends Error {
@@ -143,23 +137,18 @@ class KnowledgeSessionExpiredError extends Error {
   constructor() { super("Knowledge session expired. Start a new one."); }
 }
 
-async function handleKnowledgeMessage(body: KnowledgeMessageBody): Promise<{ draft: string; question: string }> {
+async function handleKnowledgeMessage(body: KnowledgeMessageBody): Promise<KnowledgeTurn> {
   const session = knowledgeSessions.get(body.sessionId);
   if (!session) throw new KnowledgeSessionExpiredError();
   if (!body.userReply || typeof body.userReply !== "string") throw new Error("Missing userReply");
 
   const { result } = await session.agent.continue(body.userReply);
   await writeDraft(session.project, result.draft);
-  return { draft: result.draft, question: result.question };
-}
-
-interface KnowledgeFinalizeBody {
-  sessionId: string;
-  project: string;
+  return result;
 }
 
 async function handleKnowledgeFinalize(body: KnowledgeFinalizeBody): Promise<{ ok: true; path: string }> {
-  validateProjectName(body.project);
+  assertProjectName(body.project);
   const draftPath = knowledgeDraftPathOf(body.project);
   const finalPath = knowledgePathOf(body.project);
   await stat(draftPath).catch(() => { throw new Error("No draft to finalize"); });
@@ -170,7 +159,7 @@ async function handleKnowledgeFinalize(body: KnowledgeFinalizeBody): Promise<{ o
 }
 
 async function handleKnowledgeDiscard(project: string): Promise<{ ok: true }> {
-  validateProjectName(project);
+  assertProjectName(project);
   await rm(knowledgeDraftPathOf(project), { force: true });
   return { ok: true };
 }
@@ -217,14 +206,6 @@ function debouncedBroadcast(): void {
 
 // ─── Run handler ─────────────────────────────────────────────
 
-interface RunBody {
-  gitUrl: string;
-  maxConcurrency?: number;
-  agentBackend?: AgentBackend;
-  agentBackends?: Partial<AgentBackends>;
-  language?: Language;
-}
-
 async function handleRun(body: RunBody): Promise<{ ok: boolean; project: string }> {
   if (state.phase === "cloning" || state.phase === "awaiting-knowledge" || state.phase === "running") {
     throw new Error("Already running");
@@ -235,6 +216,7 @@ async function handleRun(body: RunBody): Promise<{ ok: boolean; project: string 
 
   const gitUrl = body.gitUrl.trim();
   const project = git.projectNameFromUrl(gitUrl);
+  assertProjectName(project);
   const repoDir = path.join(REPO_ROOT, project);
   const docDir = path.join(DOC_ROOT, project);
 
@@ -299,6 +281,7 @@ async function handleRunContinue(): Promise<{ ok: boolean }> {
     agentBackend: config.agentBackend,
     agentBackends: config.agentBackends,
     language: config.language,
+    decompositionReview: config.decompositionReview ?? "off",
   });
   state = { phase: "running", gitUrl, project, repoDir, docDir, arranger };
   arranger.onProgress(debouncedBroadcast);
@@ -327,12 +310,50 @@ async function handleRunContinue(): Promise<{ ok: boolean }> {
   return { ok: true };
 }
 
+function pauseRun(): { ok: true } {
+  if (state.phase !== "running" || !state.arranger) throw new Error("Not running");
+  state.arranger.pause();
+  broadcastStatus();
+  return { ok: true };
+}
+
+function resumeRun(): { ok: true } {
+  if (state.phase !== "running" || !state.arranger) throw new Error("Not running");
+  state.arranger.resume();
+  broadcastStatus();
+  return { ok: true };
+}
+
+function retryErrors(): { ok: true } {
+  if ((state.phase !== "done" && state.phase !== "error") || !state.arranger) {
+    throw new Error("No completed run with arranger to retry");
+  }
+  const arranger = state.arranger;
+  const { gitUrl, project, repoDir, docDir } = state;
+  state = { phase: "running", gitUrl, project, repoDir, docDir, arranger };
+  arranger.onProgress(debouncedBroadcast);
+  broadcastStatus();
+  arranger.resetErrorsAndResume().then(
+    (count) => {
+      console.log(`[RetryErrors] Reset and resumed ${count} error node(s).`);
+      state = { phase: "done", gitUrl, project, repoDir, docDir, arranger };
+      broadcastStatus();
+    },
+    (err) => {
+      state = { phase: "error", gitUrl, project, repoDir, docDir, message: String(err), arranger };
+      broadcastStatus();
+    },
+  );
+  return { ok: true };
+}
+
 // ─── Status ──────────────────────────────────────────────────
 
 interface RunConfig {
   maxConcurrency: number;
   agentBackends: AgentBackends;
   language: Language;
+  decompositionReview: "off" | "all";
 }
 
 interface StatusResponse {
@@ -397,6 +418,45 @@ async function handleStatus(): Promise<StatusResponse> {
   return { phase: "idle" };
 }
 
+async function streamStatus(res: ServerResponse): Promise<void> {
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+  });
+  res.write(`data: ${JSON.stringify(await handleStatus())}\n\n`);
+  sseClients.add(res);
+  res.on("close", () => { sseClients.delete(res); });
+}
+
+function activeArrangerForProject(project: string): Arranger {
+  assertProjectName(project);
+  if (state.phase !== "running" || state.project !== project || !state.arranger) {
+    throw new Error(`No active run for project: ${project}`);
+  }
+  return state.arranger;
+}
+
+async function listDecompositionReviews(project: string): Promise<unknown[]> {
+  assertProjectName(project);
+  if (state.phase === "running" && state.project === project && state.arranger) {
+    return state.arranger.listDecompositionReviews();
+  }
+  return new GraphStore(getProjectDocDir(project)).listDecompositionReviews();
+}
+
+async function updateDecompositionReview(project: string, id: string, nodes: GraphNode[]): Promise<void> {
+  await activeArrangerForProject(project).updateDecompositionReview(id, nodes);
+}
+
+async function approveDecompositionReview(project: string, id: string): Promise<void> {
+  await activeArrangerForProject(project).approveDecompositionReview(id);
+}
+
+async function rejectDecompositionReview(project: string, id: string, feedback: string): Promise<void> {
+  await activeArrangerForProject(project).rejectDecompositionReview(id, feedback);
+}
+
 // ─── Project listing (registry-driven) ───────────────────────
 
 interface ProjectListEntry extends ProjectMeta {
@@ -448,10 +508,17 @@ async function handleDocFile(docDir: string, filePath: string): Promise<{ conten
 }
 
 function getProjectDocDir(project: string): string {
-  if (!project || project.includes("/") || project.includes("\\")) {
+  assertProjectName(project);
+  const base = path.resolve(DOC_ROOT);
+  const full = path.resolve(base, project);
+  if (full !== base && !full.startsWith(base + path.sep)) {
     throw new Error("Invalid project");
   }
-  return path.join(DOC_ROOT, project);
+  return full;
+}
+
+function getCurrentDocDir(): string | undefined {
+  return state.phase === "done" || state.phase === "running" ? state.docDir : undefined;
 }
 
 // ─── Search (unchanged behavior, just new DOC_ROOT) ──────────
@@ -498,21 +565,6 @@ async function searchModules(project: string, query: string): Promise<SearchResu
 
 // ─── HTTP plumbing ───────────────────────────────────────────
 
-function parseBody(req: IncomingMessage): Promise<Record<string, unknown>> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    req.on("data", (c: Buffer) => chunks.push(c));
-    req.on("end", () => {
-      try {
-        resolve(JSON.parse(Buffer.concat(chunks).toString()));
-      } catch {
-        reject(new Error("Invalid JSON"));
-      }
-    });
-    req.on("error", reject);
-  });
-}
-
 async function handleMcp(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const body = await parseBody(req);
   const mcp = buildMcpServer(docStore);
@@ -525,9 +577,39 @@ async function handleMcp(req: IncomingMessage, res: ServerResponse): Promise<voi
   await transport.handleRequest(req, res, body);
 }
 
-const server = createServer(async (req, res) => {
-  const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
+const routeHandlers: RouteHandler[] = [
+  createMcpRoutes(handleMcp),
+  createRunRoutes({ handleRun, handleRunContinue, pauseRun, resumeRun, retryErrors }),
+  createStatusRoutes({ listProjects, handleStatus, streamStatus }),
+  createChatRoutes(),
+  createKnowledgeRoutes({
+    handleKnowledgeGet,
+    handleKnowledgeStart,
+    handleKnowledgeMessage,
+    handleKnowledgeFinalize,
+    handleKnowledgeDiscard,
+  }),
+  createSearchRoutes({ searchModules }),
+  createUpdateRoutes(),
+  createDecompositionReviewRoutes({
+    listReviews: listDecompositionReviews,
+    updateReview: updateDecompositionReview,
+    approveReview: approveDecompositionReview,
+    rejectReview: rejectDecompositionReview,
+  }),
+  createDocGitRoutes(docGit, docStore),
+  createDocRoutes({ docStore, getProjectDocDir, getCurrentDocDir, handleDocFile }),
+];
 
+async function dispatchRequest(ctx: HttpContext): Promise<void> {
+  for (const handler of routeHandlers) {
+    if (await handler(ctx)) return;
+  }
+  ctx.res.writeHead(404).end("Not found");
+}
+
+async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, mcp-session-id");
@@ -538,282 +620,16 @@ const server = createServer(async (req, res) => {
   }
 
   try {
-    if (req.method === "POST" && url.pathname === "/mcp") {
-      await handleMcp(req, res);
-      return;
-    }
-    if (url.pathname === "/mcp") {
-      res.writeHead(405).end("Method Not Allowed");
-      return;
-    }
-
-    if (req.method === "POST" && url.pathname === "/api/run") {
-      const body = (await parseBody(req)) as unknown as RunBody;
-      const result = await handleRun(body);
-      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(result));
-    } else if (req.method === "POST" && url.pathname === "/api/run/continue") {
-      const result = await handleRunContinue();
-      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(result));
-    } else if (req.method === "POST" && url.pathname === "/api/pause") {
-      if (state.phase !== "running" || !state.arranger) throw new Error("Not running");
-      state.arranger.pause();
-      broadcastStatus();
-      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true }));
-    } else if (req.method === "POST" && url.pathname === "/api/resume") {
-      if (state.phase !== "running" || !state.arranger) throw new Error("Not running");
-      state.arranger.resume();
-      broadcastStatus();
-      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true }));
-    } else if (req.method === "POST" && url.pathname === "/api/retry-errors") {
-      if ((state.phase !== "done" && state.phase !== "error") || !state.arranger) throw new Error("No completed run with arranger to retry");
-      const arranger = state.arranger;
-      const { gitUrl, project, repoDir, docDir } = state;
-      state = { phase: "running", gitUrl, project, repoDir, docDir, arranger };
-      arranger.onProgress(debouncedBroadcast);
-      broadcastStatus();
-      arranger.resetErrorsAndResume().then(
-        (count) => {
-          console.log(`[RetryErrors] Reset and resumed ${count} error node(s).`);
-          state = { phase: "done", gitUrl, project, repoDir, docDir, arranger };
-          broadcastStatus();
-        },
-        (err) => {
-          state = { phase: "error", gitUrl, project, repoDir, docDir, message: String(err), arranger };
-          broadcastStatus();
-        },
-      );
-      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true }));
-    } else if (req.method === "GET" && url.pathname === "/api/projects") {
-      const projects = await listProjects();
-      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ projects }));
-    } else if (req.method === "GET" && url.pathname === "/api/status") {
-      const statusResult = await handleStatus();
-      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(statusResult));
-    } else if (req.method === "GET" && url.pathname === "/api/status/stream") {
-      res.writeHead(200, {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        Connection: "keep-alive",
-      });
-      const initial = JSON.stringify(await handleStatus());
-      res.write(`data: ${initial}\n\n`);
-      sseClients.add(res);
-      res.on("close", () => { sseClients.delete(res); });
-      return;
-    } else if (req.method === "POST" && url.pathname === "/api/chat") {
-      const body = (await parseBody(req)) as {
-        messages: { role: "user" | "assistant"; content: string }[]
-      };
-
-      res.writeHead(200, {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        Connection: "keep-alive",
-      });
-
-      const send = (data: unknown) => res.write(`data: ${JSON.stringify(data)}\n\n`);
-
-      try {
-        const openai = new OpenAI({
-          apiKey: process.env.OPENAI_API_KEY,
-          baseURL: process.env.OPENAI_BASE_URL,
-        });
-
-        const stream = await openai.chat.completions.create({
-          model: process.env.OPENAI_MODEL ?? "gpt-4o",
-          messages: body.messages,
-          stream: true,
-        });
-
-        for await (const chunk of stream) {
-          const delta = chunk.choices[0]?.delta?.content;
-          if (delta) {
-            send({ type: "text", text: delta });
-          }
-        }
-      } catch (e) {
-        send({ type: "error", text: String(e) });
-      }
-
-      send({ type: "done" });
-      res.end();
-    } else if (req.method === "GET" && url.pathname === "/api/knowledge") {
-      const project = url.searchParams.get("project") ?? "";
-      const result = await handleKnowledgeGet(project);
-      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(result));
-    } else if (req.method === "POST" && url.pathname === "/api/knowledge/start") {
-      const body = (await parseBody(req)) as unknown as KnowledgeStartBody;
-      const result = await handleKnowledgeStart(body);
-      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(result));
-    } else if (req.method === "POST" && url.pathname === "/api/knowledge/message") {
-      const body = (await parseBody(req)) as unknown as KnowledgeMessageBody;
-      const result = await handleKnowledgeMessage(body);
-      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(result));
-    } else if (req.method === "POST" && url.pathname === "/api/knowledge/finalize") {
-      const body = (await parseBody(req)) as unknown as KnowledgeFinalizeBody;
-      const result = await handleKnowledgeFinalize(body);
-      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(result));
-    } else if (req.method === "POST" && url.pathname === "/api/knowledge/discard") {
-      const body = (await parseBody(req)) as unknown as { project: string };
-      const result = await handleKnowledgeDiscard(body.project);
-      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(result));
-    } else if (req.method === "GET" && url.pathname === "/api/search") {
-      const project = url.searchParams.get("project");
-      const q = (url.searchParams.get("q") ?? "").toLowerCase().trim();
-      if (!project || !q) {
-        res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "Missing project or q" }));
-        return;
-      }
-      const results = await searchModules(project, q);
-      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ results }));
-    // ─── Update endpoints ───
-    } else if (req.method === "POST" && url.pathname === "/api/update/start") {
-      const body = (await parseBody(req)) as { project: string; mode?: "auto" | "manual"; backend?: "claude" | "codex"; language?: "zh" | "en" };
-      if (!body.project) {
-        res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "project required" }));
-        return;
-      }
-      const state = await startUpdate(body.project, { mode: body.mode, backend: body.backend, language: body.language });
-      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true, tasks: state.tasks }));
-    } else if (req.method === "POST" && url.pathname === "/api/update/continue") {
-      const body = (await parseBody(req)) as { project: string; extraInstructions?: string };
-      continueUpdate(body.project, body.extraInstructions);
-      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true }));
-    } else if (req.method === "POST" && url.pathname === "/api/update/skip") {
-      const body = (await parseBody(req)) as { project: string; taskId: string };
-      skipTask(body.project, body.taskId);
-      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true }));
-    } else if (req.method === "POST" && url.pathname === "/api/update/cancel") {
-      const body = (await parseBody(req)) as { project: string };
-      cancelUpdate(body.project);
-      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true }));
-    } else if (req.method === "POST" && url.pathname === "/api/update/task/accept") {
-      const body = (await parseBody(req)) as { project: string; taskId: string };
-      await acceptTask(body.project, body.taskId);
-      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true }));
-    } else if (req.method === "POST" && url.pathname === "/api/update/task/chat") {
-      const body = (await parseBody(req)) as { project: string; taskId: string; prompt: string };
-      // Fire-and-forget so the HTTP response returns immediately and the SSE stream carries progress
-      void chatOnTask(body.project, body.taskId, body.prompt).catch(() => {});
-      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true }));
-    } else if (req.method === "GET" && url.pathname === "/api/update/status") {
-      const project = url.searchParams.get("project");
-      if (!project) {
-        res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "project required" }));
-        return;
-      }
-      const state = getUpdateState(project);
-      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ state: state ?? null }));
-    } else if (req.method === "GET" && url.pathname === "/api/update/stream") {
-      const project = url.searchParams.get("project");
-      if (!project) {
-        res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "project required" }));
-        return;
-      }
-      res.writeHead(200, {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
-      });
-      const state = getUpdateState(project);
-      if (state) {
-        res.write(`data: ${JSON.stringify({ type: "queue", tasks: state.tasks })}\n\n`);
-        if (state.awaitingConfirm) {
-          const current = state.tasks[state.currentIndex];
-          if (current) {
-            res.write(`data: ${JSON.stringify({ type: "awaiting-confirm", taskId: current.id })}\n\n`);
-          }
-        }
-        if (state.awaitingReview) {
-          const current = state.tasks[state.currentIndex];
-          if (current && current.markdown) {
-            res.write(`data: ${JSON.stringify({ type: "task-awaiting-review", taskId: current.id, markdown: current.markdown })}\n\n`);
-          }
-        }
-      }
-      const unsub = subscribeUpdate(project, (event: UpdateEvent) => {
-        if (!res.writable) { unsub(); return; }
-        res.write(`data: ${JSON.stringify(event)}\n\n`);
-      });
-      req.on("close", unsub);
-    // ─── Doc git endpoints ───
-    } else if (req.method === "GET" && url.pathname === "/api/doc-git/status") {
-      const project = url.searchParams.get("project");
-      if (!project) {
-        res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "project required" }));
-        return;
-      }
-      const status = await docGit.status(project);
-      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(status));
-    } else if (req.method === "POST" && url.pathname === "/api/doc-git/commit") {
-      const body = (await parseBody(req)) as { project: string; message: string };
-      if (!body.project || !body.message?.trim()) {
-        res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "project and message required" }));
-        return;
-      }
-      const result = await docGit.commitAll(body.project, body.message);
-      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(result));
-    } else if (req.method === "GET" && url.pathname === "/api/doc-git/blame") {
-      const project = url.searchParams.get("project");
-      const nodeId = url.searchParams.get("nodeId");
-      if (!project || nodeId == null) {
-        res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "project and nodeId required" }));
-        return;
-      }
-      const rel = await docStore.resolveNodeId(project, nodeId);
-      const lines = await docGit.blame(project, rel);
-      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ lines }));
-    // ─── Doc mutation endpoints ───
-    } else if (req.method === "POST" && url.pathname === "/api/doc/create-node") {
-      const body = (await parseBody(req)) as {
-        project: string; parentNodeId: string;
-        node: import("./mcp/schema.js").GraphNodeT; initialContent?: string;
-      };
-      const written = await docStore.createNode(body.project, body.parentNodeId, body.node, body.initialContent);
-      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(written));
-    } else if (req.method === "POST" && url.pathname === "/api/doc/update-node") {
-      const body = (await parseBody(req)) as {
-        project: string; parentNodeId: string; nodeName: string;
-        patch: { name?: string; description?: string; codeScope?: string[]; edges?: import("./mcp/schema.js").GraphEdgeT[] };
-      };
-      const written = await docStore.updateNode(body.project, body.parentNodeId, body.nodeName, body.patch);
-      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(written));
-    } else if (req.method === "POST" && url.pathname === "/api/doc/delete-node") {
-      const body = (await parseBody(req)) as { project: string; parentNodeId: string; nodeName: string };
-      const written = await docStore.deleteNode(body.project, body.parentNodeId, body.nodeName);
-      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(written));
-    } else if (req.method === "POST" && url.pathname === "/api/doc/update-page") {
-      const body = (await parseBody(req)) as { project: string; nodeId: string; ref: string; content: string };
-      await docStore.writePage(body.project, body.nodeId, body.ref, body.content);
-      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true }));
-    } else if (req.method === "POST" && url.pathname === "/api/doc/patch-page") {
-      const body = (await parseBody(req)) as { project: string; nodeId: string; ref: string; edits: { old_text: string; new_text: string }[] };
-      const result = await docStore.patchPage(body.project, body.nodeId, body.ref, body.edits);
-      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(result));
-    } else if (req.method === "GET" && url.pathname.startsWith("/api/doc/")) {
-      let docDir: string | undefined;
-      const project = url.searchParams.get("project");
-      if (project) docDir = getProjectDocDir(project);
-      else if (state.phase === "done" || state.phase === "running") docDir = state.docDir;
-      if (!docDir) {
-        res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "Not ready" }));
-        return;
-      }
-      const filePath = url.pathname.slice("/api/doc/".length);
-      if (filePath.split("/").some(seg => seg.startsWith("."))) {
-        res.writeHead(403, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "Forbidden" }));
-        return;
-      }
-      const { content, type } = await handleDocFile(docDir, filePath);
-      res.writeHead(200, { "Content-Type": type }).end(content);
-    } else {
-      res.writeHead(404).end("Not found");
-    }
+    await dispatchRequest({ req, res, url });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     const code = e instanceof KnowledgeSessionExpiredError ? e.code : undefined;
-    res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ error: msg, ...(code ? { code } : {}) }));
+    sendJson(res, { error: msg, ...(code ? { code } : {}) }, 400);
   }
+}
+
+const server = createServer((req, res) => {
+  void handleRequest(req, res);
 });
 
 server.listen(PORT, () => {

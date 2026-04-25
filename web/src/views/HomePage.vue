@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { fetchTopGraph, startRun, fetchStatus, fetchProjects, subscribeStatus, searchModules, pausePipeline, resumePipeline, retryErrors, knowledgeGet, type AgentBackends, type RunStatus, type SearchResult, type ProjectListEntry } from '../services/doc'
+import { fetchTopGraph, startRun, fetchStatus, fetchProjects, subscribeStatus, searchModules, pausePipeline, resumePipeline, retryErrors, knowledgeGet, type AgentBackends, type DecompositionReviewMode, type RunStatus, type SearchResult, type ProjectListEntry } from '../services/doc'
 import GraphView from '../components/GraphView.vue'
 import EdgeLegend from '../components/EdgeLegend.vue'
 import DocTree from '../components/DocTree.vue'
 import UpdateQueuePanel from '../components/UpdateQueuePanel.vue'
 import DocGitPanel from '../components/DocGitPanel.vue'
+import DecompositionReviewPanel from '../components/DecompositionReviewPanel.vue'
 import { useTheme } from '../composables/useTheme'
 import type { TopGraph, GraphNode } from '../types'
 
@@ -18,15 +19,23 @@ const topGraph = ref<TopGraph | null>(null)
 const gitUrl = ref('')
 const showUpdatePanel = ref(false)
 const showGitPanel = ref(false)
+const showReviewPanel = ref(false)
 const maxConcurrency = ref(8)
 const agentBackends = reactive<AgentBackends>({
-  scaffold: 'claude',
-  decomposer: 'claude',
-  writer: 'claude',
-  checker: 'codex',
-  flowAnalyzer: 'claude',
+  scaffold: 'codex',
+  decomposer: 'codex',
+  writer: 'codex',
+  checker: 'claude',
+  flowAnalyzer: 'codex',
 })
 const language = ref<'zh' | 'en'>('zh')
+const decompositionReview = ref<DecompositionReviewMode>('off')
+const reviewEnabled = computed({
+  get: () => decompositionReview.value === 'all',
+  set: (enabled: boolean) => {
+    decompositionReview.value = enabled ? 'all' : 'off'
+  },
+})
 const showConfigDialog = ref(false)
 const projectEntries = ref<ProjectListEntry[]>([])
 const projects = computed(() => projectEntries.value.map((p) => p.name))
@@ -110,6 +119,7 @@ onMounted(async () => {
     maxConcurrency.value = s.config.maxConcurrency
     Object.assign(agentBackends, s.config.agentBackends)
     language.value = s.config.language
+    decompositionReview.value = s.config.decompositionReview ?? 'off'
   }
 
   const routeProject = getRouteProject()
@@ -152,7 +162,7 @@ async function handleRun() {
   if (!url) return
   errorMsg.value = ''
   try {
-    const { project } = await startRun(url, maxConcurrency.value, { ...agentBackends }, language.value)
+    const { project } = await startRun(url, maxConcurrency.value, { ...agentBackends }, language.value, decompositionReview.value)
     mergeProjectEntries([
       ...projectEntries.value,
       { name: project, hasDoc: false, sourceUrl: url, branch: '', head: '', lastUpdated: '' },
@@ -324,6 +334,7 @@ const totalNodes = computed(() => {
 })
 
 const doneNodes = computed(() => progress.value?.counts?.done ?? 0)
+const awaitingReviewCount = computed(() => progress.value?.counts?.['awaiting-review'] ?? 0)
 
 const progressPercent = computed(() => {
   if (totalNodes.value === 0) return 0
@@ -339,6 +350,7 @@ const progressPhaseLabel = computed(() => {
   const p = progress.value?.phase
   if (p === 'scaffold') return 'Analyzing project structure...'
   if (p === 'processing') return 'Processing modules...'
+  if (p === 'awaiting-review') return 'Waiting for decomposition review...'
   if (p === 'assembling') return 'Assembling doc-drill skill...'
   if (p === 'flows') return 'Generating interaction flows...'
   return 'Preparing...'
@@ -460,6 +472,13 @@ async function handleRetryErrors() {
                 <option value="zh">中文</option>
                 <option value="en">English</option>
               </select>
+              <label class="review-toggle">
+                <input v-model="reviewEnabled" type="checkbox" />
+                <span>
+                  <strong>Review all decompositions</strong>
+                  <small>Pause after Scaffold and Decomposer outputs for manual approval.</small>
+                </span>
+              </label>
               <div class="dialog-section-title">Agent Backends</div>
               <div class="agent-grid">
                 <template v-for="field in agentBackendFields" :key="field.key">
@@ -504,6 +523,10 @@ async function handleRetryErrors() {
             <span class="stat-num active">{{ (progress.counts.decomposing ?? 0) + (progress.counts.writing ?? 0) + (progress.counts.checking ?? 0) }}</span>
             <span class="stat-label">active</span>
           </span>
+          <span class="stat" v-if="awaitingReviewCount > 0">
+            <span class="stat-num review">{{ awaitingReviewCount }}</span>
+            <span class="stat-label">review</span>
+          </span>
           <span class="stat">
             <span class="stat-num pending">{{ progress.counts.pending ?? 0 }}</span>
             <span class="stat-label">pending</span>
@@ -513,6 +536,9 @@ async function handleRetryErrors() {
             <span class="stat-label">error</span>
           </span>
         </div>
+        <button v-if="awaitingReviewCount > 0" class="review-open-btn" @click="showReviewPanel = true">
+          Review decompositions
+        </button>
       </div>
 
       <div v-if="canRetry && hasErrors" class="sidebar-retry">
@@ -604,6 +630,13 @@ async function handleRetryErrors() {
       :project="selectedProject"
       :visible="showGitPanel"
       @close="showGitPanel = false"
+    />
+    <DecompositionReviewPanel
+      v-if="selectedProject"
+      :project="selectedProject"
+      :visible="showReviewPanel"
+      @close="showReviewPanel = false"
+      @changed="loadGraph(selectedProject)"
     />
   </div>
 </template>
@@ -909,12 +942,30 @@ async function handleRetryErrors() {
 
 .stat-num.done { color: var(--color-green); }
 .stat-num.active { color: var(--accent); }
+.stat-num.review { color: var(--color-purple, #8b5cf6); }
 .stat-num.pending { color: var(--color-orange); }
 .stat-num.error { color: var(--color-red); }
 
 .stat-label {
   font-size: 11px;
   color: var(--text-muted);
+}
+
+.review-open-btn {
+  width: 100%;
+  margin-top: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.review-open-btn:hover {
+  background: var(--badge-active-bg);
 }
 
 /* ─── Search ─── */
@@ -1189,6 +1240,37 @@ async function handleRetryErrors() {
 
 .dialog-body .project-select {
   width: 100%;
+}
+
+.review-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-surface-alt);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.review-toggle input {
+  margin-top: 2px;
+  accent-color: var(--accent);
+}
+
+.review-toggle strong {
+  display: block;
+  font-size: 13px;
+  margin-bottom: 3px;
+}
+
+.review-toggle small {
+  display: block;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-secondary);
 }
 
 .dialog-section-title {

@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
+import { validateProjectName } from "../souko/registry.js";
 
 class GitError extends Error {
   constructor(message: string, public readonly stderr: string, public readonly code: number | null) {
@@ -72,7 +73,7 @@ export function projectNameFromUrl(url: string): string {
   const lastColon = noSuffix.lastIndexOf(":");
   const cut = Math.max(lastSlash, lastColon);
   const name = cut >= 0 ? noSuffix.slice(cut + 1) : noSuffix;
-  if (!name || name.includes("/") || name.includes("\\") || name.startsWith(".")) {
+  if (!validateProjectName(name)) {
     throw new Error(`Cannot derive project name from git URL: ${url}`);
   }
   return name;

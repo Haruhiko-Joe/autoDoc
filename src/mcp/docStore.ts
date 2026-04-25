@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir, readdir, stat, rm, open } from "node:fs/promises"
+import { readFile, writeFile, mkdir, readdir, stat, lstat, realpath, rm, open } from "node:fs/promises"
 import path from "node:path"
 import ignore, { type Ignore } from "ignore"
 import {
@@ -12,6 +12,7 @@ import {
 } from "./schema.js"
 import { DocGit } from "./docGit.js"
 import { withDocProjectLock } from "./docLock.js"
+import { assertProjectName } from "../souko/registry.js"
 
 export interface SourceReadRequest {
   path: string
@@ -44,9 +45,7 @@ export class DocStore {
   // ─── Path helpers ───────────────────────────────────────────
 
   private projectDir(project: string): string {
-    if (!project || project.includes("..") || project.includes("/") || project.includes("\\")) {
-      throw new Error(`Invalid project: ${project}`)
-    }
+    assertProjectName(project)
     return path.join(this.docRoot, project)
   }
 
@@ -458,9 +457,7 @@ export class DocStore {
   // ─── Source code access ─────────────────────────────────────
 
   private repoDir(project: string): string {
-    if (!project || project.includes("..") || project.includes("/") || project.includes("\\")) {
-      throw new Error(`Invalid project: ${project}`)
-    }
+    assertProjectName(project)
     return this.resolveRepoDir(project)
   }
 
@@ -471,6 +468,12 @@ export class DocStore {
       throw new Error(`Path escapes repo: ${rel}`)
     }
     return full
+  }
+
+  private async realPathIsWithinRepo(project: string, full: string): Promise<boolean> {
+    const base = await realpath(this.repoDir(project))
+    const resolved = await realpath(full)
+    return resolved === base || resolved.startsWith(base + path.sep)
   }
 
   private async loadGitignore(repoRoot: string): Promise<Ignore> {
@@ -503,7 +506,7 @@ export class DocStore {
         if (e.isDirectory()) {
           if (ig.ignores(`${rel}/`)) continue
           await recurse(path.join(dir, e.name), rel)
-        } else if (e.isFile() || e.isSymbolicLink()) {
+        } else if (e.isFile()) {
           if (ig.ignores(rel)) continue
           const full = path.join(dir, e.name)
           if (await isBinaryFile(full)) continue
@@ -541,6 +544,13 @@ export class DocStore {
       } catch {
         continue
       }
+      let linkStat
+      try {
+        linkStat = await lstat(full)
+      } catch {
+        continue
+      }
+      if (linkStat.isSymbolicLink()) continue
       let fileStat
       try {
         fileStat = await stat(full)
@@ -548,6 +558,7 @@ export class DocStore {
         continue
       }
       if (!fileStat.isFile()) continue
+      if (!(await this.realPathIsWithinRepo(project, full).catch(() => false))) continue
       if (fileStat.size > MAX_SOURCE_FILE_BYTES) continue
       if (await isBinaryFile(full)) continue
 

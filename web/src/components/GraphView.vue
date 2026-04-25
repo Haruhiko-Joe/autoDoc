@@ -402,7 +402,7 @@ function createGraph() {
     if (!edgeData?.data) return
 
     const d = edgeData.data as unknown as G6EdgeData
-    if (!d.detail) return
+    if (!d.detail && !props.editable) return
 
     const containerRect = containerRef.value!.getBoundingClientRect()
     popover.value = {

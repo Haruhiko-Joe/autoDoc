@@ -1,7 +1,7 @@
 import type { Dirent } from "node:fs";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { Graph, TopGraph } from "../../agents/schemas/schema.js";
+import { Graph, GraphNode, RawGraph, RawTopGraph, TopGraph } from "../../agents/schemas/schema.js";
 import { withDocProjectLock } from "../../mcp/docLock.js";
 import type {
   AncestorContext as AncestorContextType,
@@ -29,6 +29,15 @@ const RECOVERABLE: ReadonlySet<GraphStatusType> = new Set([
 
 type AncestorEdgeSource = Pick<AncestorEdgeType, "target" | "type" | "description">;
 type AncestorEdgeNode = { name: string; edges: AncestorEdgeSource[] };
+
+export interface DecompositionReviewItem {
+  id: string
+  kind: "scaffold" | "decomposer"
+  nodeId: string
+  title: string
+  description: string
+  nodes: GraphNodeType[]
+}
 
 export class GraphStore {
   private readonly nodeLocks = new Map<string, Promise<void>>();
@@ -64,7 +73,9 @@ export class GraphStore {
   }
 
   async countStatuses(): Promise<Record<string, number>> {
-    const counts: Record<string, number> = { pending: 0, decomposing: 0, writing: 0, checking: 0, done: 0, error: 0 };
+    const counts: Record<string, number> = { pending: 0, decomposing: 0, writing: 0, checking: 0, "awaiting-review": 0, done: 0, error: 0 };
+    const top = await this.readTopGraph().catch(() => undefined);
+    if (top?.status === "awaiting-review") counts["awaiting-review"] = (counts["awaiting-review"] ?? 0) + 1;
     const allNodeIds = await this.scanGraphNodes(this.docDir, "");
     for (const nodeId of allNodeIds) {
       try {
@@ -125,6 +136,18 @@ export class GraphStore {
     }
   }
 
+  async initializeScaffoldReview(topResult: RawTopGraphType, finalSessionId: string): Promise<void> {
+    const topGraph: TopGraphType = {
+      status: "awaiting-review",
+      retryCount: 0,
+      sessionId: finalSessionId,
+      description: topResult.description,
+      nodes: topResult.nodes,
+    };
+    await this.writeTopGraph(topGraph);
+    this.onChange();
+  }
+
   async markGraphDecomposed(nodeId: string, rawGraph: RawGraphType, decomposerSessionId: string): Promise<void> {
     await this.ensureChildGraphs(nodeId, rawGraph.nodes);
 
@@ -141,6 +164,22 @@ export class GraphStore {
       writerSessionIds: undefined,
       pageTasks: hasPages ? pageTasks : undefined,
     });
+  }
+
+  async markGraphAwaitingReview(nodeId: string, rawGraph: RawGraphType, decomposerSessionId: string): Promise<void> {
+    this.validateGraphNodes(rawGraph.nodes);
+    const latest = await this.readGraph(nodeId);
+    await this.writeGraph(nodeId, {
+      ...latest,
+      status: "awaiting-review",
+      sessionId: decomposerSessionId,
+      nodes: rawGraph.nodes,
+      decomposerSessionId,
+      checkerSessionId: undefined,
+      writerSessionIds: undefined,
+      pageTasks: undefined,
+    });
+    this.onChange();
   }
 
   async markGraphError(nodeId: string): Promise<void> {
@@ -220,6 +259,104 @@ export class GraphStore {
       true,
       "error reset",
     );
+  }
+
+  async hasPendingReviews(): Promise<boolean> {
+    const top = await this.readTopGraph().catch(() => undefined);
+    if (top?.status === "awaiting-review") return true;
+    const allNodeIds = await this.scanGraphNodes(this.docDir, "");
+    for (const nodeId of allNodeIds) {
+      try {
+        if ((await this.readGraph(nodeId)).status === "awaiting-review") return true;
+      } catch { /* skip */ }
+    }
+    return false;
+  }
+
+  async listDecompositionReviews(): Promise<DecompositionReviewItem[]> {
+    const out: DecompositionReviewItem[] = [];
+    const top = await this.readTopGraph().catch(() => undefined);
+    if (top?.status === "awaiting-review") {
+      out.push({
+        id: "scaffold",
+        kind: "scaffold",
+        nodeId: "",
+        title: "Top-level modules",
+        description: top.description,
+        nodes: this.scaffoldNodesToGraphNodes(top.nodes),
+      });
+    }
+
+    const allNodeIds = await this.scanGraphNodes(this.docDir, "");
+    for (const nodeId of allNodeIds) {
+      try {
+        const graph = await this.readGraph(nodeId);
+        if (graph.status !== "awaiting-review") continue;
+        out.push({
+          id: `graph:${nodeId}`,
+          kind: "decomposer",
+          nodeId,
+          title: nodeId,
+          description: graph.description,
+          nodes: graph.nodes,
+        });
+      } catch { /* skip */ }
+    }
+    return out;
+  }
+
+  async updateDecompositionReview(id: string, nodes: GraphNodeType[]): Promise<void> {
+    if (id === "scaffold") {
+      await this.updateScaffoldReview(nodes);
+      return;
+    }
+    const nodeId = this.parseGraphReviewId(id);
+    const rawGraph = RawGraph.parse({ nodes });
+    this.validateGraphNodes(rawGraph.nodes);
+    await this.updateGraph(nodeId, { nodes: rawGraph.nodes });
+  }
+
+  async approveDecompositionReview(id: string): Promise<void> {
+    if (id === "scaffold") {
+      await this.approveScaffoldReview();
+      return;
+    }
+    const nodeId = this.parseGraphReviewId(id);
+    const graph = await this.readGraph(nodeId);
+    if (graph.status !== "awaiting-review") throw new Error(`Review is not awaiting approval: ${id}`);
+    await this.markGraphDecomposed(nodeId, { nodes: graph.nodes }, graph.decomposerSessionId ?? graph.sessionId);
+  }
+
+  async getScaffoldReviewSession(): Promise<string> {
+    const top = await this.readTopGraph();
+    if (top.status !== "awaiting-review") throw new Error("Scaffold review is not awaiting feedback");
+    return top.sessionId;
+  }
+
+  async getScaffoldReviewCandidate(): Promise<RawTopGraphType> {
+    const top = await this.readTopGraph();
+    if (top.status !== "awaiting-review") throw new Error("Scaffold review is not awaiting feedback");
+    return { description: top.description, nodes: top.nodes };
+  }
+
+  async getGraphReview(nodeId: string): Promise<GraphType> {
+    const graph = await this.readGraph(nodeId);
+    if (graph.status !== "awaiting-review") throw new Error(`Graph review is not awaiting feedback: ${nodeId}`);
+    return graph;
+  }
+
+  async isScaffoldStillAwaitingReview(expectedSessionId: string): Promise<boolean> {
+    const top = await this.readTopGraph().catch(() => undefined);
+    return top?.status === "awaiting-review" && top.sessionId === expectedSessionId;
+  }
+
+  async isGraphStillAwaitingReview(nodeId: string, expectedSessionId: string): Promise<boolean> {
+    try {
+      const graph = await this.readGraph(nodeId);
+      return graph.status === "awaiting-review" && (graph.decomposerSessionId ?? graph.sessionId) === expectedSessionId;
+    } catch {
+      return false;
+    }
   }
 
   async buildAncestorContext(nodeId: string): Promise<AncestorContextType | null> {
@@ -311,6 +448,96 @@ export class GraphStore {
       tasks[node.child.ref] = { status: "pending", retryCount: 0 };
     }
     return tasks;
+  }
+
+  private async updateScaffoldReview(nodes: GraphNodeType[]): Promise<void> {
+    const top = await this.readTopGraph();
+    if (top.status !== "awaiting-review") throw new Error("Scaffold review is not awaiting approval");
+    const rawTop = RawTopGraph.parse({
+      description: top.description,
+      nodes: nodes.map((node) => ({
+        name: node.name,
+        description: node.description,
+        codeScope: node.codeScope,
+        edges: node.edges,
+      })),
+    });
+    this.validateScaffoldNodes(rawTop.nodes);
+    await this.writeTopGraph({ ...top, nodes: rawTop.nodes });
+    this.onChange();
+  }
+
+  private async approveScaffoldReview(): Promise<void> {
+    const top = await this.readTopGraph();
+    if (top.status !== "awaiting-review") throw new Error("Scaffold review is not awaiting approval");
+    this.validateScaffoldNodes(top.nodes);
+    for (const node of top.nodes) {
+      await this.writeGraph(node.name, {
+        status: "pending",
+        retryCount: 0,
+        sessionId: "",
+        description: node.description,
+        codeScope: node.codeScope,
+        nodes: [],
+      });
+    }
+    await this.writeTopGraph({ ...top, status: "done" });
+    this.onChange();
+  }
+
+  private scaffoldNodesToGraphNodes(nodes: RawTopGraphType["nodes"]): GraphNodeType[] {
+    return nodes.map((node) => GraphNode.parse({
+      name: node.name,
+      description: node.description,
+      codeScope: node.codeScope,
+      edges: node.edges,
+      child: { type: "graph", ref: node.name },
+    }));
+  }
+
+  private parseGraphReviewId(id: string): string {
+    if (!id.startsWith("graph:")) throw new Error(`Invalid review id: ${id}`);
+    const nodeId = id.slice("graph:".length);
+    if (!nodeId) throw new Error(`Invalid review id: ${id}`);
+    return nodeId;
+  }
+
+  private validateScaffoldNodes(nodes: RawTopGraphType["nodes"]): void {
+    this.validateNames(nodes.map((node) => node.name), "node name");
+    const names = new Set(nodes.map((node) => node.name));
+    for (const node of nodes) {
+      this.validatePathPart(node.name, "node name");
+      for (const edge of node.edges) {
+        if (!names.has(edge.target)) throw new Error(`Edge target not found: ${node.name} -> ${edge.target}`);
+      }
+    }
+  }
+
+  private validateGraphNodes(nodes: GraphNodeType[]): void {
+    this.validateNames(nodes.map((node) => node.name), "node name");
+    this.validateNames(nodes.map((node) => node.child.ref), "child ref");
+    const names = new Set(nodes.map((node) => node.name));
+    for (const node of nodes) {
+      this.validatePathPart(node.child.ref, "child ref");
+      for (const edge of node.edges) {
+        if (!names.has(edge.target)) throw new Error(`Edge target not found: ${node.name} -> ${edge.target}`);
+      }
+    }
+  }
+
+  private validateNames(values: string[], label: string): void {
+    const seen = new Set<string>();
+    for (const value of values) {
+      if (!value.trim()) throw new Error(`Empty ${label}`);
+      if (seen.has(value)) throw new Error(`Duplicate ${label}: ${value}`);
+      seen.add(value);
+    }
+  }
+
+  private validatePathPart(value: string, label: string): void {
+    if (value.includes("/") || value.includes("\\") || value.includes("..")) {
+      throw new Error(`Invalid ${label}: ${value}`);
+    }
   }
 
   private async updatePageTask(nodeId: string, ref: string, patch: Partial<PageTaskType>): Promise<void> {

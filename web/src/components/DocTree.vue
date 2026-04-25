@@ -41,7 +41,7 @@ function getNodeStatus(nodeId: string): string | undefined {
   return deriveStatus(nodeId, stateMap)
 }
 
-const RUNNING_STATUSES = new Set(['decomposing', 'writing', 'checking'])
+const RUNNING_STATUSES = new Set(['decomposing', 'writing', 'checking', 'awaiting-review'])
 
 // 计算节点的显示状态：如果子树中有任何运行中的节点，父节点也显示为运行中
 function deriveStatus(nodePath: string, stateMap: Map<string, string>): string | undefined {
@@ -54,7 +54,7 @@ function deriveStatus(nodePath: string, stateMap: Map<string, string>): string |
   for (const [id, status] of stateMap) {
     if (!id.startsWith(prefix)) continue
     hasDescendant = true
-    if (RUNNING_STATUSES.has(status)) return 'writing' // 子树有运行中的节点，父节点显示为运行中
+    if (RUNNING_STATUSES.has(status)) return status // 子树有运行中的节点，父节点显示为运行中
     if (status === 'error') return 'error'
     if (status !== 'done') allDone = false
   }

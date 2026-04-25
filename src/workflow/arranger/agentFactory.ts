@@ -13,11 +13,11 @@ import type {
 import type { AgentBackend, AgentBackends, AgentRole } from "./types.js";
 
 export const DEFAULT_AGENT_BACKENDS: AgentBackends = {
-  scaffold: "claude",
-  decomposer: "claude",
-  writer: "claude",
-  checker: "codex",
-  flowAnalyzer: "claude",
+  scaffold: "codex",
+  decomposer: "codex",
+  writer: "codex",
+  checker: "claude",
+  flowAnalyzer: "codex",
 };
 
 export function resolveAgentBackends(options?: {

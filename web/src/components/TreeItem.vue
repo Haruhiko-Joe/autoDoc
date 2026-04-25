@@ -99,7 +99,8 @@ const emit = defineEmits<{
 .tree-status.pending { color: var(--text-disabled); }
 .tree-status.decomposing,
 .tree-status.writing,
-.tree-status.checking { color: var(--accent); animation: pulse 1.5s infinite; }
+.tree-status.checking,
+.tree-status.awaiting-review { color: var(--accent); animation: pulse 1.5s infinite; }
 
 @keyframes pulse {
   0%, 100% { opacity: 1; }

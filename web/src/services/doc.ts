@@ -1,4 +1,4 @@
-import type { TopGraph, SubGraph, FlowsData } from '../types'
+import type { TopGraph, SubGraph, FlowsData, GraphNode } from '../types'
 
 const API = '/api'
 
@@ -33,11 +33,11 @@ export async function fetchFlows(project: string): Promise<FlowsData> {
 
 export interface NodeProgress {
   nodeId: string
-  status: 'pending' | 'decomposing' | 'writing' | 'checking' | 'done' | 'error'
+  status: 'pending' | 'decomposing' | 'writing' | 'checking' | 'awaiting-review' | 'done' | 'error'
 }
 
 export interface Progress {
-  phase: 'scaffold' | 'processing' | 'assembling' | 'flows' | 'idle'
+  phase: 'scaffold' | 'processing' | 'awaiting-review' | 'assembling' | 'flows' | 'idle'
   counts: Record<string, number>
   nodes: NodeProgress[]
   paused: boolean
@@ -46,11 +46,13 @@ export interface Progress {
 export type AgentBackend = 'claude' | 'codex'
 export type AgentRole = 'scaffold' | 'decomposer' | 'writer' | 'checker' | 'flowAnalyzer'
 export type AgentBackends = Record<AgentRole, AgentBackend>
+export type DecompositionReviewMode = 'off' | 'all'
 
 export interface RunConfig {
   maxConcurrency: number
   agentBackends: AgentBackends
   language: 'zh' | 'en'
+  decompositionReview: DecompositionReviewMode
 }
 
 export type RunPhase = 'idle' | 'cloning' | 'awaiting-knowledge' | 'running' | 'done' | 'error'
@@ -88,17 +90,61 @@ export async function startRun(
   maxConcurrency?: number,
   agentBackends?: Partial<AgentBackends>,
   language?: 'zh' | 'en',
+  decompositionReview?: DecompositionReviewMode,
 ): Promise<{ ok: boolean; project: string }> {
   const res = await fetch(`${API}/run`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ gitUrl, maxConcurrency, agentBackends, language }),
+    body: JSON.stringify({ gitUrl, maxConcurrency, agentBackends, language, decompositionReview }),
   })
   if (!res.ok) {
     const data = await res.json()
     throw new Error(data.error ?? 'Failed to start')
   }
   return res.json()
+}
+
+export interface DecompositionReviewItem {
+  id: string
+  kind: 'scaffold' | 'decomposer'
+  nodeId: string
+  title: string
+  description: string
+  nodes: GraphNode[]
+}
+
+export async function fetchDecompositionReviews(project: string): Promise<DecompositionReviewItem[]> {
+  const res = await fetch(`${API}/decomposition-reviews?project=${encodeURIComponent(project)}`)
+  if (!res.ok) throw new Error(await res.text())
+  const data = await res.json() as { reviews?: DecompositionReviewItem[] }
+  return data.reviews ?? []
+}
+
+export async function updateDecompositionReview(project: string, id: string, nodes: GraphNode[]): Promise<void> {
+  const res = await fetch(`${API}/decomposition-review/update`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project, id, nodes }),
+  })
+  if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to update review')
+}
+
+export async function approveDecompositionReview(project: string, id: string): Promise<void> {
+  const res = await fetch(`${API}/decomposition-review/approve`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project, id }),
+  })
+  if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to approve review')
+}
+
+export async function rejectDecompositionReview(project: string, id: string, feedback: string): Promise<void> {
+  const res = await fetch(`${API}/decomposition-review/reject`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project, id, feedback }),
+  })
+  if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to request changes')
 }
 
 export async function continueRun(): Promise<void> {
@@ -277,7 +323,7 @@ export interface UpdateTaskItem {
 }
 
 export interface UpdateEvent {
-  type: 'queue' | 'task-start' | 'task-text-delta' | 'task-awaiting-review' | 'task-done' | 'task-error' | 'task-skipped' | 'awaiting-confirm' | 'finished'
+  type: 'queue' | 'task-start' | 'task-text-delta' | 'task-awaiting-review' | 'task-done' | 'task-error' | 'task-skipped' | 'awaiting-confirm' | 'cancelled' | 'finished'
   taskId?: string
   tasks?: UpdateTaskItem[]
   delta?: string
@@ -392,7 +438,9 @@ export async function knowledgeGet(project: string): Promise<KnowledgeGetRespons
 export interface KnowledgeTurnResponse {
   sessionId?: string
   draft: string
+  status: 'needs-input' | 'ready'
   question: string
+  completionReason: string
 }
 
 export async function knowledgeStart(
