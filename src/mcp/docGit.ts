@@ -2,6 +2,7 @@ import { spawn } from "node:child_process"
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { withDocProjectLock } from "./docLock.js"
+import { assertProjectName } from "../souko/registry.js"
 
 export interface DocGitHead {
   sha: string
@@ -63,9 +64,7 @@ export class DocGit {
   constructor(private readonly docRoot: string) {}
 
   private dir(project: string): string {
-    if (!project || project.includes("..") || project.includes("/") || project.includes("\\")) {
-      throw new Error(`Invalid project: ${project}`)
-    }
+    assertProjectName(project)
     return path.join(this.docRoot, project)
   }
 

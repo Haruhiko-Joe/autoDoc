@@ -1,5 +1,5 @@
 export type EdgeType = "calls" | "depends" | "data-flow" | "event" | "extends" | "composes"
-export type GraphStatus = "pending" | "decomposing" | "writing" | "checking" | "done" | "error"
+export type GraphStatus = "pending" | "decomposing" | "writing" | "checking" | "awaiting-review" | "done" | "error"
 
 export interface GraphEdge {
   target: string
@@ -29,7 +29,7 @@ export interface ScaffoldNode {
 }
 
 export interface TopGraph {
-  status: "done"
+  status: "awaiting-review" | "done"
   retryCount: 0
   sessionId: string
   description: string

@@ -66,7 +66,7 @@ export class claudePrUpdater implements IPrUpdater {
     for await (const message of query({
       prompt,
       options: {
-        model: "claude-opus-4-6",
+        model: "claude-opus-4-7[1m]",
         betas: ["context-1m-2025-08-07"],
         permissionMode: "bypassPermissions",
         allowDangerouslySkipPermissions: true,

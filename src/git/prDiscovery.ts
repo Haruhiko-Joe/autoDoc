@@ -62,6 +62,15 @@ export async function fetchLatest(repoDir: string): Promise<void> {
   await run(["fetch", "origin"], repoDir);
 }
 
+export async function checkoutRemoteBranch(repoDir: string, branch: string): Promise<void> {
+  await run(["checkout", "-B", branch, `origin/${branch}`], repoDir);
+  await run(["reset", "--hard", `origin/${branch}`], repoDir);
+}
+
+export async function checkoutCommit(repoDir: string, sha: string): Promise<void> {
+  await run(["checkout", "--detach", sha], repoDir);
+}
+
 // ─── GitHub PR discovery (gh CLI) ───
 
 export async function isGhAvailable(repoDir: string): Promise<boolean> {

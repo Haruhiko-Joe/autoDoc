@@ -59,7 +59,7 @@ export function useUpdateQueue(project: Ref<string>) {
       if (t) t.status = 'skipped'
     } else if (event.type === 'awaiting-confirm' && event.taskId) {
       awaitingConfirmTaskId.value = event.taskId
-    } else if (event.type === 'finished') {
+    } else if (event.type === 'finished' || event.type === 'cancelled') {
       isRunning.value = false
       awaitingConfirmTaskId.value = null
       awaitingReviewTaskId.value = null

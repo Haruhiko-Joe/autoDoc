@@ -53,6 +53,22 @@ export class PromptBuilder {
     return parts.join("\n");
   }
 
+  scaffoldReviewFeedbackPrompt(current: RawTopGraph, feedback: string): string {
+    return this.appendKnowledge([
+      "用户人工审查了你的顶层模块拆解，并要求重做。",
+      "",
+      "## 当前候选拆解",
+      "```json",
+      JSON.stringify(current, null, 2),
+      "```",
+      "",
+      "## 用户反馈",
+      feedback,
+      "",
+      "请根据用户反馈重新输出完整的顶层模块图。",
+    ].join("\n"));
+  }
+
   decomposerPrompt(
     nodeId: string,
     graph: Graph,
@@ -101,6 +117,22 @@ export class PromptBuilder {
     );
 
     return parts.join("\n");
+  }
+
+  decomposerReviewFeedbackPrompt(nodeId: string, current: RawGraph, feedback: string): string {
+    return this.appendKnowledge([
+      `用户人工审查了模块 "${nodeId}" 的子图拆解，并要求重做。`,
+      "",
+      "## 当前候选拆解",
+      "```json",
+      JSON.stringify(current, null, 2),
+      "```",
+      "",
+      "## 用户反馈",
+      feedback,
+      "",
+      "请根据用户反馈重新输出完整的子图 JSON。",
+    ].join("\n"));
   }
 
   writerPrompt(node: GraphNode, ancestorContext: AncestorContext | null): string {

@@ -602,7 +602,8 @@ async function savePage() {
 .status-badge.error { background: var(--badge-error-bg); color: var(--color-red); }
 .status-badge.decomposing,
 .status-badge.writing,
-.status-badge.checking { background: var(--badge-active-bg); color: var(--accent); }
+.status-badge.checking,
+.status-badge.awaiting-review { background: var(--badge-active-bg); color: var(--accent); }
 
 .edit-toggle,
 .git-toggle,

@@ -6,7 +6,7 @@ export interface NodeProgress {
 }
 
 export interface Progress {
-  phase: "scaffold" | "processing" | "assembling" | "flows" | "idle"
+  phase: "scaffold" | "processing" | "awaiting-review" | "assembling" | "flows" | "idle"
   counts: Record<string, number>
   nodes: NodeProgress[]
   paused: boolean
@@ -19,16 +19,19 @@ export type ArrangerTask =
 export type AgentBackend = "claude" | "codex";
 export type AgentRole = "scaffold" | "decomposer" | "writer" | "checker" | "flowAnalyzer";
 export type AgentBackends = Record<AgentRole, AgentBackend>;
+export type DecompositionReviewMode = "off" | "all";
 
 export interface ArrangerOptions {
   maxConcurrency?: number
   agentBackend?: AgentBackend
   agentBackends?: Partial<AgentBackends>
   language?: Language
+  decompositionReview?: DecompositionReviewMode
 }
 
 export interface ArrangerConfig {
   maxConcurrency: number
   agentBackends: AgentBackends
   language: Language
+  decompositionReview: DecompositionReviewMode
 }

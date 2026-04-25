@@ -14,6 +14,7 @@ import type {
   ArrangerConfig,
   ArrangerOptions,
   ArrangerTask,
+  DecompositionReviewMode,
   Progress,
 } from "./arranger/types.js";
 
@@ -23,6 +24,7 @@ export type {
   AgentRole,
   ArrangerConfig,
   ArrangerOptions,
+  DecompositionReviewMode,
   NodeProgress,
   Progress,
 } from "./arranger/types.js";
@@ -31,12 +33,16 @@ export class Arranger {
   private readonly maxConcurrency: number;
   private readonly agentBackends: AgentBackends;
   private readonly language: Language;
+  private readonly decompositionReview: DecompositionReviewMode;
   private readonly sem: Semaphore;
   private readonly docGit = new DocGit(DOC_ROOT);
   private readonly agentFactory: AgentFactory;
   private _paused = false;
   private _resumeResolve: (() => void) | null = null;
   private _resumePromise: Promise<void> | null = null;
+  private _reviewResolve: (() => void) | null = null;
+  private _reviewPromise: Promise<void> | null = null;
+  private _reviewSeq = 0;
   private repoPath = "";
   private docDir = "";
   private knowledge = "";
@@ -49,6 +55,7 @@ export class Arranger {
     this.maxConcurrency = options?.maxConcurrency ?? 8;
     this.agentBackends = resolveAgentBackends(options);
     this.language = options?.language ?? "zh";
+    this.decompositionReview = options?.decompositionReview ?? "off";
     this.sem = new Semaphore(this.maxConcurrency);
     this.agentFactory = new AgentFactory(this.agentBackends, this.language);
   }
@@ -82,7 +89,12 @@ export class Arranger {
   }
 
   getConfig(): ArrangerConfig {
-    return { maxConcurrency: this.maxConcurrency, agentBackends: this.agentBackends, language: this.language };
+    return {
+      maxConcurrency: this.maxConcurrency,
+      agentBackends: this.agentBackends,
+      language: this.language,
+      decompositionReview: this.decompositionReview,
+    };
   }
 
   async getProgress(): Promise<Progress> {
@@ -93,7 +105,7 @@ export class Arranger {
   async run(repoPath: string, docDir = path.resolve("src/souko/doc", path.basename(path.resolve(repoPath)))): Promise<void> {
     const { pipeline, store } = await this.prepareRun(repoPath, docDir);
 
-    await appendRunLog(store.projectName, `arranger run repo=${repoPath} backends=${JSON.stringify(this.agentBackends)} language=${this.language} concurrency=${this.maxConcurrency}`);
+    await appendRunLog(store.projectName, `arranger run repo=${repoPath} backends=${JSON.stringify(this.agentBackends)} language=${this.language} concurrency=${this.maxConcurrency} review=${this.decompositionReview}`);
 
     if (!(await store.hasTopGraph())) {
       console.log("[Arranger] Running scaffold...");
@@ -164,12 +176,46 @@ export class Arranger {
     return resetCount;
   }
 
+  async listDecompositionReviews(): Promise<Awaited<ReturnType<GraphStore["listDecompositionReviews"]>>> {
+    const { store } = this.activeRuntime();
+    return store.listDecompositionReviews();
+  }
+
+  async updateDecompositionReview(id: string, nodes: Parameters<GraphStore["updateDecompositionReview"]>[1]): Promise<void> {
+    const { store } = this.activeRuntime();
+    await store.updateDecompositionReview(id, nodes);
+    this.wakeReviewWaiters();
+  }
+
+  async approveDecompositionReview(id: string): Promise<void> {
+    const { store } = this.activeRuntime();
+    await store.approveDecompositionReview(id);
+    this.wakeReviewWaiters();
+  }
+
+  async rejectDecompositionReview(id: string, feedback: string): Promise<void> {
+    const { pipeline } = this.activeRuntime();
+    const trimmed = feedback.trim();
+    if (!trimmed) throw new Error("Feedback required");
+    if (id === "scaffold") {
+      await pipeline.redoScaffoldReview(trimmed);
+    } else if (id.startsWith("graph:")) {
+      await pipeline.redoGraphReview(id.slice("graph:".length), trimmed);
+    } else {
+      throw new Error(`Invalid review id: ${id}`);
+    }
+    this.wakeReviewWaiters();
+  }
+
   private async prepareRun(repoPath: string, docDir: string): Promise<{ store: GraphStore; pipeline: Pipeline }> {
     this.repoPath = repoPath;
     this.docDir = docDir;
     this.knowledge = await this.loadKnowledge();
 
-    const store = new GraphStore(docDir, () => this.notify());
+    const store = new GraphStore(docDir, () => {
+      this.notify();
+      this.wakeReviewWaiters();
+    });
     const promptBuilder = new PromptBuilder(repoPath, this.language, this.knowledge);
     const pipeline = new Pipeline({
       repoPath,
@@ -177,6 +223,7 @@ export class Arranger {
       agentFactory: this.agentFactory,
       promptBuilder,
       semaphore: this.sem,
+      decompositionReview: this.decompositionReview,
     });
 
     this.graphStore = store;
@@ -221,6 +268,16 @@ export class Arranger {
           await this.waitForResume();
           continue;
         }
+        const seqBefore = this._reviewSeq;
+        if (await store.hasPendingReviews()) {
+          if (this._reviewSeq !== seqBefore) continue;
+          this.currentPhase = "awaiting-review";
+          this.notify();
+          await this.waitForReviewChange(seqBefore);
+          this.currentPhase = "processing";
+          this.notify();
+          continue;
+        }
         break;
       }
       await Promise.race(running);
@@ -240,6 +297,24 @@ export class Arranger {
       });
     }
     return this._resumePromise;
+  }
+
+  private waitForReviewChange(seqSnapshot: number): Promise<void> {
+    if (this._reviewSeq !== seqSnapshot) return Promise.resolve();
+    if (!this._reviewPromise) {
+      this._reviewPromise = new Promise<void>((resolve) => {
+        this._reviewResolve = resolve;
+      });
+    }
+    return this._reviewPromise;
+  }
+
+  private wakeReviewWaiters(): void {
+    this._reviewSeq++;
+    if (!this._reviewResolve) return;
+    this._reviewResolve();
+    this._reviewResolve = null;
+    this._reviewPromise = null;
   }
 
   private notify(): void {

@@ -10,6 +10,7 @@ import {
   fetchStatus,
   KnowledgeSessionExpiredError,
   type AgentBackend,
+  type KnowledgeTurnResponse,
 } from '../services/doc'
 import MarkdownView from '../components/MarkdownView.vue'
 import { useTheme } from '../composables/useTheme'
@@ -32,12 +33,14 @@ const project = computed(() => {
 })
 
 const language = ref<'zh' | 'en'>('zh')
-const agentBackend = ref<AgentBackend>('claude')
+const agentBackend = ref<AgentBackend>('codex')
 
 const sessionId = ref('')
 const draft = ref('')
 const messages = ref<TurnMessage[]>([])
 const userInput = ref('')
+const knowledgeStatus = ref<'needs-input' | 'ready'>('needs-input')
+const completionReason = ref('')
 const loading = ref(false)
 const errorMsg = ref('')
 const initialized = ref(false)
@@ -50,6 +53,7 @@ const cloning = ref(false)
 const canSend = computed(() => !!project.value && !loading.value && !cloning.value && userInput.value.trim().length > 0)
 const canFinalize = computed(() => initialized.value && !loading.value && !finalizing.value && draft.value.trim().length > 0)
 const canStartGen = computed(() => preGen.value && !loading.value && !finalizing.value && !cloning.value)
+const readyToFinalize = computed(() => initialized.value && knowledgeStatus.value === 'ready' && !loading.value)
 
 async function scrollToBottom() {
   await nextTick()
@@ -75,9 +79,15 @@ async function loadExistingDraft() {
 async function startFresh(reply: string) {
   const res = await knowledgeStart(project.value, reply, language.value, agentBackend.value)
   sessionId.value = res.sessionId
-  draft.value = res.draft
-  messages.value.push({ role: 'assistant', content: res.question })
+  applyKnowledgeTurn(res)
   initialized.value = true
+}
+
+function applyKnowledgeTurn(res: KnowledgeTurnResponse) {
+  draft.value = res.draft
+  knowledgeStatus.value = res.status
+  completionReason.value = res.completionReason
+  messages.value.push({ role: 'assistant', content: res.question })
 }
 
 async function sendReply() {
@@ -94,8 +104,7 @@ async function sendReply() {
     } else {
       try {
         const res = await knowledgeMessage(sessionId.value, reply)
-        draft.value = res.draft
-        messages.value.push({ role: 'assistant', content: res.question })
+        applyKnowledgeTurn(res)
       } catch (e) {
         if (e instanceof KnowledgeSessionExpiredError) {
           // server restarted or session dropped — start a new one transparently
@@ -213,8 +222,8 @@ onMounted(async () => {
           <option value="en">English</option>
         </select>
         <select v-model="agentBackend" class="mini-select" :disabled="initialized">
-          <option value="claude">Claude</option>
           <option value="codex">Codex</option>
+          <option value="claude">Claude</option>
         </select>
         <button class="theme-btn" @click="toggleTheme" :title="isDark ? 'Light mode' : 'Dark mode'">
           <svg v-if="isDark" width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -249,12 +258,16 @@ onMounted(async () => {
             <div class="bubble-role">Elicitor</div>
             <div class="bubble-content thinking">thinking...</div>
           </div>
+          <div v-if="readyToFinalize" class="completion-banner">
+            <div class="completion-title">{{ language === 'en' ? 'Elicitor says this is enough to proceed.' : '采访者判断当前知识已足够开始生成。' }}</div>
+            <div v-if="completionReason" class="completion-reason">{{ completionReason }}</div>
+          </div>
         </div>
         <div class="chat-input">
           <textarea
             v-model="userInput"
             class="reply-input"
-            :placeholder="initialized ? 'Reply to the Elicitor.' : 'Describe what you want to change about the default docs.'"
+            :placeholder="readyToFinalize ? 'Optional: add one more constraint, or start generation now.' : (initialized ? 'Reply to the Elicitor.' : 'Describe what you want to change about the default docs.')"
             :disabled="loading"
             rows="3"
           />
@@ -266,7 +279,7 @@ onMounted(async () => {
                   {{ finalizing ? 'Starting...' : 'Skip & start generation' }}
                 </button>
                 <button class="primary-btn" :disabled="!canStartGen || !initialized" @click="saveAndStart">
-                  {{ finalizing ? 'Starting...' : 'Save & start generation' }}
+                  {{ finalizing ? 'Starting...' : (readyToFinalize ? 'Use this & start generation' : 'Save & start generation') }}
                 </button>
               </template>
               <template v-else>
@@ -275,7 +288,7 @@ onMounted(async () => {
                 </button>
               </template>
               <button class="primary-btn" :disabled="!canSend" @click="sendReply">
-                Send
+                {{ readyToFinalize ? 'Add more' : 'Send' }}
               </button>
             </div>
           </div>
@@ -404,6 +417,25 @@ onMounted(async () => {
   color: var(--text-secondary);
   font-size: 12px;
   text-align: center;
+}
+
+.completion-banner {
+  align-self: stretch;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-surface));
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.completion-title {
+  font-weight: 600;
+  color: var(--text-heading);
+}
+
+.completion-reason {
+  margin-top: 4px;
 }
 
 .chat-hint {

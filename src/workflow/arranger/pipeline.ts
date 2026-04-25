@@ -6,13 +6,17 @@ import type {
   AncestorContext as AncestorContextType,
   Graph as GraphType,
   GraphNode as GraphNodeType,
+  IDecomposer,
+  IScaffold,
   IWriter,
   RawGraph as RawGraphType,
+  RawTopGraph as RawTopGraphType,
 } from "../../agents/schemas/schema.js";
 import type { AgentFactory } from "./agentFactory.js";
 import type { GraphStore } from "./graphStore.js";
 import type { PromptBuilder } from "./promptBuilder.js";
 import { type Semaphore, withRetry, withSemaphore } from "./runtime.js";
+import type { DecompositionReviewMode } from "./types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SKILL_TEMPLATE_DIR = path.resolve(__dirname, "..", "..", "skill-template");
@@ -41,6 +45,7 @@ interface PipelineOptions {
   agentFactory: AgentFactory
   promptBuilder: PromptBuilder
   semaphore: Semaphore
+  decompositionReview: DecompositionReviewMode
 }
 
 export class Pipeline {
@@ -87,7 +92,12 @@ export class Pipeline {
       return { topResult, finalSessionId };
     });
 
-    await store.initializeFromScaffold(topResult, finalSessionId);
+    if (this.options.decompositionReview === "all") {
+      await store.initializeScaffoldReview(topResult, finalSessionId);
+      await appendRunLog(store.projectName, `scaffold awaiting-review nodes=${topResult.nodes.length}`);
+    } else {
+      await store.initializeFromScaffold(topResult, finalSessionId);
+    }
     console.log(`[Arranger] Scaffold complete. ${topResult.nodes.length} top-level modules.`);
   }
 
@@ -120,7 +130,47 @@ export class Pipeline {
 
     console.log(`[Arranger] Decomposed: ${nodeId} → ${rawGraph.nodes.length} child nodes`);
     await appendRunLog(store.projectName, `graph task done node=${nodeId} children=${rawGraph.nodes.length}`);
-    await store.markGraphDecomposed(nodeId, rawGraph, decomposerSessionId);
+    if (this.options.decompositionReview === "all") {
+      await store.markGraphAwaitingReview(nodeId, rawGraph, decomposerSessionId);
+      await appendRunLog(store.projectName, `graph awaiting-review node=${nodeId} children=${rawGraph.nodes.length}`);
+    } else {
+      await store.markGraphDecomposed(nodeId, rawGraph, decomposerSessionId);
+    }
+  }
+
+  async redoScaffoldReview(feedback: string): Promise<void> {
+    const { agentFactory, promptBuilder, repoPath, store } = this.options;
+    const sessionId = await store.getScaffoldReviewSession();
+    const current = await store.getScaffoldReviewCandidate();
+    const scaffold = agentFactory.makeScaffold();
+    scaffold.restore(sessionId, repoPath);
+    await appendRunLog(store.projectName, `scaffold review redo feedback-len=${feedback.length}`);
+    const fixed = await scaffold.continue(promptBuilder.scaffoldReviewFeedbackPrompt(current, feedback));
+    const checked = await this.checkScaffoldResult(fixed.result, scaffold, fixed.sessionId);
+    if (!(await store.isScaffoldStillAwaitingReview(sessionId))) {
+      await appendRunLog(store.projectName, `scaffold review redo aborted (state moved on)`);
+      return;
+    }
+    await store.initializeScaffoldReview(checked.topResult, checked.finalSessionId);
+    await appendRunLog(store.projectName, `scaffold review redo awaiting-review nodes=${checked.topResult.nodes.length}`);
+  }
+
+  async redoGraphReview(nodeId: string, feedback: string): Promise<void> {
+    const { agentFactory, promptBuilder, repoPath, store } = this.options;
+    const graph = await store.getGraphReview(nodeId);
+    const sessionId = graph.decomposerSessionId ?? graph.sessionId;
+    if (!sessionId) throw new Error(`Review has no decomposer session: ${nodeId}`);
+    const decomposer = agentFactory.makeDecomposer();
+    decomposer.restore(sessionId, repoPath);
+    await appendRunLog(store.projectName, `graph review redo node=${nodeId} feedback-len=${feedback.length}`);
+    const fixed = await decomposer.continue(promptBuilder.decomposerReviewFeedbackPrompt(nodeId, { nodes: graph.nodes }, feedback));
+    const checked = await this.checkRawGraphWithFix(nodeId, fixed.result, decomposer);
+    if (!(await store.isGraphStillAwaitingReview(nodeId, sessionId))) {
+      await appendRunLog(store.projectName, `graph review redo aborted node=${nodeId} (state moved on)`);
+      return;
+    }
+    await store.markGraphAwaitingReview(nodeId, checked.rawGraph, checked.decomposerSessionId);
+    await appendRunLog(store.projectName, `graph review redo awaiting-review node=${nodeId} children=${checked.rawGraph.nodes.length}`);
   }
 
   async processPageTask(nodeId: string, ref: string, graph: GraphType): Promise<void> {
@@ -214,6 +264,73 @@ export class Pipeline {
           : decomposer.run(prompt, repoPath),
       )).result;
     }
+
+    for (let retry = 0; ; retry++) {
+      const checkerPrompt = promptBuilder.graphCheckerPrompt(nodeId, rawGraph);
+      const checkerMode = checker.getSessionId() ? "continue" : "run";
+      await appendRunLog(store.projectName, `checker invoke scope=decomposer node=${nodeId} mode=${checkerMode} retry=${retry}`);
+      const checkerResult = await withSemaphore(semaphore, () =>
+        checker.getSessionId()
+          ? checker.continue(checkerPrompt)
+          : checker.run(checkerPrompt, repoPath),
+      );
+
+      if (checkerResult.result.passed) {
+        console.log(`[Arranger] Decomposer check passed: ${nodeId}`);
+        await appendRunLog(store.projectName, `checker pass scope=decomposer node=${nodeId}`);
+        return { rawGraph, decomposerSessionId: decomposer.getSessionId() ?? "" };
+      }
+      if (retry >= 5) throw new Error(`Decomposer check failed after 5 retries for ${nodeId}`);
+
+      console.log(`[Arranger] Decomposer check failed: ${nodeId} (retry ${retry + 1}/5)`);
+      await appendRunLog(store.projectName, `checker fail scope=decomposer node=${nodeId} retry=${retry + 1}`);
+      await appendRunLog(store.projectName, `decomposer continue node=${nodeId} retry=${retry + 1}`);
+      rawGraph = (await withSemaphore(semaphore, () => decomposer.continue(promptBuilder.decomposerFixPrompt(checkerResult.result.issues)))).result;
+    }
+  }
+
+  private async checkScaffoldResult(
+    initialTopResult: RawTopGraphType,
+    scaffold: IScaffold,
+    initialSessionId: string,
+  ): Promise<{ topResult: RawTopGraphType; finalSessionId: string }> {
+    const { agentFactory, promptBuilder, repoPath, store } = this.options;
+    let topResult = initialTopResult;
+    let finalSessionId = initialSessionId;
+    const checker = agentFactory.makeChecker();
+
+    for (let retry = 0; ; retry++) {
+      await appendRunLog(store.projectName, `checker invoke scope=scaffold retry=${retry}`);
+      const checkerPrompt = promptBuilder.scaffoldCheckerPrompt(topResult);
+
+      const checkerResult = checker.getSessionId()
+        ? await checker.continue(checkerPrompt)
+        : await checker.run(checkerPrompt, repoPath);
+
+      if (checkerResult.result.passed) {
+        console.log("[Arranger] Scaffold check passed.");
+        await appendRunLog(store.projectName, `checker pass scope=scaffold`);
+        return { topResult, finalSessionId };
+      }
+      if (retry >= 5) throw new Error(`Scaffold check failed after 5 retries: ${JSON.stringify(checkerResult.result.issues)}`);
+
+      console.log(`[Arranger] Scaffold check failed (retry ${retry + 1}/5)`);
+      await appendRunLog(store.projectName, `checker fail scope=scaffold retry=${retry + 1}`);
+      await appendRunLog(store.projectName, `scaffold continue retry=${retry + 1}`);
+      const fixed = await scaffold.continue(promptBuilder.scaffoldFixPrompt(checkerResult.result.issues));
+      topResult = fixed.result;
+      finalSessionId = fixed.sessionId;
+    }
+  }
+
+  private async checkRawGraphWithFix(
+    nodeId: string,
+    initialRawGraph: RawGraphType,
+    decomposer: IDecomposer,
+  ): Promise<{ rawGraph: RawGraphType; decomposerSessionId: string }> {
+    const { promptBuilder, repoPath, semaphore, store } = this.options;
+    const checker = this.options.agentFactory.makeChecker();
+    let rawGraph = initialRawGraph;
 
     for (let retry = 0; ; retry++) {
       const checkerPrompt = promptBuilder.graphCheckerPrompt(nodeId, rawGraph);
