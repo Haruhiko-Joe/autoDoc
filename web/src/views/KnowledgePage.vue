@@ -167,9 +167,10 @@ async function saveAndStart() {
 
 
 async function syncServerPhase() {
+  const projectName = project.value
   try {
     const s = await fetchStatus()
-    if (s.currentProject !== project.value) {
+    if (s.currentProject !== projectName) {
       preGen.value = false
       cloning.value = false
       return

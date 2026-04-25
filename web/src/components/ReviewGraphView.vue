@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 import { Graph, NodeEvent, EdgeEvent } from '@antv/g6'
 import { EDGE_STYLES } from '../services/edgeStyles'
 import { useTheme } from '../composables/useTheme'
+import GraphNodeFilter from './GraphNodeFilter.vue'
+import { escapeHtml } from '../utils/html'
+import { assignParallelCurveOffsets, filterGraphNodes, pruneSelectedNodeNames } from '../utils/graphNodes'
 import type { EdgeType, GraphNode } from '../types'
 
 const props = defineProps<{
@@ -20,6 +23,7 @@ const emit = defineEmits<{
 const { isDark } = useTheme()
 const containerRef = ref<HTMLDivElement>()
 const selectedNodeId = ref<string | null>(null)
+const selectedFilterNodeNames = ref<string[] | null>(null)
 let graph: Graph | null = null
 let lastNodeClick: { id: string; time: number } | null = null
 let resizeObserver: ResizeObserver | null = null
@@ -44,16 +48,26 @@ const popover = ref({
   description: '',
 })
 
+const filterNodeNames = computed(() => props.nodes.map((node) => node.name))
+const visibleNodes = computed(() => filterGraphNodes(props.nodes, selectedFilterNodeNames.value))
+
 function closePopover() {
+  if (!popover.value.visible) return
+
   popover.value.visible = false
 }
 
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
+function syncSelectionWithVisibleNodes() {
+  const visibleNames = new Set(visibleNodes.value.map((node) => node.name))
+  if (selectedNodeId.value && !visibleNames.has(selectedNodeId.value)) selectedNodeId.value = null
+}
+
+function pruneFilterSelection() {
+  const selectedNames = pruneSelectedNodeNames(
+    selectedFilterNodeNames.value,
+    filterNodeNames.value,
+  )
+  selectedFilterNodeNames.value = selectedNames
 }
 
 function renderNode(name: string): string {
@@ -90,8 +104,8 @@ function buildData(nodes: GraphNode[], canvasW: number, canvasH: number) {
     id: node.name,
     data: { ...node },
     style: {
-      x: positions[i]!.x,
-      y: positions[i]!.y,
+      x: positions[i]?.x ?? canvasW / 2,
+      y: positions[i]?.y ?? canvasH / 2,
     },
   }))
 
@@ -104,7 +118,7 @@ function buildData(nodes: GraphNode[], canvasW: number, canvasH: number) {
 
   for (const node of nodes) {
     node.edges.forEach((edge, index) => {
-      g6Edges.push({
+      const g6Edge = {
         id: `${node.name}-${edge.target}-${edge.type}-${index}`,
         source: node.name,
         target: edge.target,
@@ -114,24 +128,12 @@ function buildData(nodes: GraphNode[], canvasW: number, canvasH: number) {
           sourceName: node.name,
           curveOffset: 0,
         },
-      })
+      }
+      g6Edges.push(g6Edge)
     })
   }
 
-  const pairMap = new Map<string, typeof g6Edges>()
-  for (const edge of g6Edges) {
-    const key = [edge.source, edge.target].sort().join('|')
-    const group = pairMap.get(key)
-    if (group) group.push(edge)
-    else pairMap.set(key, [edge])
-  }
-
-  for (const group of pairMap.values()) {
-    if (group.length < 2) continue
-    group.forEach((edge, i) => {
-      edge.data.curveOffset = 18 * (i + 1)
-    })
-  }
+  assignParallelCurveOffsets(g6Edges, 18)
 
   return { nodes: g6Nodes, edges: g6Edges }
 }
@@ -148,7 +150,7 @@ function createGraph() {
     container,
     width: canvasW,
     height: canvasH,
-    data: buildData(props.nodes, canvasW, canvasH),
+    data: buildData(visibleNodes.value, canvasW, canvasH),
     node: {
       type: 'html',
       style: {
@@ -175,7 +177,8 @@ function createGraph() {
       },
     },
     behaviors: [
-      'zoom-canvas',
+      { type: 'zoom-canvas', trigger: ['Control'] },
+      'scroll-canvas',
       'drag-canvas',
       'drag-element',
       {
@@ -234,12 +237,28 @@ function createGraph() {
   })
 
   graph.on('canvas:click', closePopover)
-  void graph.render()
+
+  const activeGraph = graph
+  void activeGraph.render().catch((error) => {
+    if (graph !== activeGraph) return
+
+    console.error(error)
+  })
 }
 
 function destroyGraph() {
-  graph?.destroy()
+  if (!graph) return
+
+  graph.destroy()
   graph = null
+}
+
+function recreateGraph() {
+  closePopover()
+  lastNodeClick = null
+  syncSelectionWithVisibleNodes()
+  destroyGraph()
+  createGraph()
 }
 
 function onKeyDown(e: KeyboardEvent) {
@@ -272,19 +291,22 @@ onUnmounted(() => {
 watch(
   () => props.nodes,
   () => {
-    destroyGraph()
-    createGraph()
+    pruneFilterSelection()
+    recreateGraph()
   },
 )
 
-watch(isDark, () => {
-  destroyGraph()
-  createGraph()
-})
+watch(selectedFilterNodeNames, recreateGraph)
+
+watch(isDark, recreateGraph)
 </script>
 
 <template>
   <div ref="containerRef" class="review-graph-container">
+    <GraphNodeFilter
+      v-model:selected-names="selectedFilterNodeNames"
+      :node-names="filterNodeNames"
+    />
     <Transition name="popover">
       <div
         v-if="popover.visible"

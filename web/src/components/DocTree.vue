@@ -25,7 +25,7 @@ const router = useRouter()
 const tree = ref<TreeNode[]>([])
 
 function buildTree() {
-  tree.value = props.nodes.map((n) => ({
+  const rootNodes = props.nodes.map((n) => ({
     name: n.name,
     path: n.name,
     type: 'graph' as const,
@@ -33,6 +33,7 @@ function buildTree() {
     loading: false,
     status: getNodeStatus(n.name),
   }))
+  tree.value = rootNodes
 }
 
 function getNodeStatus(nodeId: string): string | undefined {
@@ -68,6 +69,8 @@ function updateStatuses() {
   if (!props.nodeStates) return
   const stateMap = new Map(props.nodeStates.map((s) => [s.nodeId, s.status]))
   function walk(nodes: TreeNode[]) {
+    if (!nodes.length) return
+
     for (const node of nodes) {
       node.status = deriveStatus(node.path, stateMap)
       if (node.children) walk(node.children)
@@ -114,11 +117,8 @@ async function onToggle(node: TreeNode) {
 }
 
 function onNavigate(node: TreeNode) {
-  if (node.type === 'graph') {
-    router.push(`/${props.project}/doc/${node.path}`)
-  } else {
-    router.push(`/${props.project}/doc/${node.path}`)
-  }
+  const target = `/${props.project}/doc/${node.path}`
+  router.push(target)
 }
 </script>
 

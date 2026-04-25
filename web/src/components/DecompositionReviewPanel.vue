@@ -10,6 +10,18 @@ import {
 import ReviewGraphView from './ReviewGraphView.vue'
 import NodeFormDialog from './NodeFormDialog.vue'
 import EdgeFormDialog from './EdgeFormDialog.vue'
+import {
+  cloneGraphNodes,
+  createGraphNode,
+  normalizeGraphNodes,
+  removeEdge,
+  removeGraphNode,
+  updateGraphNode,
+  updateNodeEdges,
+  upsertEdge,
+  type EdgeFormData,
+  type NodeFormData,
+} from '../utils/graphNodes'
 import type { EdgeType, GraphEdge, GraphNode } from '../types'
 
 const props = defineProps<{
@@ -57,9 +69,15 @@ const targetOptions = computed(() =>
 const selectedAction = computed(() => selectedReview.value ? reviewActions.value[selectedReview.value.id] : undefined)
 const selectedBusy = computed(() => selectedAction.value !== undefined)
 const feedbackHasText = computed(() => feedback.value.trim().length > 0)
+const graphShellStyle = computed(() =>
+  graphFullscreen.value ? undefined : { height: `${graphHeight.value}px` },
+)
+const reviewPanelStyle = computed(() => ({ width: `${panelWidth.value}px` }))
 
 function setReviewAction(id: string, action: ReviewAction) {
-  reviewActions.value = { ...reviewActions.value, [id]: action }
+  const next = { ...reviewActions.value }
+  next[id] = action
+  reviewActions.value = next
 }
 
 function clearReviewAction(id: string) {
@@ -68,31 +86,9 @@ function clearReviewAction(id: string) {
   reviewActions.value = next
 }
 
-function getReviewAction(id: string): ReviewAction | undefined {
-  return reviewActions.value[id]
-}
-
-function isReviewBusy(id: string): boolean {
-  return getReviewAction(id) !== undefined
-}
-
-function canApproveReview(id: string): boolean {
-  return !isReviewBusy(id) && !feedbackHasText.value
-}
-
-function cloneNodes(nodes: GraphNode[]): GraphNode[] {
-  return nodes.map((node) => ({
-    name: node.name,
-    description: node.description,
-    codeScope: [...node.codeScope],
-    edges: node.edges.map((edge) => ({ ...edge })),
-    child: { ...node.child },
-  }))
-}
-
 function syncEditableNodes() {
   const review = selectedReview.value
-  editableNodes.value = review ? cloneNodes(review.nodes) : []
+  editableNodes.value = review ? cloneGraphNodes(review.nodes) : []
   feedback.value = ''
 }
 
@@ -115,20 +111,12 @@ async function loadReviews() {
 }
 
 watch(() => [props.visible, props.project], ([visible]) => {
-  if (visible) void loadReviews()
+  if (!visible) return
+
+  void loadReviews()
 }, { immediate: true })
 
 watch(selectedId, syncEditableNodes)
-
-function graphShellStyle() {
-  return graphFullscreen.value
-    ? undefined
-    : { height: `${graphHeight.value}px` }
-}
-
-function reviewPanelStyle() {
-  return { width: `${panelWidth.value}px` }
-}
 
 function getPanelMaxWidth(): number {
   const canvas = document.querySelector('.canvas')
@@ -180,28 +168,6 @@ onUnmounted(() => {
   stopPanelResize()
 })
 
-function normalizeNodes(): GraphNode[] {
-  const scaffold = selectedIsScaffold.value
-  return editableNodes.value.map((node) => {
-    const name = node.name.trim()
-    const child: GraphNode['child'] = scaffold
-      ? { type: 'graph', ref: name }
-      : { type: node.child.type, ref: node.child.ref.trim() || name }
-    return {
-      name,
-      description: node.description.trim(),
-      codeScope: node.codeScope.map((item) => item.trim()).filter(Boolean),
-      edges: node.edges.map((edge) => ({
-        target: edge.target,
-        type: edge.type,
-        description: edge.description.trim(),
-        detail: edge.detail,
-      })),
-      child,
-    }
-  })
-}
-
 function removeReview(id: string) {
   const wasSelected = selectedId.value === id
   reviews.value = reviews.value.filter((review) => review.id !== id)
@@ -214,14 +180,14 @@ function removeReview(id: string) {
 async function saveCandidate(clearAction = true): Promise<DecompositionReviewItem | null> {
   const review = selectedReview.value
   if (!review) return null
-  const nodes = normalizeNodes()
+  const nodes = normalizeGraphNodes(editableNodes.value, selectedIsScaffold.value)
   setReviewAction(review.id, 'saving')
   error.value = ''
   try {
     await updateDecompositionReview(props.project, review.id, nodes)
-    editableNodes.value = cloneNodes(nodes)
+    editableNodes.value = cloneGraphNodes(nodes)
     reviews.value = reviews.value.map((item) =>
-      item.id === review.id ? { ...item, nodes: cloneNodes(nodes) } : item,
+      item.id === review.id ? { ...item, nodes: cloneGraphNodes(nodes) } : item,
     )
     emit('changed')
     return { ...review, nodes }
@@ -297,38 +263,16 @@ function openEditNode(node: GraphNode) {
   nodeDialogVisible.value = true
 }
 
-function handleNodeSubmit(data: { name: string; description: string; codeScope: string[]; childType: 'graph' | 'page'; childRef: string }) {
+function handleNodeSubmit(data: NodeFormData) {
   const target = nodeDialogTarget.value
-  const name = data.name.trim()
-  if (!name) return
+  const forceGraphChild = selectedIsScaffold.value
 
   if (target) {
-    const oldName = target.name
-    editableNodes.value = editableNodes.value.map((node) => {
-      const renamedNode: GraphNode = node.name === oldName
-        ? {
-            ...node,
-            name,
-            description: data.description,
-            codeScope: data.codeScope,
-            child: selectedIsScaffold.value ? { type: 'graph', ref: name } : node.child,
-          }
-        : node
-      return {
-        ...renamedNode,
-        edges: renamedNode.edges.map((edge) =>
-          edge.target === oldName ? { ...edge, target: name } : edge,
-        ),
-      }
-    })
+    editableNodes.value = updateGraphNode(editableNodes.value, target.name, data, forceGraphChild)
   } else {
-    const child: GraphNode['child'] = selectedIsScaffold.value
-      ? { type: 'graph', ref: name }
-      : { type: data.childType, ref: data.childRef || name }
-    editableNodes.value = [
-      ...editableNodes.value,
-      { name, description: data.description, codeScope: data.codeScope, edges: [], child },
-    ]
+    const node = createGraphNode(data, forceGraphChild)
+    if (!node) return
+    editableNodes.value = [...editableNodes.value, node]
   }
 
   nodeDialogVisible.value = false
@@ -336,12 +280,7 @@ function handleNodeSubmit(data: { name: string; description: string; codeScope: 
 
 function handleDeleteNode(node: GraphNode) {
   if (!confirm(`Delete "${node.name}"?`)) return
-  editableNodes.value = editableNodes.value
-    .filter((item) => item.name !== node.name)
-    .map((item) => ({
-      ...item,
-      edges: item.edges.filter((edge) => edge.target !== node.name),
-    }))
+  editableNodes.value = removeGraphNode(editableNodes.value, node.name)
 }
 
 function handleEdgeCreate(source: string, target: string) {
@@ -358,40 +297,26 @@ function openEditEdge(source: string, edge: { target: string; type: EdgeType; de
   edgeDialogVisible.value = true
 }
 
-function handleEdgeSubmit(data: { target: string; type: EdgeType; description: string }) {
+function handleEdgeSubmit(data: EdgeFormData) {
   const source = edgeDialogSource.value
   const current = edgeDialogTarget.value
-  editableNodes.value = editableNodes.value.map((node) => {
-    if (node.name !== source) return node
-    const nextEdge: GraphEdge = {
-      target: data.target,
-      type: data.type,
-      description: data.description,
-    }
-    const edges = current
-      ? node.edges.map((edge) =>
-          edge.target === current.target && edge.type === current.type ? nextEdge : edge,
-        )
-      : [...node.edges, nextEdge]
-    return { ...node, edges }
-  })
+  editableNodes.value = updateNodeEdges(editableNodes.value, source, (edges) =>
+    upsertEdge(edges, current, data),
+  )
   edgeDialogVisible.value = false
 }
 
 function handleEdgeDelete(source: string, edgeTarget: string, edgeType: EdgeType) {
-  editableNodes.value = editableNodes.value.map((node) => {
-    if (node.name !== source) return node
-    return {
-      ...node,
-      edges: node.edges.filter((edge) => !(edge.target === edgeTarget && edge.type === edgeType)),
-    }
-  })
+  const nextNodes = updateNodeEdges(editableNodes.value, source, (edges) =>
+    removeEdge(edges, edgeTarget, edgeType),
+  )
+  editableNodes.value = nextNodes
 }
 </script>
 
 <template>
   <Transition name="panel-slide">
-    <aside v-if="visible" class="review-panel" :style="reviewPanelStyle()">
+    <aside v-if="visible" class="review-panel" :style="reviewPanelStyle">
       <button
         class="panel-resize-handle"
         type="button"
@@ -423,10 +348,10 @@ function handleEdgeDelete(source: string, edgeTarget: string, edgeType: EdgeType
           <button
             type="button"
             class="review-tab-approve"
-            :disabled="!canApproveReview(review.id)"
+            :disabled="reviewActions[review.id] !== undefined || feedbackHasText"
             @click.stop="approveReview(review)"
           >
-            {{ getReviewAction(review.id) === 'approving' ? 'Approving...' : 'Approve' }}
+            {{ reviewActions[review.id] === 'approving' ? 'Approving...' : 'Approve' }}
           </button>
         </div>
       </div>
@@ -444,7 +369,7 @@ function handleEdgeDelete(source: string, edgeTarget: string, edgeType: EdgeType
           <p>{{ selectedReview.description }}</p>
         </div>
 
-        <div class="graph-shell" :class="{ fullscreen: graphFullscreen }" :style="graphShellStyle()">
+        <div class="graph-shell" :class="{ fullscreen: graphFullscreen }" :style="graphShellStyle">
           <div v-if="graphFullscreen" class="fullscreen-bar">
             <div>
               <strong>{{ selectedReview.title }}</strong>

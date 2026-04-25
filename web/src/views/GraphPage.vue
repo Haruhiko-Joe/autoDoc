@@ -11,7 +11,14 @@ import MarkdownEditor from '../components/MarkdownEditor.vue'
 import DocGitPanel from '../components/DocGitPanel.vue'
 import EdgeLegend from '../components/EdgeLegend.vue'
 import DocTree from '../components/DocTree.vue'
-import type { TopGraph, SubGraph, GraphNode, GraphEdge, EdgeType } from '../types'
+import {
+  createGraphNode,
+  removeEdge,
+  upsertEdge,
+  type EdgeFormData,
+  type NodeFormData,
+} from '../utils/graphNodes'
+import type { TopGraph, SubGraph, GraphNode, EdgeType } from '../types'
 
 const route = useRoute()
 const router = useRouter()
@@ -36,10 +43,6 @@ const gitInfoEnabled = ref(false)
 const blameLines = ref<DocBlameLine[]>([])
 const gitRefreshToken = ref(0)
 
-function refreshGitStatus() {
-  gitRefreshToken.value++
-}
-
 function getPath(): string {
   const p = route.params.path
   return Array.isArray(p) ? p.join('/') : p
@@ -49,10 +52,6 @@ function getProject(): string {
   const p = route.params.project
   if (!p) return ''
   return Array.isArray(p) ? (p[0] ?? '') : p
-}
-
-function getNodeId(): string {
-  return getPath()
 }
 
 async function load() {
@@ -108,9 +107,7 @@ async function loadBlame() {
   }
 }
 
-watch(gitInfoEnabled, () => {
-  void loadBlame()
-})
+watch(gitInfoEnabled, loadBlame)
 
 function onNodeClick(node: { child?: GraphNode['child'] }) {
   if (!node.child) return
@@ -149,10 +146,10 @@ function openEditNode(node: GraphNode) {
   nodeDialogVisible.value = true
 }
 
-async function handleNodeSubmit(data: { name: string; description: string; codeScope: string[]; childType: 'graph' | 'page'; childRef: string }) {
+async function handleNodeSubmit(data: NodeFormData) {
   if (!subGraph.value) return
   const project = getProject()
-  const nodeId = getNodeId()
+  const nodeId = getPath()
   try {
     if (nodeDialogTarget.value) {
       // Edit existing node
@@ -162,17 +159,11 @@ async function handleNodeSubmit(data: { name: string; description: string; codeS
         codeScope: data.codeScope,
       })
     } else {
-      // Create new node
-      const node: GraphNode = {
-        name: data.name,
-        description: data.description,
-        codeScope: data.codeScope,
-        edges: [],
-        child: { type: data.childType, ref: data.childRef },
-      }
+      const node = createGraphNode(data, false)
+      if (!node) return
       subGraph.value = await createNode(project, nodeId, node)
     }
-    refreshGitStatus()
+    gitRefreshToken.value++
     nodeDialogVisible.value = false
   } catch (e) {
     alert(e instanceof Error ? e.message : 'Operation failed')
@@ -182,9 +173,9 @@ async function handleNodeSubmit(data: { name: string; description: string; codeS
 async function handleDeleteNode(node: GraphNode) {
   if (!subGraph.value || !confirm(`Delete "${node.name}"?`)) return
   try {
-    subGraph.value = await deleteNode(getProject(), getNodeId(), node.name)
+    subGraph.value = await deleteNode(getProject(), getPath(), node.name)
     selectedNodeId.value = null
-    refreshGitStatus()
+    gitRefreshToken.value++
   } catch (e) {
     alert(e instanceof Error ? e.message : 'Delete failed')
   }
@@ -211,30 +202,19 @@ function openEditEdge(source: string, edge: { target: string; type: EdgeType; de
   edgeDialogVisible.value = true
 }
 
-async function handleEdgeSubmit(data: { target: string; type: EdgeType; description: string }) {
+async function handleEdgeSubmit(data: EdgeFormData) {
   if (!subGraph.value) return
   const project = getProject()
-  const nodeId = getNodeId()
+  const nodeId = getPath()
   const sourceNodeName = edgeDialogSource.value
   const sourceNode = subGraph.value.nodes.find(n => n.name === sourceNodeName)
   if (!sourceNode) return
 
-  let newEdges: GraphEdge[]
-  if (edgeDialogTarget.value) {
-    // Edit: replace the matching edge
-    newEdges = sourceNode.edges.map(e =>
-      e.target === edgeDialogTarget.value!.target && e.type === edgeDialogTarget.value!.type
-        ? { ...e, target: data.target, type: data.type, description: data.description }
-        : e
-    )
-  } else {
-    // Add new edge
-    newEdges = [...sourceNode.edges, { target: data.target, type: data.type, description: data.description }]
-  }
-
   try {
-    subGraph.value = await updateNode(project, nodeId, sourceNodeName, { edges: newEdges })
-    refreshGitStatus()
+    subGraph.value = await updateNode(project, nodeId, sourceNodeName, {
+      edges: upsertEdge(sourceNode.edges, edgeDialogTarget.value, data),
+    })
+    gitRefreshToken.value++
     edgeDialogVisible.value = false
   } catch (e) {
     alert(e instanceof Error ? e.message : 'Edge operation failed')
@@ -245,10 +225,11 @@ async function handleEdgeDelete(source: string, edgeTarget: string, edgeType: Ed
   if (!subGraph.value || !confirm(`Delete edge ${source} -> ${edgeTarget}?`)) return
   const sourceNode = subGraph.value.nodes.find(n => n.name === source)
   if (!sourceNode) return
-  const newEdges = sourceNode.edges.filter(e => !(e.target === edgeTarget && e.type === edgeType))
   try {
-    subGraph.value = await updateNode(getProject(), getNodeId(), source, { edges: newEdges })
-    refreshGitStatus()
+    subGraph.value = await updateNode(getProject(), getPath(), source, {
+      edges: removeEdge(sourceNode.edges, edgeTarget, edgeType),
+    })
+    gitRefreshToken.value++
   } catch (e) {
     alert(e instanceof Error ? e.message : 'Delete edge failed')
   }
@@ -276,7 +257,11 @@ function setupSplitScrollSync(editorScroller: HTMLElement, preview: HTMLElement)
     if (srcMax <= 0 || dstMax <= 0) return
     syncing = true
     dst.scrollTop = (src.scrollTop / srcMax) * dstMax
-    requestAnimationFrame(() => { syncing = false })
+    requestAnimationFrame(() => {
+      if (!syncing) return
+
+      syncing = false
+    })
   }
   const onEditorScroll = () => sync(editorScroller, preview)
   const onPreviewScroll = () => sync(preview, editorScroller)
@@ -305,7 +290,8 @@ async function attachSplitScrollSync() {
 }
 
 watch(pageViewMode, (mode) => {
-  if (mode === 'split') {
+  const isSplitMode = mode === 'split'
+  if (isSplitMode) {
     attachSplitScrollSync()
   } else {
     splitSyncCleanup?.()
@@ -329,9 +315,9 @@ function getPageRef(): string {
 }
 
 watch(pageContent, (val) => {
-  if (pageViewMode.value === 'preview') {
-    pageEditContent.value = val
-  }
+  if (pageViewMode.value !== 'preview') return
+
+  pageEditContent.value = val
 })
 
 function enterPageEdit() {
@@ -344,7 +330,7 @@ async function savePage() {
   try {
     await updatePage(getProject(), getPageParentNodeId(), getPageRef(), pageEditContent.value)
     pageContent.value = pageEditContent.value
-    refreshGitStatus()
+    gitRefreshToken.value++
     await loadBlame()
   } catch (e) {
     alert(e instanceof Error ? e.message : 'Save failed')

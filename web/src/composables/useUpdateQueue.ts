@@ -17,9 +17,11 @@ export function useUpdateQueue(project: Ref<string>) {
   let unsub: (() => void) | null = null
 
   function handleEvent(event: UpdateEvent) {
-    if (event.type === 'queue' && event.tasks) {
+    const eventType = event.type
+
+    if (eventType === 'queue' && event.tasks) {
       tasks.value = event.tasks
-    } else if (event.type === 'task-start' && event.taskId) {
+    } else if (eventType === 'task-start' && event.taskId) {
       const t = tasks.value.find(t => t.id === event.taskId)
       if (t) {
         // Keep prior markdown when re-running via chat follow-up (status was awaiting-review);
@@ -29,21 +31,21 @@ export function useUpdateQueue(project: Ref<string>) {
       }
       awaitingConfirmTaskId.value = null
       awaitingReviewTaskId.value = null
-    } else if (event.type === 'task-text-delta' && event.taskId) {
+    } else if (eventType === 'task-text-delta' && event.taskId) {
       const t = tasks.value.find(t => t.id === event.taskId)
       if (t && event.delta) t.markdown = (t.markdown ?? '') + event.delta
-    } else if (event.type === 'task-awaiting-review' && event.taskId) {
+    } else if (eventType === 'task-awaiting-review' && event.taskId) {
       const t = tasks.value.find(t => t.id === event.taskId)
       if (t) {
         t.status = 'awaiting-review'
         if (event.markdown !== undefined) t.markdown = event.markdown
       }
       awaitingReviewTaskId.value = event.taskId
-    } else if (event.type === 'task-done' && event.taskId) {
+    } else if (eventType === 'task-done' && event.taskId) {
       const t = tasks.value.find(t => t.id === event.taskId)
       if (t) { t.status = 'done'; if (event.markdown !== undefined) t.markdown = event.markdown }
       if (awaitingReviewTaskId.value === event.taskId) awaitingReviewTaskId.value = null
-    } else if (event.type === 'task-error' && event.taskId) {
+    } else if (eventType === 'task-error' && event.taskId) {
       const t = tasks.value.find(t => t.id === event.taskId)
       const nextStatus = event.status ?? 'error'
       if (t) { t.status = nextStatus; t.error = event.error }
@@ -54,12 +56,12 @@ export function useUpdateQueue(project: Ref<string>) {
         awaitingConfirmTaskId.value = null
         awaitingReviewTaskId.value = null
       }
-    } else if (event.type === 'task-skipped' && event.taskId) {
+    } else if (eventType === 'task-skipped' && event.taskId) {
       const t = tasks.value.find(t => t.id === event.taskId)
       if (t) t.status = 'skipped'
-    } else if (event.type === 'awaiting-confirm' && event.taskId) {
+    } else if (eventType === 'awaiting-confirm' && event.taskId) {
       awaitingConfirmTaskId.value = event.taskId
-    } else if (event.type === 'finished' || event.type === 'cancelled') {
+    } else if (eventType === 'finished' || eventType === 'cancelled') {
       isRunning.value = false
       awaitingConfirmTaskId.value = null
       awaitingReviewTaskId.value = null
@@ -83,7 +85,8 @@ export function useUpdateQueue(project: Ref<string>) {
   }
 
   async function skip(taskId: string) {
-    try { await skipUpdateTask(project.value, taskId) } catch { /* ignore */ }
+    const currentProject = project.value
+    try { await skipUpdateTask(currentProject, taskId) } catch { /* ignore */ }
   }
 
   async function continueNext(extraInstructions?: string) {
@@ -92,13 +95,15 @@ export function useUpdateQueue(project: Ref<string>) {
   }
 
   async function acceptTask(taskId: string) {
-    try { await acceptUpdateTask(project.value, taskId) } catch (e) {
+    const currentProject = project.value
+    try { await acceptUpdateTask(currentProject, taskId) } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to accept'
     }
   }
 
   async function sendFollowUp(taskId: string, prompt: string) {
-    try { await chatOnUpdateTask(project.value, taskId, prompt) } catch (e) {
+    const currentProject = project.value
+    try { await chatOnUpdateTask(currentProject, taskId, prompt) } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to send follow-up'
     }
   }

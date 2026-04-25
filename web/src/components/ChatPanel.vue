@@ -14,13 +14,19 @@ const input = ref('')
 const loading = ref(false)
 const listRef = ref<HTMLDivElement>()
 
-function scrollToBottom() {
-  nextTick(() => {
-    if (listRef.value) listRef.value.scrollTop = listRef.value.scrollHeight
-  })
+async function scrollToBottom() {
+  await nextTick()
+  const list = listRef.value
+  if (!list) return
+
+  list.scrollTop = list.scrollHeight
 }
 
-watch(() => props.open, (v) => { if (v) scrollToBottom() })
+watch(() => props.open, (v) => {
+  if (!v) return
+
+  void scrollToBottom()
+})
 
 async function send() {
   const text = input.value.trim()
@@ -61,7 +67,8 @@ async function send() {
 }
 
 function renderMd(md: string): string {
-  return DOMPurify.sanitize(marked.parse(md) as string)
+  const html = marked.parse(md) as string
+  return DOMPurify.sanitize(html)
 }
 </script>
 

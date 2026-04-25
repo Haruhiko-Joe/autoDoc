@@ -37,7 +37,8 @@ watch(() => props.visible, (v) => {
 })
 
 function onSubmit() {
-  emit('submit', { target: target.value, type: edgeType.value, description: description.value })
+  const data = { target: target.value, type: edgeType.value, description: description.value }
+  emit('submit', data)
 }
 </script>
 

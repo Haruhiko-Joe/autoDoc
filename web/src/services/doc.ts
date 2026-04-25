@@ -1,34 +1,69 @@
-import type { TopGraph, SubGraph, FlowsData, GraphNode } from '../types'
+import type { TopGraph, SubGraph, FlowsData, GraphEdge, GraphNode } from '../types'
 
 const API = '/api'
+const JSON_HEADERS = { 'Content-Type': 'application/json' }
 
 function buildDocUrl(filePath: string, project: string): string {
-  return `${API}/doc/${filePath}?project=${encodeURIComponent(project)}`
+  const encodedProject = encodeURIComponent(project)
+  return `${API}/doc/${filePath}?project=${encodedProject}`
+}
+
+async function errorMessage(res: Response, fallback: string): Promise<string> {
+  try {
+    const data = await res.clone().json() as { error?: string }
+    if (data.error) return data.error
+  } catch {
+    // Response was not JSON; fall through to text.
+  }
+
+  const text = await res.text()
+  return text || fallback
+}
+
+async function requestJson<T>(url: string, init: RequestInit | undefined, fallback: string): Promise<T> {
+  const res = await fetch(url, init)
+  if (!res.ok) throw new Error(await errorMessage(res, fallback))
+  return res.json()
+}
+
+async function requestText(url: string, fallback: string): Promise<string> {
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(await errorMessage(res, fallback))
+  return res.text()
+}
+
+async function postJson<T>(url: string, body?: unknown, fallback = 'Request failed'): Promise<T> {
+  const init = {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: body === undefined ? undefined : JSON.stringify(body),
+  }
+  return requestJson<T>(url, init, fallback)
+}
+
+async function postVoid(url: string, body?: unknown, fallback = 'Request failed'): Promise<void> {
+  await postJson<unknown>(url, body, fallback)
+  return
 }
 
 export async function fetchTopGraph(project: string): Promise<TopGraph> {
-  const res = await fetch(buildDocUrl('top.json', project))
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+  const url = buildDocUrl('top.json', project)
+  return requestJson<TopGraph>(url, undefined, 'Failed to load top graph')
 }
 
 export async function fetchSubGraph(project: string, ref: string): Promise<SubGraph> {
   const name = ref.split('/').pop()
-  const res = await fetch(buildDocUrl(`${ref}/${name}.json`, project))
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+  return requestJson<SubGraph>(buildDocUrl(`${ref}/${name}.json`, project), undefined, 'Failed to load subgraph')
 }
 
 export async function fetchPage(project: string, ref: string): Promise<string> {
-  const res = await fetch(buildDocUrl(`${ref}.md`, project))
-  if (!res.ok) throw new Error(await res.text())
-  return res.text()
+  const url = buildDocUrl(`${ref}.md`, project)
+  return requestText(url, 'Failed to load page')
 }
 
 export async function fetchFlows(project: string): Promise<FlowsData> {
-  const res = await fetch(buildDocUrl('flows.json', project))
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+  const url = buildDocUrl('flows.json', project)
+  return requestJson<FlowsData>(url, undefined, 'Failed to load flows')
 }
 
 export interface NodeProgress {
@@ -79,9 +114,11 @@ export interface ProjectListEntry {
 }
 
 export async function fetchProjects(): Promise<ProjectListEntry[]> {
-  const res = await fetch(`${API}/projects`)
-  if (!res.ok) throw new Error(await res.text())
-  const data = await res.json() as { projects?: ProjectListEntry[] }
+  const data = await requestJson<{ projects?: ProjectListEntry[] }>(
+    `${API}/projects`,
+    undefined,
+    'Failed to load projects',
+  )
   return data.projects ?? []
 }
 
@@ -92,16 +129,8 @@ export async function startRun(
   language?: 'zh' | 'en',
   decompositionReview?: DecompositionReviewMode,
 ): Promise<{ ok: boolean; project: string }> {
-  const res = await fetch(`${API}/run`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ gitUrl, maxConcurrency, agentBackends, language, decompositionReview }),
-  })
-  if (!res.ok) {
-    const data = await res.json()
-    throw new Error(data.error ?? 'Failed to start')
-  }
-  return res.json()
+  const body = { gitUrl, maxConcurrency, agentBackends, language, decompositionReview }
+  return postJson(`${API}/run`, body, 'Failed to start')
 }
 
 export interface DecompositionReviewItem {
@@ -114,80 +143,63 @@ export interface DecompositionReviewItem {
 }
 
 export async function fetchDecompositionReviews(project: string): Promise<DecompositionReviewItem[]> {
-  const res = await fetch(`${API}/decomposition-reviews?project=${encodeURIComponent(project)}`)
-  if (!res.ok) throw new Error(await res.text())
-  const data = await res.json() as { reviews?: DecompositionReviewItem[] }
+  const data = await requestJson<{ reviews?: DecompositionReviewItem[] }>(
+    `${API}/decomposition-reviews?project=${encodeURIComponent(project)}`,
+    undefined,
+    'Failed to load decomposition reviews',
+  )
   return data.reviews ?? []
 }
 
 export async function updateDecompositionReview(project: string, id: string, nodes: GraphNode[]): Promise<void> {
-  const res = await fetch(`${API}/decomposition-review/update`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ project, id, nodes }),
-  })
-  if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to update review')
+  const body = { project, id, nodes }
+  await postVoid(`${API}/decomposition-review/update`, body, 'Failed to update review')
 }
 
 export async function approveDecompositionReview(project: string, id: string): Promise<void> {
-  const res = await fetch(`${API}/decomposition-review/approve`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ project, id }),
-  })
-  if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to approve review')
+  const body = { project, id }
+  await postVoid(`${API}/decomposition-review/approve`, body, 'Failed to approve review')
 }
 
 export async function rejectDecompositionReview(project: string, id: string, feedback: string): Promise<void> {
-  const res = await fetch(`${API}/decomposition-review/reject`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ project, id, feedback }),
-  })
-  if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to request changes')
+  const body = { project, id, feedback }
+  await postVoid(`${API}/decomposition-review/reject`, body, 'Failed to request changes')
 }
 
 export async function continueRun(): Promise<void> {
-  const res = await fetch(`${API}/run/continue`, { method: 'POST' })
-  if (!res.ok) {
-    const data = await res.json()
-    throw new Error(data.error ?? 'Failed to continue run')
-  }
+  await postVoid(`${API}/run/continue`, undefined, 'Failed to continue run')
+  return
 }
 
 export async function pausePipeline(): Promise<void> {
-  const res = await fetch(`${API}/pause`, { method: 'POST' })
-  if (!res.ok) {
-    const data = await res.json()
-    throw new Error(data.error ?? 'Failed to pause')
-  }
+  await postVoid(`${API}/pause`, undefined, 'Failed to pause')
+  return
 }
 
 export async function resumePipeline(): Promise<void> {
-  const res = await fetch(`${API}/resume`, { method: 'POST' })
-  if (!res.ok) {
-    const data = await res.json()
-    throw new Error(data.error ?? 'Failed to resume')
-  }
+  await postVoid(`${API}/resume`, undefined, 'Failed to resume')
+  return
 }
 
 export async function retryErrors(): Promise<void> {
-  const res = await fetch(`${API}/retry-errors`, { method: 'POST' })
-  if (!res.ok) {
-    const data = await res.json()
-    throw new Error(data.error ?? 'Failed to retry errors')
-  }
+  await postVoid(`${API}/retry-errors`, undefined, 'Failed to retry errors')
+  return
 }
 
 export async function fetchStatus(): Promise<RunStatus> {
-  const res = await fetch(`${API}/status`)
-  return res.json()
+  const url = `${API}/status`
+  return requestJson<RunStatus>(url, undefined, 'Failed to load status')
 }
 
 export function subscribeStatus(onStatus: (status: RunStatus) => void): () => void {
   const es = new EventSource(`${API}/status/stream`)
   es.onmessage = (e) => {
-    try { onStatus(JSON.parse(e.data)) } catch { /* ignore */ }
+    const rawData = e.data
+    try {
+      onStatus(JSON.parse(rawData))
+    } catch {
+      return
+    }
   }
   return () => es.close()
 }
@@ -196,60 +208,40 @@ export function subscribeStatus(onStatus: (status: RunStatus) => void): () => vo
 
 export async function createNode(
   project: string, parentNodeId: string,
-  node: import('../types').GraphNode, initialContent?: string,
-): Promise<import('../types').SubGraph> {
-  const res = await fetch(`${API}/doc/create-node`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ project, parentNodeId, node, initialContent }),
-  })
-  if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to create node')
-  return res.json()
+  node: GraphNode, initialContent?: string,
+): Promise<SubGraph> {
+  const body = { project, parentNodeId, node, initialContent }
+  return postJson(`${API}/doc/create-node`, body, 'Failed to create node')
 }
 
 export async function updateNode(
   project: string, parentNodeId: string, nodeName: string,
-  patch: { name?: string; description?: string; codeScope?: string[]; edges?: import('../types').GraphEdge[] },
-): Promise<import('../types').SubGraph> {
-  const res = await fetch(`${API}/doc/update-node`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ project, parentNodeId, nodeName, patch }),
-  })
-  if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to update node')
-  return res.json()
+  patch: { name?: string; description?: string; codeScope?: string[]; edges?: GraphEdge[] },
+): Promise<SubGraph> {
+  const body = { project, parentNodeId, nodeName, patch }
+  return postJson(`${API}/doc/update-node`, body, 'Failed to update node')
 }
 
 export async function deleteNode(
   project: string, parentNodeId: string, nodeName: string,
-): Promise<import('../types').SubGraph> {
-  const res = await fetch(`${API}/doc/delete-node`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ project, parentNodeId, nodeName }),
-  })
-  if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to delete node')
-  return res.json()
+): Promise<SubGraph> {
+  const body = { project, parentNodeId, nodeName }
+  return postJson(`${API}/doc/delete-node`, body, 'Failed to delete node')
 }
 
 export async function updatePage(
   project: string, nodeId: string, ref: string, content: string,
 ): Promise<{ ok: boolean }> {
-  const res = await fetch(`${API}/doc/update-page`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ project, nodeId, ref, content }),
-  })
-  if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to update page')
-  return res.json()
+  const body = { project, nodeId, ref, content }
+  return postJson(`${API}/doc/update-page`, body, 'Failed to update page')
 }
 
 export async function patchPage(
   project: string, nodeId: string, ref: string,
   edits: { old_text: string; new_text: string }[],
 ): Promise<{ appliedCount: number }> {
-  const res = await fetch(`${API}/doc/patch-page`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ project, nodeId, ref, edits }),
-  })
-  if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to patch page')
-  return res.json()
+  const body = { project, nodeId, ref, edits }
+  return postJson(`${API}/doc/patch-page`, body, 'Failed to patch page')
 }
 
 export interface DocGitHead {
@@ -283,24 +275,18 @@ export interface DocBlameLine {
 }
 
 export async function fetchDocGitStatus(project: string): Promise<DocGitStatus> {
-  const res = await fetch(`${API}/doc-git/status?project=${encodeURIComponent(project)}`)
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+  const url = `${API}/doc-git/status?project=${encodeURIComponent(project)}`
+  return requestJson<DocGitStatus>(url, undefined, 'Failed to load doc git status')
 }
 
 export async function commitDocGit(project: string, message: string): Promise<DocGitCommitResult> {
-  const res = await fetch(`${API}/doc-git/commit`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ project, message }),
-  })
-  if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to commit docs')
-  return res.json()
+  const body = { project, message }
+  return postJson(`${API}/doc-git/commit`, body, 'Failed to commit docs')
 }
 
 export async function fetchDocBlame(project: string, nodeId: string): Promise<{ lines: DocBlameLine[] }> {
-  const res = await fetch(`${API}/doc-git/blame?project=${encodeURIComponent(project)}&nodeId=${encodeURIComponent(nodeId)}`)
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+  const url = `${API}/doc-git/blame?project=${encodeURIComponent(project)}&nodeId=${encodeURIComponent(nodeId)}`
+  return requestJson(url, undefined, 'Failed to load blame')
 }
 
 // ─── Update ───
@@ -335,52 +321,33 @@ export interface UpdateEvent {
 export async function startUpdateRun(
   project: string, mode: 'auto' | 'manual' = 'auto',
 ): Promise<{ ok: boolean; tasks: UpdateTaskItem[] }> {
-  const res = await fetch(`${API}/update/start`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ project, mode }),
-  })
-  if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to start update')
-  return res.json()
+  const body = { project, mode }
+  return postJson(`${API}/update/start`, body, 'Failed to start update')
 }
 
 export async function continueUpdateRun(project: string, extraInstructions?: string): Promise<void> {
-  const res = await fetch(`${API}/update/continue`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ project, extraInstructions }),
-  })
-  if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to continue')
+  const body = { project, extraInstructions }
+  await postVoid(`${API}/update/continue`, body, 'Failed to continue')
 }
 
 export async function skipUpdateTask(project: string, taskId: string): Promise<void> {
-  const res = await fetch(`${API}/update/skip`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ project, taskId }),
-  })
-  if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to skip')
+  const body = { project, taskId }
+  await postVoid(`${API}/update/skip`, body, 'Failed to skip')
 }
 
 export async function cancelUpdateRun(project: string): Promise<void> {
-  const res = await fetch(`${API}/update/cancel`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ project }),
-  })
-  if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to cancel')
+  const body = { project }
+  await postVoid(`${API}/update/cancel`, body, 'Failed to cancel')
 }
 
 export async function acceptUpdateTask(project: string, taskId: string): Promise<void> {
-  const res = await fetch(`${API}/update/task/accept`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ project, taskId }),
-  })
-  if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to accept task')
+  const body = { project, taskId }
+  await postVoid(`${API}/update/task/accept`, body, 'Failed to accept task')
 }
 
 export async function chatOnUpdateTask(project: string, taskId: string, prompt: string): Promise<void> {
-  const res = await fetch(`${API}/update/task/chat`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ project, taskId, prompt }),
-  })
-  if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to send follow-up')
+  const body = { project, taskId, prompt }
+  await postVoid(`${API}/update/task/chat`, body, 'Failed to send follow-up')
 }
 
 export function subscribeUpdateStream(
@@ -388,7 +355,12 @@ export function subscribeUpdateStream(
 ): () => void {
   const es = new EventSource(`${API}/update/stream?project=${encodeURIComponent(project)}`)
   es.onmessage = (e) => {
-    try { onEvent(JSON.parse(e.data)) } catch { /* ignore */ }
+    const rawData = e.data
+    try {
+      onEvent(JSON.parse(rawData))
+    } catch {
+      return
+    }
   }
   return () => es.close()
 }
@@ -430,9 +402,8 @@ export interface KnowledgeGetResponse {
 }
 
 export async function knowledgeGet(project: string): Promise<KnowledgeGetResponse> {
-  const res = await fetch(`${API}/knowledge?project=${encodeURIComponent(project)}`)
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+  const url = `${API}/knowledge?project=${encodeURIComponent(project)}`
+  return requestJson<KnowledgeGetResponse>(url, undefined, 'Failed to load knowledge')
 }
 
 export interface KnowledgeTurnResponse {
@@ -449,21 +420,16 @@ export async function knowledgeStart(
   language: 'zh' | 'en',
   agentBackend: AgentBackend,
 ): Promise<KnowledgeTurnResponse & { sessionId: string }> {
-  const res = await fetch(`${API}/knowledge/start`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ project, userMessage, language, agentBackend }),
-  })
-  if (!res.ok) {
-    const data = await res.json()
-    throw new Error(data.error ?? 'Failed to start knowledge session')
-  }
-  return res.json()
+  const body = { project, userMessage, language, agentBackend }
+  return postJson(`${API}/knowledge/start`, body, 'Failed to start knowledge session')
 }
 
 export class KnowledgeSessionExpiredError extends Error {
   readonly code = 'SESSION_EXPIRED'
-  constructor() { super('Knowledge session expired. Start a new one.') }
+
+  constructor() {
+    super('Knowledge session expired. Start a new one.')
+  }
 }
 
 export async function knowledgeMessage(
@@ -472,7 +438,7 @@ export async function knowledgeMessage(
 ): Promise<KnowledgeTurnResponse> {
   const res = await fetch(`${API}/knowledge/message`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: JSON_HEADERS,
     body: JSON.stringify({ sessionId, userReply }),
   })
   if (!res.ok) {
@@ -487,28 +453,13 @@ export async function knowledgeFinalize(
   sessionId: string,
   project: string,
 ): Promise<{ ok: boolean; path: string }> {
-  const res = await fetch(`${API}/knowledge/finalize`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sessionId, project }),
-  })
-  if (!res.ok) {
-    const data = await res.json()
-    throw new Error(data.error ?? 'Failed to finalize knowledge')
-  }
-  return res.json()
+  const body = { sessionId, project }
+  return postJson(`${API}/knowledge/finalize`, body, 'Failed to finalize knowledge')
 }
 
 export async function knowledgeDiscard(project: string): Promise<void> {
-  const res = await fetch(`${API}/knowledge/discard`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ project }),
-  })
-  if (!res.ok) {
-    const data = await res.json()
-    throw new Error(data.error ?? 'Failed to discard knowledge draft')
-  }
+  const body = { project }
+  await postVoid(`${API}/knowledge/discard`, body, 'Failed to discard knowledge draft')
 }
 
 export async function sendChat(
@@ -517,7 +468,7 @@ export async function sendChat(
 ): Promise<void> {
   const res = await fetch(`${API}/chat`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: JSON_HEADERS,
     body: JSON.stringify({ messages }),
   })
 
@@ -533,7 +484,7 @@ export async function sendChat(
 
     buffer += decoder.decode(value, { stream: true })
     const lines = buffer.split('\n')
-    buffer = lines.pop()!
+    buffer = lines.pop() ?? ''
 
     for (const line of lines) {
       if (line.startsWith('data: ')) {

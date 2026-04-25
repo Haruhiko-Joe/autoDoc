@@ -33,7 +33,8 @@ const decompositionReview = ref<DecompositionReviewMode>('off')
 const reviewEnabled = computed({
   get: () => decompositionReview.value === 'all',
   set: (enabled: boolean) => {
-    decompositionReview.value = enabled ? 'all' : 'off'
+    const nextMode = enabled ? 'all' : 'off'
+    decompositionReview.value = nextMode
   },
 })
 const showConfigDialog = ref(false)
@@ -90,20 +91,19 @@ function mergeProjectEntries(next: ProjectListEntry[]) {
 }
 
 async function refreshProjects() {
+  let nextProjects: ProjectListEntry[] = []
   try {
-    mergeProjectEntries(await fetchProjects())
+    nextProjects = await fetchProjects()
   } catch {
-    mergeProjectEntries([])
+    nextProjects = []
   }
-}
 
-function gitUrlForProject(name: string): string {
-  return projectEntries.value.find((p) => p.name === name)?.sourceUrl ?? ''
+  mergeProjectEntries(nextProjects)
 }
 
 function syncGitUrlFromSelection() {
   if (status.value.phase === 'running') return
-  const url = gitUrlForProject(selectedProject.value)
+  const url = projectEntries.value.find((p) => p.name === selectedProject.value)?.sourceUrl ?? ''
   if (url) gitUrl.value = url
 }
 
@@ -198,10 +198,10 @@ function startSSE() {
 }
 
 function stopSSE() {
-  if (unsubscribeSSE) {
-    unsubscribeSSE()
-    unsubscribeSSE = null
-  }
+  if (!unsubscribeSSE) return
+
+  unsubscribeSSE()
+  unsubscribeSSE = null
 }
 
 async function tryLoadGraph(project = selectedProject.value) {
@@ -292,14 +292,16 @@ watch(searchQuery, (q) => {
     return
   }
   searchTimer = setTimeout(async () => {
-    searchResults.value = await searchModules(selectedProject.value, trimmed)
+    const results = await searchModules(selectedProject.value, trimmed)
+    searchResults.value = results
   }, 250)
 })
 
 function jumpToFirstMatch() {
-  if (searchResults.value.length > 0) {
-    navigateToSearchResult(searchResults.value[0])
-  }
+  const firstMatch = searchResults.value[0]
+  if (!firstMatch) return
+
+  navigateToSearchResult(firstMatch)
 }
 
 function navigateToSearchResult(r: SearchResult) {
@@ -357,6 +359,7 @@ const progressPhaseLabel = computed(() => {
 })
 
 async function handlePauseToggle() {
+  errorMsg.value = ''
   try {
     if (isPaused.value) {
       await resumePipeline()
@@ -378,6 +381,7 @@ const canRetry = computed(() =>
 )
 
 async function handleRetryErrors() {
+  errorMsg.value = ''
   try {
     await retryErrors()
   } catch (e) {

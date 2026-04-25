@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 import { Graph, NodeEvent, EdgeEvent } from '@antv/g6'
 import { EDGE_STYLES } from '../services/edgeStyles'
 import { useTheme } from '../composables/useTheme'
+import GraphNodeFilter from './GraphNodeFilter.vue'
+import { escapeHtml } from '../utils/html'
+import { assignParallelCurveOffsets, filterGraphNodes, pruneSelectedNodeNames } from '../utils/graphNodes'
 import type { GraphNode, EdgeType } from '../types'
 
 const props = defineProps<{
@@ -20,6 +23,7 @@ const emit = defineEmits<{
 }>()
 
 const selectedNodeId = ref<string | null>(null)
+const selectedFilterNodeNames = ref<string[] | null>(null)
 
 const { isDark } = useTheme()
 const containerRef = ref<HTMLDivElement>()
@@ -52,16 +56,27 @@ const popover = ref<PopoverState>({
 })
 const focusedNodeId = ref<string | null>(null)
 
+const filterNodeNames = computed(() => props.nodes.map((node) => node.name))
+const visibleNodes = computed(() => filterGraphNodes(props.nodes, selectedFilterNodeNames.value))
+
 function closePopover() {
+  if (!popover.value.visible) return
+
   popover.value.visible = false
 }
 
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
+function syncSelectionWithVisibleNodes() {
+  const visibleNames = new Set(visibleNodes.value.map((node) => node.name))
+  if (selectedNodeId.value && !visibleNames.has(selectedNodeId.value)) selectedNodeId.value = null
+  if (focusedNodeId.value && !visibleNames.has(focusedNodeId.value)) focusedNodeId.value = null
+}
+
+function pruneFilterSelection() {
+  const selectedNames = pruneSelectedNodeNames(
+    selectedFilterNodeNames.value,
+    filterNodeNames.value,
+  )
+  selectedFilterNodeNames.value = selectedNames
 }
 
 function renderCard(name: string, description: string, isFocused: boolean): string {
@@ -84,19 +99,20 @@ function renderCard(name: string, description: string, isFocused: boolean): stri
 }
 
 function getEdgeItems(nodes: GraphNode[]) {
-  return nodes.flatMap((node) =>
+  const edgeItems = nodes.flatMap((node) =>
     node.edges.map((edge) => ({
       id: `${node.name}-${edge.target}-${edge.type}`,
       source: node.name,
       target: edge.target,
     })),
   )
+  return edgeItems
 }
 
 function getFocusedNodeIds(nodeId: string): Set<string> {
   const focusedIds = new Set([nodeId])
 
-  for (const node of props.nodes) {
+  for (const node of visibleNodes.value) {
     if (node.name === nodeId) {
       for (const edge of node.edges) focusedIds.add(edge.target)
     }
@@ -124,14 +140,14 @@ function syncFocusButtons() {
 async function applyFocusMode() {
   if (!graph) return
 
-  const nodeIds = props.nodes.map((node) => node.name)
+  const nodeIds = visibleNodes.value.map((node) => node.name)
   if (focusedNodeId.value && !nodeIds.includes(focusedNodeId.value)) {
     focusedNodeId.value = null
   }
 
   const activeId = focusedNodeId.value
   const focusedIds = activeId ? getFocusedNodeIds(activeId) : null
-  const edgeItems = getEdgeItems(props.nodes)
+  const edgeItems = getEdgeItems(visibleNodes.value)
 
   graph.updateNodeData(
     nodeIds.map((id) => ({
@@ -174,14 +190,6 @@ function getFocusTrigger(target: EventTarget | null): HTMLElement | null {
   return target.closest('.node-card-focus-trigger') as HTMLElement | null
 }
 
-function onContainerPointerOverCapture(_event: PointerEvent) {
-  // Focus is now click-toggled; hover no longer drives focus state.
-}
-
-function onContainerPointerOutCapture(_event: PointerEvent) {
-  // Focus is now click-toggled; hover no longer drives focus state.
-}
-
 function superellipsePositions(n: number, canvasW: number, canvasH: number) {
   const cx = canvasW / 2
   const cy = canvasH / 2
@@ -217,8 +225,8 @@ function buildData(nodes: GraphNode[], canvasW: number, canvasH: number) {
     id: n.name,
     data: { ...n },
     style: {
-      x: positions[i]!.x,
-      y: positions[i]!.y,
+      x: positions[i]?.x ?? canvasW / 2,
+      y: positions[i]?.y ?? canvasH / 2,
     },
   }))
 
@@ -246,40 +254,7 @@ function buildData(nodes: GraphNode[], canvasW: number, canvasH: number) {
     }
   }
 
-  // Detect parallel edges between the same pair of nodes and assign curve offsets
-  // Key insight: for reversed edges (A→B vs B→A), G6's curveOffset perpendicular
-  // direction flips with edge direction, so same-sign offsets actually curve to
-  // opposite sides. We must give reversed edges the SAME offset sign, and only
-  // spread same-direction edges with different offsets.
-  const pairMap = new Map<string, typeof g6Edges>()
-  for (const edge of g6Edges) {
-    // Use directed key so A→B and B→A are in the same group but distinguishable
-    const key = [edge.source, edge.target].sort().join('|')
-    const group = pairMap.get(key)
-    if (group) group.push(edge)
-    else pairMap.set(key, [edge])
-  }
-  const CURVE_GAP = 25
-  for (const group of pairMap.values()) {
-    if (group.length < 2) continue
-    // Sort so that edges with the same direction are adjacent
-    const sorted = group.sort((a, b) => {
-      const dirA = `${a.source}->${a.target}`
-      const dirB = `${b.source}->${b.target}`
-      return dirA.localeCompare(dirB)
-    })
-    // Assign offsets: use the canonical direction (source < target) as reference.
-    // Edges matching canonical direction get positive offset, reversed get negative.
-    // Multiple edges in the same direction get incremented offsets.
-    const forwardEdges = sorted.filter((e) => e.source <= e.target)
-    const reverseEdges = sorted.filter((e) => e.source > e.target)
-    forwardEdges.forEach((edge, i) => {
-      edge.data.curveOffset = CURVE_GAP * (i + 1)
-    })
-    reverseEdges.forEach((edge, i) => {
-      edge.data.curveOffset = CURVE_GAP * (i + 1)
-    })
-  }
+  assignParallelCurveOffsets(g6Edges, 25)
 
   return { nodes: g6Nodes, edges: g6Edges }
 }
@@ -290,7 +265,7 @@ function createGraph() {
   const rect = containerRef.value.getBoundingClientRect()
   const canvasW = rect.width || 800
   const canvasH = rect.height || 600
-  const data = buildData(props.nodes, canvasW, canvasH)
+  const data = buildData(visibleNodes.value, canvasW, canvasH)
 
   graph = new Graph({
     container: containerRef.value,
@@ -304,7 +279,8 @@ function createGraph() {
         dx: -CARD_WIDTH / 2,
         dy: -CARD_HEIGHT / 2,
         innerHTML: (d: { id: string; data?: { description?: string } }) => {
-          return renderCard(d.id, d.data?.description ?? '', focusedNodeId.value === d.id)
+          const isFocused = focusedNodeId.value === d.id
+          return renderCard(d.id, d.data?.description ?? '', isFocused)
         },
       },
     },
@@ -337,7 +313,8 @@ function createGraph() {
     },
     behaviors: props.editable
       ? [
-          'zoom-canvas',
+          { type: 'zoom-canvas', trigger: ['Control'] },
+          'scroll-canvas',
           'drag-canvas',
           'drag-element',
           {
@@ -353,7 +330,7 @@ function createGraph() {
             },
           },
         ]
-      : ['zoom-canvas', 'drag-canvas', 'drag-element'],
+      : [{ type: 'zoom-canvas', trigger: ['Control'] }, 'scroll-canvas', 'drag-canvas', 'drag-element'],
   })
 
   graph.on(NodeEvent.CLICK, (evt) => {
@@ -404,7 +381,9 @@ function createGraph() {
     const d = edgeData.data as unknown as G6EdgeData
     if (!d.detail && !props.editable) return
 
-    const containerRect = containerRef.value!.getBoundingClientRect()
+    const container = containerRef.value
+    if (!container) return
+    const containerRect = container.getBoundingClientRect()
     popover.value = {
       visible: true,
       x: (e.client?.x ?? 0) - containerRect.left,
@@ -419,7 +398,18 @@ function createGraph() {
 
   graph.on('canvas:click', closePopover)
 
-  void graph.render().then(() => applyFocusMode())
+  const activeGraph = graph
+  void activeGraph.render()
+    .then(() => {
+      if (graph !== activeGraph) return
+
+      return applyFocusMode()
+    })
+    .catch((error) => {
+      if (graph !== activeGraph) return
+
+      console.error(error)
+    })
 }
 
 function onKeyDown(e: KeyboardEvent) {
@@ -431,10 +421,17 @@ function onKeyDown(e: KeyboardEvent) {
 }
 
 function destroyGraph() {
-  if (graph) {
-    graph.destroy()
-    graph = null
-  }
+  if (!graph) return
+
+  graph.destroy()
+  graph = null
+}
+
+function recreateGraph() {
+  closePopover()
+  syncSelectionWithVisibleNodes()
+  destroyGraph()
+  createGraph()
 }
 
 onMounted(() => {
@@ -449,24 +446,25 @@ onUnmounted(() => {
 watch(
   () => props.nodes,
   () => {
-    destroyGraph()
-    createGraph()
+    pruneFilterSelection()
+    recreateGraph()
   },
 )
 
-watch(isDark, () => {
-  destroyGraph()
-  createGraph()
-})
+watch(selectedFilterNodeNames, recreateGraph)
+
+watch(isDark, recreateGraph)
 </script>
 
 <template>
   <div
     ref="containerRef"
     class="graph-container"
-    @pointerover.capture="onContainerPointerOverCapture"
-    @pointerout.capture="onContainerPointerOutCapture"
   >
+    <GraphNodeFilter
+      v-model:selected-names="selectedFilterNodeNames"
+      :node-names="filterNodeNames"
+    />
     <Transition name="popover">
       <div
         v-if="popover.visible"

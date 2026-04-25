@@ -67,15 +67,19 @@ function arrowStyle(step: FlowStep): Record<string, string> {
 }
 
 function isLTR(step: FlowStep): boolean {
-  return colPct(step.to) >= colPct(step.from)
+  const toColumn = colPct(step.to)
+  const fromColumn = colPct(step.from)
+  return toColumn >= fromColumn
 }
 
 function isSelf(step: FlowStep): boolean {
-  return step.from === step.to
+  const sameParticipant = step.from === step.to
+  return sameParticipant
 }
 
 function toggleStep(i: number) {
-  expandedStep.value = expandedStep.value === i ? null : i
+  const nextStep = expandedStep.value === i ? null : i
+  expandedStep.value = nextStep
 }
 
 function goToDoc(docPath?: string) {

@@ -37,7 +37,9 @@ watch(() => props.task.id, async () => {
 
 // Clear the textarea after a follow-up is submitted (task transitions confirm→running→review)
 watch(() => props.task.status, (s) => {
-  if (s === 'running') instructions.value = ''
+  if (s !== 'running') return
+
+  instructions.value = ''
 })
 
 const renderedMarkdown = computed(() => {
@@ -47,6 +49,13 @@ const renderedMarkdown = computed(() => {
 })
 
 const hasResponse = computed(() => (props.task.markdown?.length ?? 0) > 0)
+const statusLabels = {
+  running: 'Streaming response',
+  'awaiting-review': 'Awaiting your review',
+  done: 'Accepted',
+  error: 'Failed',
+  skipped: 'Skipped',
+} as const
 
 watch(() => props.task.markdown, async () => {
   if (!streamScrollRef.value) return
@@ -56,17 +65,11 @@ watch(() => props.task.markdown, async () => {
   if (nearBottom) el.scrollTop = el.scrollHeight
 })
 
-const phaseLabel = computed(() => {
-  switch (props.task.status) {
-    case 'running':          return 'Streaming response'
-    case 'awaiting-review':  return 'Awaiting your review'
-    case 'done':             return 'Accepted'
-    case 'error':            return 'Failed'
-    case 'skipped':          return 'Skipped'
-    case 'idle':             return props.mode === 'confirm' ? 'Ready' : 'Queued'
-    default:                 return ''
-  }
-})
+const phaseLabel = computed(() =>
+  props.task.status === 'idle'
+    ? props.mode === 'confirm' ? 'Ready' : 'Queued'
+    : statusLabels[props.task.status] ?? '',
+)
 
 const primaryLabel = computed(() => {
   if (props.mode === 'confirm') return 'Send \u2192'
@@ -93,10 +96,10 @@ function acceptNow() {
 }
 
 function handleKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape') {
-    e.preventDefault()
-    emit('close')
-  }
+  if (e.key !== 'Escape') return
+
+  e.preventDefault()
+  emit('close')
 }
 </script>
 

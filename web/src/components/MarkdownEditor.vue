@@ -60,7 +60,10 @@ function createEditor(initialDoc = props.modelValue) {
 
   const saveKeymap = keymap.of([{
     key: 'Mod-s',
-    run: () => { emit('save'); return true },
+    run: () => {
+      emit('save')
+      return true
+    },
   }])
 
   const state = EditorState.create({
@@ -69,9 +72,9 @@ function createEditor(initialDoc = props.modelValue) {
       markdown(),
       saveKeymap,
       EditorView.updateListener.of((update) => {
-        if (update.docChanged) {
-          emit('update:modelValue', update.state.doc.toString())
-        }
+        if (!update.docChanged) return
+
+        emit('update:modelValue', update.state.doc.toString())
       }),
       EditorView.theme({
         '&': {

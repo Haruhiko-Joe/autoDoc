@@ -43,6 +43,7 @@ const visibleLimit = computed(() =>
 )
 
 onMounted(() => {
+  resizeObserver?.disconnect()
   watch(
     () => props.visible,
     async (v) => {
@@ -52,6 +53,8 @@ onMounted(() => {
       containerHeight.value = taskListRef.value.clientHeight
       resizeObserver?.disconnect()
       resizeObserver = new ResizeObserver((entries) => {
+        if (!entries.length) return
+
         for (const entry of entries) {
           containerHeight.value = entry.contentRect.height
         }
@@ -65,8 +68,16 @@ onMounted(() => {
 const activeDialogTaskId = ref<string | null>(null)
 
 // Auto-open the dialog when the queue gates for confirmation (pre-run) or review (post-run).
-watch(awaitingConfirmTaskId, (id) => { if (id) activeDialogTaskId.value = id })
-watch(awaitingReviewTaskId, (id) => { if (id) activeDialogTaskId.value = id })
+watch(awaitingConfirmTaskId, (id) => {
+  if (!id) return
+
+  activeDialogTaskId.value = id
+})
+watch(awaitingReviewTaskId, (id) => {
+  if (!id) return
+
+  activeDialogTaskId.value = id
+})
 
 const dialogTask = computed(() => {
   const id = activeDialogTaskId.value
@@ -81,18 +92,6 @@ const dialogMode = computed<'confirm' | 'review' | 'readonly'>(() => {
   if (task.status === 'awaiting-review') return 'review'
   return 'readonly'
 })
-
-function handleOpenTask(taskId: string) {
-  activeDialogTaskId.value = taskId
-}
-
-function handleDialogClose() {
-  activeDialogTaskId.value = null
-}
-
-function handleConfirm(extraInstructions: string) {
-  void continueNext(extraInstructions)
-}
 
 function handleAccept() {
   const task = dialogTask.value
@@ -187,7 +186,7 @@ async function handleStart() {
           :key="task.id"
           :task="task"
           @skip="skip"
-          @open="handleOpenTask"
+          @open="activeDialogTaskId = $event"
         />
         <div v-if="hiddenCount > 0" class="more-indicator">
           +{{ hiddenCount }} more queued
@@ -205,12 +204,12 @@ async function handleStart() {
       v-if="dialogTask"
       :task="dialogTask"
       :mode="dialogMode"
-      @confirm="handleConfirm"
+      @confirm="continueNext"
       @follow-up="handleFollowUp"
       @accept="handleAccept"
       @skip="handleSkipConfirm"
       @cancel="cancel"
-      @close="handleDialogClose"
+      @close="activeDialogTaskId = null"
     />
   </Teleport>
 </template>

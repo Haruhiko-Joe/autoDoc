@@ -9,7 +9,9 @@ watchEffect(() => {
 
 export function useTheme() {
   function toggle() {
-    isDark.value = !isDark.value
+    const nextValue = !isDark.value
+    isDark.value = nextValue
   }
+
   return { isDark, toggle }
 }

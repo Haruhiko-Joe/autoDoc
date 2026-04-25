@@ -53,7 +53,9 @@ async function commitNow() {
 }
 
 watch(() => [props.visible, props.project, props.refreshToken], ([visible]) => {
-  if (visible) void loadStatus()
+  if (!visible) return
+
+  void loadStatus()
 }, { immediate: true })
 </script>
 
