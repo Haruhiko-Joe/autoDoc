@@ -15,18 +15,19 @@ No test suite exists yet (`pnpm test` is a stub).
 
 pnpm monorepo with two packages: root (backend) and `web/` (frontend).
 
-### Backend: 4-Agent Pipeline
+### Backend: 5-Agent Full Pipeline
 
-The system generates interactive documentation for any code repository using a pipeline of 4 agent roles orchestrated by the **Arranger** state machine:
+The system generates interactive documentation for any code repository using a pipeline of 5 full-generation agent roles orchestrated by the **Arranger** state machine:
 
 ```
-Scaffold → Checker → [per-module loop: Decomposer → Checker → Writer] → done
+Scaffold → Checker → [per-module loop: Decomposer → Checker → Writer] → Flow Analyzer → done
 ```
 
 - **Scaffold**: Analyzes entire repo, produces `top.json` with top-level modules
 - **Decomposer**: Recursively splits modules into sub-graphs (`graph`) or leaf pages (`page`)
 - **Writer**: Generates Markdown documentation for leaf `page` nodes
 - **Checker**: Validates graph structures from Scaffold and Decomposer (not Writer output); failures trigger retry via `agent.continue()`
+- **Flow Analyzer**: Extracts 3-7 cross-module interaction flows into `flows.json`
 
 Each agent has both a Claude Code and Codex backend implementation, located in `src/agents/tsukai/` (e.g. `claudescaffold.ts` / `codexscaffold.ts`). All share identical interface: `run(prompt, workpath)`, `continue(prompt)`, `restore(sessionId, workpath)`, `getSessionId()`. A barrel file `src/agents/tsukai/index.ts` re-exports all classes.
 
@@ -49,7 +50,8 @@ After initial generation, per-PR documentation updates are handled by the **PrUp
 
 1. Discovers new merged PRs via `gh pr list` (fallback: `git log --first-parent`), sorted oldest-first by `mergedAt`
 2. Queues them as `TaskItem`s and processes sequentially under a per-project lock
-3. Per task: snapshots `web/doc/{project}` → builds prompt from commit metadata + diff → invokes PrUpdater agent with MCP tools enabled → streams Markdown report via SSE
+3. Per task: checks out the merge commit, builds a prompt from commit metadata + diff → invokes PrUpdater agent with MCP tools enabled → streams Markdown report via SSE
+4. Successful tasks append `src/souko/doc/{project}/update-log.jsonl` and advance `lastProcessedSha` in `src/souko/projects.json`
 
 **Two modes:**
 - **Auto**: idle → running → done → next (no gates)
@@ -70,9 +72,9 @@ All write tools share the project-level document lock and only dirty the documen
 
 ### Frontend: Vue 3 + TypeScript
 
-- **GraphPage**: Interactive module graph visualization using AntV G6
-- **DocPage**: Markdown renderer with chat panel (forks agent sessions via `forkSession()`)
-- **HomePage**: Project selector, repo path input, real-time progress polling
+- **GraphPage**: Interactive module graph visualization and Markdown page preview/edit/split views using AntV G6
+- **HomePage**: Project selector, git URL input, run configuration, real-time progress polling, decomposition review entry
+- **KnowledgePage**: Pre-generation Knowledge Elicitor conversation and `knowledge.md` preview/finalization
 - **UpdateQueuePanel**: Right-side panel with Auto/Manual mode switch, dynamic task list, status counts; delegates to `TaskConfirmDialog` (chatbox-style modal for pre-run prompt + streaming output + post-run review/follow-up)
 
 API client in `web/src/services/doc.ts`. Frontend proxies `/api` to backend via Vite config. SSE subscription for update events handled by `web/src/composables/useUpdateQueue.ts`.
@@ -80,8 +82,10 @@ API client in `web/src/services/doc.ts`. Frontend proxies `/api` to backend via 
 ### Output structure
 
 ```
-web/doc/{projectName}/
+src/souko/doc/{projectName}/
 ├── top.json                          # Root graph (from Scaffold)
+├── flows.json                        # Flow Analyzer output
+├── update-log.jsonl                  # Incremental update reports
 ├── {module}/
 │   ├── {module}.json                 # Sub-graph (status + nodes + session IDs)
 │   ├── _pending/                     # Staging dir for writer MD (pre-checker)
@@ -90,7 +94,7 @@ web/doc/{projectName}/
 │   └── {submodule}/                  # Nested recursion
 ```
 
-Project matching: `path.basename(repoPath)` maps to `web/doc/{name}/`. Re-running with the same basename resumes from existing state.
+Project matching: `git.projectNameFromUrl(gitUrl)` maps to `src/souko/repo/{name}` and `src/souko/doc/{name}`. Re-running with the same generated name resumes from existing partial state only when `top.json` exists and the project is not already registered as complete.
 
 ## Key Conventions
 

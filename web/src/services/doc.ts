@@ -3,9 +3,13 @@ import type { TopGraph, SubGraph, FlowsData, GraphEdge, GraphNode } from '../typ
 const API = '/api'
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
 
+function apiUrl(path: string, params?: Record<string, string>): string {
+  const query = new URLSearchParams(params).toString()
+  return `${API}${path}${query ? `?${query}` : ''}`
+}
+
 function buildDocUrl(filePath: string, project: string): string {
-  const encodedProject = encodeURIComponent(project)
-  return `${API}/doc/${filePath}?project=${encodedProject}`
+  return apiUrl(`/doc/${filePath}`, { project })
 }
 
 async function errorMessage(res: Response, fallback: string): Promise<string> {
@@ -144,7 +148,7 @@ export interface DecompositionReviewItem {
 
 export async function fetchDecompositionReviews(project: string): Promise<DecompositionReviewItem[]> {
   const data = await requestJson<{ reviews?: DecompositionReviewItem[] }>(
-    `${API}/decomposition-reviews?project=${encodeURIComponent(project)}`,
+    apiUrl('/decomposition-reviews', { project }),
     undefined,
     'Failed to load decomposition reviews',
   )
@@ -275,8 +279,7 @@ export interface DocBlameLine {
 }
 
 export async function fetchDocGitStatus(project: string): Promise<DocGitStatus> {
-  const url = `${API}/doc-git/status?project=${encodeURIComponent(project)}`
-  return requestJson<DocGitStatus>(url, undefined, 'Failed to load doc git status')
+  return requestJson<DocGitStatus>(apiUrl('/doc-git/status', { project }), undefined, 'Failed to load doc git status')
 }
 
 export async function commitDocGit(project: string, message: string): Promise<DocGitCommitResult> {
@@ -285,8 +288,7 @@ export async function commitDocGit(project: string, message: string): Promise<Do
 }
 
 export async function fetchDocBlame(project: string, nodeId: string): Promise<{ lines: DocBlameLine[] }> {
-  const url = `${API}/doc-git/blame?project=${encodeURIComponent(project)}&nodeId=${encodeURIComponent(nodeId)}`
-  return requestJson(url, undefined, 'Failed to load blame')
+  return requestJson(apiUrl('/doc-git/blame', { project, nodeId }), undefined, 'Failed to load blame')
 }
 
 // ─── Update ───
@@ -353,7 +355,7 @@ export async function chatOnUpdateTask(project: string, taskId: string, prompt: 
 export function subscribeUpdateStream(
   project: string, onEvent: (event: UpdateEvent) => void,
 ): () => void {
-  const es = new EventSource(`${API}/update/stream?project=${encodeURIComponent(project)}`)
+  const es = new EventSource(apiUrl('/update/stream', { project }))
   es.onmessage = (e) => {
     const rawData = e.data
     try {
@@ -375,10 +377,16 @@ export interface SearchResult {
 }
 
 export async function searchModules(project: string, query: string): Promise<SearchResult[]> {
-  const res = await fetch(`${API}/search?project=${encodeURIComponent(project)}&q=${encodeURIComponent(query)}`)
-  if (!res.ok) return []
-  const data = await res.json() as { results: SearchResult[] }
-  return data.results ?? []
+  try {
+    const data = await requestJson<{ results?: SearchResult[] }>(
+      apiUrl('/search', { project, q: query }),
+      undefined,
+      'Failed to search modules',
+    )
+    return data.results ?? []
+  } catch {
+    return []
+  }
 }
 
 // ─── Chat ───
@@ -402,8 +410,7 @@ export interface KnowledgeGetResponse {
 }
 
 export async function knowledgeGet(project: string): Promise<KnowledgeGetResponse> {
-  const url = `${API}/knowledge?project=${encodeURIComponent(project)}`
-  return requestJson<KnowledgeGetResponse>(url, undefined, 'Failed to load knowledge')
+  return requestJson<KnowledgeGetResponse>(apiUrl('/knowledge', { project }), undefined, 'Failed to load knowledge')
 }
 
 export interface KnowledgeTurnResponse {
@@ -442,9 +449,13 @@ export async function knowledgeMessage(
     body: JSON.stringify({ sessionId, userReply }),
   })
   if (!res.ok) {
-    const data = await res.json() as { error?: string; code?: string }
-    if (data.code === 'SESSION_EXPIRED') throw new KnowledgeSessionExpiredError()
-    throw new Error(data.error ?? 'Failed to send knowledge message')
+    try {
+      const data = await res.clone().json() as { error?: string; code?: string }
+      if (data.code === 'SESSION_EXPIRED') throw new KnowledgeSessionExpiredError()
+    } catch (e) {
+      if (e instanceof KnowledgeSessionExpiredError) throw e
+    }
+    throw new Error(await errorMessage(res, 'Failed to send knowledge message'))
   }
   return res.json()
 }

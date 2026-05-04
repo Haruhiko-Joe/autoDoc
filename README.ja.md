@@ -177,25 +177,27 @@ gitUrl ──► git clone ──► src/souko/repo/{name}
 
 | ロール | デフォルトバックエンド |
 |--------|----------------------|
-| Scaffold | Claude |
-| Decomposer | Claude |
-| Writer | Claude |
-| Checker | Codex |
-| Flow Analyzer | Claude |
-| Updater | Claude |
+| Scaffold | Codex |
+| Decomposer | Codex |
+| Writer | Codex |
+| Checker | Claude |
+| Flow Analyzer | Codex |
+| Updater | Codex |
 
 ## 主な機能
 
 - **🔗 git URL ワンクリック接続** — SSH/HTTPS git URL を入力するだけで、バックエンドが自動 clone・メインブランチの commit を追跡、すべて `src/souko/` 以下に集約
 - **🔁 PR 単位の増分更新** — `gh pr list`（または `git log` フォールバック）で新たにマージされた全 PR を自動検出し、PrUpdater Agent が MCP ツール経由で標的修正を実行。Auto モードは完全自動、Manual モードはレビューゲート + セッション継続による反復微調整付き
+- **🧭 分解レビューゲート** — Scaffold / Decomposer の出力後に任意で一時停止し、グラフを直接編集・承認、またはフィードバック付きで再分解できます
+- **🧠 Knowledge Elicitor** — 初回生成前に Agent と会話して `knowledge.md` を作成し、ドメイン背景や分解方針を下流 Agent に注入できます
 - **🛰️ HTTP MCP サーバー** — 同一プロセスの `/mcp` エンドポイント（Streamable HTTP）が query + mutate の全ツールを公開、Code Agent から直接読み書き可能
 - **📜 手動 Git commit と blame** — ドキュメント書き込みは未コミット変更だけを作成し、Git パネルで dirty 状態確認・手動 commit・preview/editing での blame 表示を行います
-- **🔗 インタラクティブ有向グラフ** — [AntV G6](https://g6.antv.antgroup.com/) ベース、6 種のセマンティックエッジ（呼び出し、依存、データフロー、イベント、継承、コンポジション）対応、ホバーで関係詳細を表示
+- **🔗 インタラクティブ有向グラフ** — [AntV G6](https://g6.antv.antgroup.com/) ベース、6 種のセマンティックエッジ（呼び出し、依存、データフロー、イベント、継承、コンポジション）対応、ホバー詳細、ノードフィルター、focus モードを搭載
 - **🔍 段階的開示** — トップレベル概要から、ノードをクリックしてリーフの Markdown まで階層的に掘り下げ
 - **🔄 インタラクションフロー図** — モジュール横断のビジネスフローを自動抽出し、参加者・ステップ・コード参照付きシーケンス図として描画
 - **🔎 モジュール検索** — サイドバーから全モジュールを高速検索
 - **💬 AI チャットパネル** — フローティングチャットでドキュメント内容に追加質問（`OPENAI_API_KEY` が必要）
-- **🌙 ダークモード** — Tokyo Night テーマ
+- **🌙 ダークモード** — 低ノイズなダーク UI
 - **📊 リアルタイム進捗** — ホーム画面で生成進捗をライブ表示（initial / incremental / noop の 3 モードを区別）
 - **🌐 多言語** — 中国語（デフォルト）または英語のドキュメントサイトを生成
 
@@ -254,7 +256,7 @@ enabled_tools = ["list_projects", "get_top", "get_graph", "get_page", "search_no
 | `patch_page` | リーフ md 内の局所テキストを文字列マッチ＆置換で精密編集、update_page より効率的で安全 |
 | `update_page` | リーフ md を上書き |
 
-書き込みフロー: **read → mutate tool が working tree を変更 → frontend Git panel で dirty 状態を確認 → ユーザーが手動 commit**。mutate tool は `baseVersion` を受け取らず、自動 commit もしません。並行書き込みは project-level lock で直列化されます。
+書き込みフロー: **read → mutate tool が working tree を変更 → frontend Git panel で dirty 状態を確認 → ユーザーが手動 commit**。mutate tool はドキュメント working tree の変更だけを残します。並行書き込みは project-level lock で直列化されます。
 
 > ⚠️ `/mcp` はデフォルトで無認証・CORS 開放です。本番運用前にアクセス制御を追加するかループバックにバインドしてください。
 
@@ -345,9 +347,9 @@ autoDoc/
 │       └── SKILL.md              # スリム版 doc-drill skill（/mcp を指す）
 ├── web/                          # Vue 3 フロントエンド
 │   └── src/
-│       ├── views/                # GraphPage, DocPage, HomePage（git URL 入力）, FlowsPage
+│       ├── views/                # HomePage, GraphPage（グラフ + 文書プレビュー/編集）, FlowsPage, KnowledgePage
 │       ├── components/           # ChatPanel 等
-│       └── services/doc.ts       # API クライアント（startRun → { ok, mode }）
+│       └── services/doc.ts       # API クライアント（run/status/doc/search/chat/update/knowledge/doc-git）
 ├── package.json
 └── pnpm-workspace.yaml
 ```

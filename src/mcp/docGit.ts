@@ -55,7 +55,6 @@ function run(args: string[], cwd: string): Promise<string> {
 
 const DOC_GITIGNORE = `update-log.jsonl
 .DS_Store
-.history/
 .snapshots/
 .tombstones/
 `

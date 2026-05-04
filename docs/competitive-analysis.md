@@ -265,8 +265,8 @@ PR 驱动的增量更新管线已上线：
 - **Agent 自主导航**：PrUpdater Agent 接收 commit metadata + diff，通过 MCP 工具（`get_top` → `search_nodes` → `get_page` → `patch_page`）自主定位并做针对性修改，不再依赖 codeScope 静态匹配
 - **两阶段 prompt**：Agent 先做影响评估（none / minor / structural），无影响的 PR 直接短路跳过；有影响的才执行 MCP 写操作
 - **两种模式**：Auto（流水线式连续处理）、Manual（每条 PR 都经过用户审阅闸门 + 可追加提示词让 agent 续写微调）
-- **文档版本控制**：每次写入带 baseVersion 乐观锁 + `.history/` 快照，支持 `revert` 回滚
-- **cursor 持久化**：`lastProcessedSha` 记录在 `project-meta.json`，服务重启后从断点继续
+- **文档版本控制**：写入只留下文档 working tree 改动，用户在前端 Git 面板审阅 dirty 状态、手动提交，并可查看 blame
+- **cursor 持久化**：`lastProcessedSha` 记录在 `src/souko/projects.json`，服务重启后从断点继续
 
 | 工具 | 代码同步能力 |
 |------|-------------|
@@ -279,8 +279,8 @@ PR 驱动的增量更新管线已上线：
 
 - **中心化部署**：后端服务统一部署，团队所有成员通过 Web UI 共同使用
 - **手动审阅闸门**：Manual 模式下每条 PR 的文档更新都经过 `awaiting-review` 闸门，用户可 Accept 或追加提示词要求 agent 微调（session 续写）
-- **版本历史**：所有文档变更自动保存到 `.history/`，可随时 `revert` 回滚
-- **MCP 可写**：团队中的 Code Agent 可通过 MCP 工具直接读写文档，乐观锁防止并发冲突
+- **Git 审阅**：所有文档变更先停留在 working tree，由前端 Git 面板统一查看、提交和追踪 blame
+- **MCP 可写**：团队中的 Code Agent 可通过 MCP 工具直接读写文档，project-level lock 防止并发写入互相覆盖
 
 #### 3. 集成生态（D11=4）
 

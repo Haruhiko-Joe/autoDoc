@@ -10,7 +10,7 @@
 
 - **Node.js 18+** 和 **pnpm 10+**
 - **git 命令行**（系统自带的 `git` 即可，autoDoc 会在后台调用它做 clone / fetch / diff）
-- **至少一个 Agent 后端**（六个角色可各自独立选，默认都是 Claude）：
+- **至少一个 Agent 后端**（Scaffold / Decomposer / Writer / Checker / Flow Analyzer / Updater / Knowledge 可按角色独立选；当前默认是 Codex 为主，Checker 为 Claude）：
   - Claude：装好 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) 并确保能跑通 `claude` 命令
   - Codex：`npm i -g @openai/codex`，首次 `codex` 按提示登录 ChatGPT 账号或配置 API key
 - **（可选）OpenAI API Key**：仅用于文档页右下角的 AI 对话面板
@@ -35,13 +35,13 @@ pnpm start
    - `git@github.com:owner/repo.git`
    - `https://github.com/owner/repo.git`
 2. 选语言（中文 / English）和每个角色用哪个 Agent 后端（保持默认即可）。
-3. 按需要调整并发数（默认 8，API吃得消可以往上）。
-4. 点 **开始 / Start**。
+3. 按需要调整并发数（默认 8，API吃得消可以往上），也可以打开 **Review all decompositions**，让 Scaffold / Decomposer 产物先经过人工审核。
+4. 点 **开始 / Start**；首次生成会先进入 Knowledge 页面，你可以补充业务背景，也可以直接跳过使用默认行为。
 
 此时后端会：
 
 1. 自动 `git clone` 到 `src/souko/repo/{项目名}/`
-2. 跑 **Scaffold → Checker → Decomposer → Checker → Writer → Flow Analyzer** 的全量管线
+2. 可选收集 `knowledge.md`，并跑 **Scaffold → Checker → Decomposer → Checker → Writer → Flow Analyzer** 的全量管线
 3. 把文档产物写进 `src/souko/doc/{项目名}/`
 4. 在 `src/souko/projects.json` 里登记 sourceUrl / branch / head / lastUpdated
 
@@ -50,7 +50,7 @@ pnpm start
 ## 4. 浏览已生成的文档
 
 - **首页** 左侧下拉可以切换项目；切换时 git URL 输入框会自动填入该项目对应的源码地址。
-- **架构总览（Graph）**：从顶层模块图开始点击节点逐层下钻。边悬浮可以看到模块间关系类型（调用 / 依赖 / 数据流 / 事件 / 继承 / 组合）。
+- **架构总览（Graph）**：从顶层模块图开始点击节点逐层下钻。边悬浮可以看到模块间关系类型（调用 / 依赖 / 数据流 / 事件 / 继承 / 组合），右上角可以过滤节点，节点卡片上的 focus 可突出相关邻居。
 - **文档页**：叶子节点就是一份 Markdown，右下角可开启 AI 对话追问（需要 `OPENAI_API_KEY`）。
 - **交互流程图**：点 **Flows**，查看端到端业务流程的时序图。
 - **搜索**：侧边栏搜索框跨所有层级按关键字查节点。
@@ -102,7 +102,7 @@ autoDoc 自带一个 HTTP MCP server，挂在同进程同端口的 `/mcp` 上，
 | Mutate | `create_node` / `delete_node` | 增删节点 |
 | Mutate | `patch_page` / `update_page` | 局部替换或覆写叶子 md |
 
-所有 mutate 工具共用**项目级锁**：写操作会串行执行，只产生未提交变更，不自动 commit。用户在前端 Git 面板里审阅 dirty 状态并手动提交；blame 信息也从 Git 提供。
+所有 mutate 工具共用**项目级锁**：写操作会串行执行，只产生未提交变更。用户在前端 Git 面板里审阅 dirty 状态并手动提交；blame 信息也从 Git 提供。
 
 同时，autoDoc 会把一份超薄的 `doc-drill` skill 自动写进目标仓库的 `.claude/skills/doc-drill/`，并写入 Claude Code / Codex 对应的 MCP 配置，告诉 Agent 怎么用这些 MCP 工具。
 
@@ -142,7 +142,7 @@ cd web && npx vue-tsc --noEmit   # 前端
 
 - **Node.js 18+** and **pnpm 10+**
 - **`git` CLI** (autoDoc shells out to it for clone / fetch / diff)
-- **At least one Agent backend** (six roles, each independently configurable; defaults are all Claude):
+- **At least one Agent backend** (Scaffold / Decomposer / Writer / Checker / Flow Analyzer / Updater / Knowledge are independently configurable; current defaults are Codex-first with Checker on Claude):
   - Claude: install [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and make sure the `claude` command works
   - Codex: `npm i -g @openai/codex`, run `codex` once and sign in with your ChatGPT account or configure an API key
 - **(Optional) OpenAI API key**: only needed for the AI chat panel on doc pages
@@ -163,13 +163,13 @@ Once the backend prints `listening on 3100` and the frontend Vite dev server is 
 
 1. Paste a **git URL** (SSH or HTTPS) into the input on the home page
 2. Pick the language and per-role Agent backends (defaults are fine)
-3. Adjust concurrency if you want (default 8)
-4. Click **Start**
+3. Adjust concurrency if you want (default 8), and optionally enable **Review all decompositions** to manually approve Scaffold / Decomposer outputs
+4. Click **Start**; first-time generation opens the Knowledge page where you can add domain context or skip and use defaults
 
 The backend will then:
 
 1. `git clone` into `src/souko/repo/{name}/`
-2. Run the full **Scaffold → Checker → Decomposer → Checker → Writer → Flow Analyzer** pipeline
+2. Optionally collect `knowledge.md`, then run the full **Scaffold → Checker → Decomposer → Checker → Writer → Flow Analyzer** pipeline
 3. Write output to `src/souko/doc/{name}/`
 4. Register `sourceUrl` / `branch` / `head` / `lastUpdated` in `src/souko/projects.json`
 
@@ -178,7 +178,7 @@ The progress panel shows live phase + per-node status. If the server is killed m
 ### 4. Browse generated docs
 
 - **Home**: the sidebar dropdown switches projects. Switching a project auto-populates the git URL input with that project's source URL.
-- **Graph overview**: click nodes to drill down through layers. Hover edges for relationship type (calls / depends / data-flow / event / extends / composes).
+- **Graph overview**: click nodes to drill down through layers. Hover edges for relationship type (calls / depends / data-flow / event / extends / composes); use the node filter and focus controls to isolate crowded graphs.
 - **Doc pages**: leaf nodes are Markdown pages with an optional AI chat panel (needs `OPENAI_API_KEY`).
 - **Flows**: open the Flows view for sequence-diagrams of end-to-end business flows.
 - **Search**: the sidebar search box matches node names and descriptions across all layers.
@@ -230,7 +230,7 @@ Open that repo in Claude Code and the Agent will have access to these tools. Cod
 | Mutate | `create_node` / `delete_node` | Add or remove nodes |
 | Mutate | `patch_page` / `update_page` | Patch or overwrite a leaf md |
 
-Every mutate tool shares a **project-level lock**: writes are serialized, dirty the working tree, and never auto-commit. The user reviews dirty status and commits from the frontend Git panel; blame data also comes from Git.
+Every mutate tool shares a **project-level lock**: writes are serialized and dirty the working tree. The user reviews dirty status and commits from the frontend Git panel; blame data also comes from Git.
 
 autoDoc also installs a thin `doc-drill` skill into the target repo's `.claude/skills/doc-drill/` and writes the Claude Code / Codex MCP config that tells Agents how to use these tools.
 
@@ -263,7 +263,7 @@ cd web && npx vue-tsc --noEmit    # type-check frontend
 
 - **Node.js 18+** と **pnpm 10+**
 - **`git` コマンドライン**（autoDoc が clone / fetch / diff のため直接呼び出します）
-- **少なくとも 1 つの Agent バックエンド**（6 ロールを個別に設定可能、デフォルトはすべて Claude）:
+- **少なくとも 1 つの Agent バックエンド**（Scaffold / Decomposer / Writer / Checker / Flow Analyzer / Updater / Knowledge を個別設定可能。現在のデフォルトは Codex 中心、Checker は Claude）:
   - Claude: [Claude Code](https://docs.anthropic.com/en/docs/claude-code) をインストールして `claude` コマンドが動作することを確認
   - Codex: `npm i -g @openai/codex`、初回 `codex` で ChatGPT アカウントログインか API キー設定
 - **（オプション）OpenAI API キー**: ドキュメントページの AI チャットパネル用
@@ -284,13 +284,13 @@ pnpm start
 
 1. ホーム画面の入力欄に **git URL**（SSH / HTTPS どちらも可）を貼り付け
 2. 言語と各ロールの Agent バックエンドを選択（デフォルトで OK）
-3. 必要なら並行数を調整（デフォルト 8）
-4. **開始** をクリック
+3. 必要なら並行数を調整（デフォルト 8）。**Review all decompositions** を有効にすると Scaffold / Decomposer 出力を手動承認できます
+4. **開始** をクリック。初回生成では Knowledge ページが開き、ドメイン背景を追加するか、スキップして既定動作で進められます
 
 バックエンドが以下を実行します:
 
 1. `src/souko/repo/{プロジェクト名}/` に `git clone`
-2. **Scaffold → Checker → Decomposer → Checker → Writer → Flow Analyzer** の全量パイプラインを実行
+2. 必要に応じて `knowledge.md` を収集し、**Scaffold → Checker → Decomposer → Checker → Writer → Flow Analyzer** の全量パイプラインを実行
 3. 成果物を `src/souko/doc/{プロジェクト名}/` に書き込み
 4. `src/souko/projects.json` に sourceUrl / branch / head / lastUpdated を登録
 
@@ -299,7 +299,7 @@ pnpm start
 ### 4. 生成されたドキュメントを閲覧
 
 - **ホーム**: サイドバーのドロップダウンでプロジェクト切替。切り替えると git URL 入力欄に対応するソース URL が自動入力されます。
-- **架構総覧（Graph）**: トップレベルからノードをクリックして階層的に掘り下げ。エッジにホバーで関係タイプ表示。
+- **架構総覧（Graph）**: トップレベルからノードをクリックして階層的に掘り下げ。エッジにホバーで関係タイプ表示。ノードフィルターと focus 操作で混雑したグラフを絞り込めます。
 - **ドキュメントページ**: リーフノードは Markdown。右下の AI チャットで追加質問可能（`OPENAI_API_KEY` が必要）。
 - **フロー図**: Flows ビューで端々到端のビジネスフローをシーケンス図として表示。
 - **検索**: サイドバーの検索ボックスで全階層からキーワード検索。
@@ -351,7 +351,7 @@ autoDoc は同一プロセス同一ポートの `/mcp` に HTTP MCP サーバー
 | Mutate | `create_node` / `delete_node` | ノード追加削除 |
 | Mutate | `patch_page` / `update_page` | リーフ md の局所修正または上書き |
 
-すべての mutate ツールは**project-level lock**を共有します。書き込みは直列化され、working tree を dirty にするだけで自動 commit はしません。ユーザーが frontend Git panel で dirty 状態を確認して手動 commit します。blame 情報も Git から取得します。
+すべての mutate ツールは**project-level lock**を共有します。書き込みは直列化され、working tree を dirty にします。ユーザーが frontend Git panel で dirty 状態を確認して手動 commit します。blame 情報も Git から取得します。
 
 autoDoc はスリム版 `doc-drill` skill を対象リポジトリの `.claude/skills/doc-drill/` にも自動インストールし、Claude Code / Codex 用の MCP 設定も書き込んで Agent にツールの使い方を教えます。
 

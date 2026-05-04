@@ -14,6 +14,7 @@ import {
 } from '../services/doc'
 import MarkdownView from '../components/MarkdownView.vue'
 import { useTheme } from '../composables/useTheme'
+import { firstRouteParam } from '../utils/routeParams'
 
 type TurnRole = 'assistant' | 'user'
 interface TurnMessage {
@@ -27,9 +28,7 @@ const route = useRoute()
 const router = useRouter()
 
 const project = computed(() => {
-  const p = route.query.project
-  if (!p) return ''
-  return Array.isArray(p) ? (p[0] ?? '') : p
+  return firstRouteParam(route.query.project)
 })
 
 const language = ref<'zh' | 'en'>('zh')
@@ -326,20 +325,22 @@ onMounted(async () => {
   padding: 16px 24px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-sidebar);
+  backdrop-filter: blur(18px);
 }
 
 .k-header h1 {
   font-size: 16px;
-  font-weight: 600;
+  font-weight: 650;
   color: var(--text-heading);
   margin: 0;
   flex: 1;
 }
 
 .back-btn {
-  padding: 6px 10px;
+  min-height: 32px;
+  padding: 0 10px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: var(--bg-surface);
   color: var(--text-secondary);
   cursor: pointer;
@@ -358,9 +359,10 @@ onMounted(async () => {
 }
 
 .mini-select {
-  padding: 5px 8px;
+  height: 30px;
+  padding: 0 8px;
   border: 1px solid var(--border-strong);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: var(--bg-surface);
   color: var(--text-primary);
   font-size: 12px;
@@ -368,7 +370,7 @@ onMounted(async () => {
 
 .theme-btn {
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: var(--bg-surface);
   color: var(--text-secondary);
   cursor: pointer;
@@ -413,7 +415,7 @@ onMounted(async () => {
 .chat-banner {
   padding: 8px 12px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-card);
   background: var(--bg-surface-alt);
   color: var(--text-secondary);
   font-size: 12px;
@@ -424,7 +426,7 @@ onMounted(async () => {
   align-self: stretch;
   padding: 10px 12px;
   border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
-  border-radius: 6px;
+  border-radius: var(--radius-card);
   background: color-mix(in srgb, var(--accent) 10%, var(--bg-surface));
   color: var(--text-secondary);
   font-size: 12px;
@@ -462,7 +464,7 @@ onMounted(async () => {
 .chat-bubble {
   max-width: 90%;
   padding: 10px 12px;
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   font-size: 14px;
   line-height: 1.5;
   white-space: pre-wrap;
@@ -473,6 +475,7 @@ onMounted(async () => {
   background: var(--bg-surface);
   border: 1px solid var(--border);
   align-self: flex-start;
+  box-shadow: var(--shadow-soft);
 }
 
 .chat-bubble.user {
@@ -487,7 +490,7 @@ onMounted(async () => {
   opacity: 0.7;
   margin-bottom: 4px;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.04em;
 }
 
 .bubble-content.thinking {
@@ -509,7 +512,7 @@ onMounted(async () => {
   width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--border-strong);
-  border-radius: 6px;
+  border-radius: var(--radius-card);
   background: var(--bg-surface);
   color: var(--text-primary);
   font-size: 14px;
@@ -521,6 +524,7 @@ onMounted(async () => {
 
 .reply-input:focus {
   border-color: var(--accent);
+  box-shadow: var(--shadow-focus);
 }
 
 .reply-input:disabled {
@@ -548,9 +552,10 @@ onMounted(async () => {
 }
 
 .primary-btn {
-  padding: 7px 12px;
+  min-height: 32px;
+  padding: 0 12px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: var(--accent);
   color: #fff;
   font-size: 13px;
@@ -564,10 +569,16 @@ onMounted(async () => {
   cursor: not-allowed;
 }
 
+.primary-btn:hover:not(:disabled) {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+}
+
 .secondary-btn {
-  padding: 7px 12px;
+  min-height: 32px;
+  padding: 0 12px;
   border: 1px solid var(--border-strong);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: var(--bg-surface);
   color: var(--text-secondary);
   font-size: 13px;
@@ -602,8 +613,9 @@ onMounted(async () => {
   font-weight: 600;
   color: var(--text-secondary);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.04em;
   background: var(--bg-sidebar);
+  backdrop-filter: blur(18px);
 }
 
 .char-count {

@@ -115,6 +115,8 @@ watch(() => [props.visible, props.project, props.refreshToken], ([visible]) => {
   width: 360px;
   background: var(--bg-sidebar);
   border-left: 1px solid var(--border);
+  backdrop-filter: blur(18px);
+  box-shadow: -16px 0 42px rgba(0, 0, 0, 0.08);
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -133,6 +135,7 @@ watch(() => [props.visible, props.project, props.refreshToken], ([visible]) => {
 .panel-header h3 {
   margin: 0 0 4px;
   font-size: 15px;
+  font-weight: 650;
   color: var(--text-heading);
 }
 
@@ -167,8 +170,9 @@ watch(() => [props.visible, props.project, props.refreshToken], ([visible]) => {
   align-items: flex-start;
   padding: 12px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   background: var(--bg-surface);
+  box-shadow: var(--shadow-soft);
 }
 
 .state-dot {
@@ -198,7 +202,7 @@ watch(() => [props.visible, props.project, props.refreshToken], ([visible]) => {
 .head-box {
   padding: 12px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   background: var(--bg-surface-alt);
 }
 
@@ -226,8 +230,8 @@ watch(() => [props.visible, props.project, props.refreshToken], ([visible]) => {
 .commit-message {
   width: calc(100% - 40px);
   border: 1px solid var(--border-strong);
-  border-radius: 8px;
-  background: var(--bg-body);
+  border-radius: var(--radius-card);
+  background: var(--bg-surface);
   color: var(--text-primary);
   padding: 10px 12px;
   resize: none;
@@ -238,7 +242,7 @@ watch(() => [props.visible, props.project, props.refreshToken], ([visible]) => {
 .commit-message:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-shadow);
+  box-shadow: var(--shadow-focus);
 }
 
 .panel-actions {
@@ -249,8 +253,9 @@ watch(() => [props.visible, props.project, props.refreshToken], ([visible]) => {
 
 .btn-primary,
 .btn-secondary {
-  border-radius: 6px;
-  padding: 8px 14px;
+  border-radius: var(--radius-control);
+  min-height: 32px;
+  padding: 0 14px;
   font-size: 13px;
   cursor: pointer;
 }
@@ -259,6 +264,11 @@ watch(() => [props.visible, props.project, props.refreshToken], ([visible]) => {
   border: 1px solid var(--accent);
   background: var(--accent);
   color: #fff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
 }
 
 .btn-secondary {

@@ -56,7 +56,7 @@ Edges between sibling nodes carry relationship types: `calls`, `depends`, `data-
 
 ## Write tools (only when the user asks you to maintain docs)
 
-Write tools update the documentation working tree only. A human reviews and commits the accumulated documentation changes from autoDoc's web UI. No `baseVersion` parameter is needed.
+Write tools update the documentation working tree only. A human reviews and commits the accumulated documentation changes from autoDoc's web UI.
 
 | Tool | Purpose |
 |---|---|

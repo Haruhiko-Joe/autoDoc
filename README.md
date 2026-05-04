@@ -40,7 +40,6 @@
 | | autoDoc | DeepWiki | Google Code Wiki |
 |---|:---:|:---:|:---:|
 | 多 Agent 迭代验证 | **✅ 5 Agent + Checker 循环** | ❌ 单次生成 | ❌ 单次生成 |
-| git URL 直接接入 | **✅ 后端自动 clone & 跟踪 commit** | ✅ | ✅ |
 | 增量更新（git diff 驱动） | **✅ 专用 Updater Agent 局部改写** | ❌ 全量重生成 | ❌ 全量重生成 |
 | 交互式架构图 | **✅ 6 种语义边 + 悬浮详情** | ❌ 静态 Mermaid | ❌ 静态图 |
 | 递归自适应分解 | **✅ Agent 自主决定深度** | ❌ 固定层级 | ❌ 扁平结构 |
@@ -180,25 +179,27 @@ gitUrl ──► git clone ──► src/souko/repo/{name}
 
 | 角色 | 默认后端 |
 |------|---------|
-| Scaffold | Claude |
-| Decomposer | Claude |
-| Writer | Claude |
-| Checker | Codex |
-| Flow Analyzer | Claude |
-| Updater | Claude |
+| Scaffold | Codex |
+| Decomposer | Codex |
+| Writer | Codex |
+| Checker | Claude |
+| Flow Analyzer | Codex |
+| Updater | Codex |
 
 ## 核心特性
 
 - **🔗 git URL 一键接入** — 输入 SSH/HTTPS git URL，后端自动 clone、跟踪主分支 commit，统一存放在 `src/souko/`
 - **🔁 PR 粒度增量更新** — 通过 `gh pr list` 或 `git log` 自动发现所有新合并的 PR，由 PrUpdater Agent 通过 MCP 工具自主导航并做针对性修改。Auto 模式全自动、Manual 模式带审阅闸门 + session 续写微调
+- **🧭 分解人工审核** — 可选择在 Scaffold / Decomposer 输出后暂停，直接编辑模块图、批准，或带反馈重跑分解
+- **🧠 Knowledge Elicitor** — 首次生成前可和 Agent 对话生成 `knowledge.md`，把业务背景和分解偏好注入下游 Agent
 - **🛰️ HTTP MCP 服务** — 同进程 `/mcp` 端点（Streamable HTTP）暴露完整 query + mutate 工具集，Code Agent 直接读写文档
 - **📜 手动 Git 提交与 blame** — 文档写入只产生未提交变更；前端 Git 面板负责查看 dirty 状态、手动提交，并在预览/编辑中展示 Git blame 信息
-- **🔗 交互式有向图** — 基于 [AntV G6](https://g6.antv.antgroup.com/)，支持 6 种语义边类型（调用、依赖、数据流、事件、继承、组合），边悬浮弹窗展示关系详情
+- **🔗 交互式有向图** — 基于 [AntV G6](https://g6.antv.antgroup.com/)，支持 6 种语义边类型（调用、依赖、数据流、事件、继承、组合），边悬浮弹窗展示关系详情，并支持节点过滤与 focus 模式
 - **🔍 渐进式披露** — 从顶层架构总览出发，点击节点逐层深入至叶子 Markdown 文档
 - **🔄 交互流程图** — 自动提取跨模块业务流程，以时序图形式展示参与者、步骤和代码引用
 - **🔎 模块搜索** — 在侧边栏搜索框中快速检索任意模块
 - **💬 AI 对话面板** — 悬浮式聊天窗口，对文档内容追问（需配置 `OPENAI_API_KEY`）
-- **🌙 深色模式** — Tokyo Night 主题，一键切换
+- **🌙 深色模式** — 低干扰深色界面，一键切换
 - **📊 实时进度** — 在首页实时查看文档生成进度（区分 initial / incremental / noop 三种 mode）
 - **🌐 多语言** — 支持生成中文（默认）或英文文档站
 
@@ -257,7 +258,7 @@ enabled_tools = ["list_projects", "get_top", "get_graph", "get_page", "search_no
 | `patch_page` | 精准字符串匹配替换叶子 md 中的局部内容，比 update_page 更高效、更安全 |
 | `update_page` | 覆盖叶子 md 内容 |
 
-写入流程：**read → mutate 工具写入工作区 → 前端 Git 面板审阅 dirty 状态 → 用户手动提交**。mutate 工具不再接收 `baseVersion`，也不再自动 commit；并发写入由项目级锁串行化。
+写入流程：**read → mutate 工具写入工作区 → 前端 Git 面板审阅 dirty 状态 → 用户手动提交**。mutate 工具只留下文档工作区改动；并发写入由项目级锁串行化。
 
 > ⚠️ 当前 `/mcp` 默认无鉴权且开启了 CORS。生产部署前请加访问控制或绑定 loopback。
 
@@ -348,9 +349,9 @@ autoDoc/
 │       └── SKILL.md              # 瘦版 doc-drill skill（指向 /mcp）
 ├── web/                          # Vue 3 前端
 │   └── src/
-│       ├── views/                # GraphPage, DocPage, HomePage（git URL 输入）, FlowsPage
+│       ├── views/                # HomePage, GraphPage（图谱 + 文档预览/编辑）, FlowsPage, KnowledgePage
 │       ├── components/           # ChatPanel 等
-│       └── services/doc.ts       # API 客户端（startRun → { ok, mode }）
+│       └── services/doc.ts       # API 客户端（run/status/doc/search/chat/update/knowledge/doc-git）
 ├── package.json
 └── pnpm-workspace.yaml
 ```

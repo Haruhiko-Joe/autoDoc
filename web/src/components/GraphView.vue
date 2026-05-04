@@ -303,7 +303,7 @@ function createGraph() {
           labelFontSize: 11,
           labelFill: dark ? '#a9b1d6' : '#666',
           labelBackground: true,
-          labelBackgroundFill: dark ? '#24283b' : '#fff',
+          labelBackgroundFill: dark ? '#1c1d21' : '#fff',
           labelBackgroundOpacity: 0.85,
           labelBackgroundRadius: 3,
           labelPadding: [2, 6],
@@ -504,7 +504,7 @@ watch(isDark, recreateGraph)
   width: 100%;
   height: 100%;
   position: relative;
-  background: var(--bg-body);
+  background: var(--bg-surface);
 }
 
 /* G6 html node 内部渲染，需要全局样式 */
@@ -512,12 +512,12 @@ watch(isDark, recreateGraph)
   width: 100%;
   height: 100%;
   box-sizing: border-box;
-  padding: 26px 30px;
+  padding: 24px 28px;
   background: var(--bg-surface);
-  border: 1.5px solid var(--border-card);
-  border-radius: 12px;
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-card);
   cursor: pointer;
-  transition: box-shadow 0.2s, border-color 0.2s;
+  transition: box-shadow 0.2s, border-color 0.2s, transform 0.2s, opacity 0.2s;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -533,20 +533,22 @@ watch(isDark, recreateGraph)
 
 :global(.node-card:hover) {
   border-color: var(--accent);
-  box-shadow: 0 6px 20px var(--accent-shadow);
+  box-shadow: var(--shadow-soft);
+  transform: translateY(-1px);
 }
 
 :global(.node-card-name) {
   font-size: 17px;
-  font-weight: 600;
+  font-weight: 650;
   color: var(--text-heading);
   line-height: 1.3;
   flex: 1;
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 :global(.node-card-focus-trigger) {
-  color: var(--text-disabled);
+  color: var(--text-muted);
   font-size: 11px;
   font-weight: 600;
   line-height: 1;
@@ -554,6 +556,10 @@ watch(isDark, recreateGraph)
   text-transform: uppercase;
   cursor: pointer;
   flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: var(--bg-surface-alt);
 }
 
 :global(.node-card-focus-trigger:hover) {
@@ -561,14 +567,14 @@ watch(isDark, recreateGraph)
 }
 
 :global(.node-card-focus-trigger.is-active) {
+  background: var(--badge-active-bg);
   color: var(--accent);
-  text-decoration: underline;
-  text-underline-offset: 2px;
+  border-color: color-mix(in srgb, var(--accent) 32%, transparent);
 }
 
 :global(.node-card.is-selected) {
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent), 0 6px 20px var(--accent-shadow);
+  box-shadow: var(--shadow-focus), var(--shadow-soft);
 }
 
 :global(.node-card-edit-btn) {
@@ -591,7 +597,8 @@ watch(isDark, recreateGraph)
 :global(.node-card-desc) {
   font-size: 13px;
   color: var(--text-secondary);
-  line-height: 1.6;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
 }
 
 .edge-popover {
@@ -600,8 +607,8 @@ watch(isDark, recreateGraph)
   width: 380px;
   background: var(--bg-surface);
   border: 1px solid var(--border-card);
-  border-radius: 10px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-panel);
   padding: 16px 20px;
   transform: translate(-50%, 12px);
 }
@@ -706,10 +713,11 @@ watch(isDark, recreateGraph)
 }
 
 .btn-sm {
-  padding: 4px 14px;
+  min-height: 28px;
+  padding: 0 14px;
   font-size: 12px;
   font-weight: 500;
-  border-radius: 5px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   border: 1px solid var(--border);
   background: var(--bg-surface);

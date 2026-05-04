@@ -42,15 +42,18 @@ const emit = defineEmits<{
 .task-card {
   display: flex;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   overflow: hidden;
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  background: var(--bg-surface);
+  transition: border-color 0.15s, background 0.15s, transform 0.15s, box-shadow 0.15s;
 }
 
 .task-card:hover {
   border-color: var(--accent);
   background: var(--bg-surface-alt);
+  box-shadow: var(--shadow-soft);
+  transform: translateY(-1px);
 }
 
 .task-status-bar {
@@ -83,7 +86,7 @@ const emit = defineEmits<{
   color: var(--accent);
   background: var(--bg-surface-alt);
   padding: 1px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   flex-shrink: 0;
 }
 
@@ -150,7 +153,7 @@ const emit = defineEmits<{
   font-size: 11px;
   padding: 2px 10px;
   border: 1px solid var(--color-red);
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   background: none;
   color: var(--color-red);
   cursor: pointer;

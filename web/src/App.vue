@@ -33,18 +33,18 @@ const chatOpen = ref(false)
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 16px var(--accent-shadow);
+  box-shadow: 0 10px 28px var(--accent-shadow);
   z-index: 1001;
-  transition: background 0.2s, transform 0.2s;
+  transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
 }
 
 .chat-toggle:hover {
   background: var(--accent-hover);
-  transform: scale(1.05);
+  transform: translateY(-1px);
 }
 
 .chat-toggle.active {
   background: var(--text-secondary);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow-soft);
 }
 </style>

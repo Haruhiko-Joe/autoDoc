@@ -49,11 +49,11 @@ Scaffold ──► Checker ──► [ Decomposer ──► Checker ──► Wr
 ```typescript
 // src/workflow/arranger/agentFactory.ts
 export const DEFAULT_AGENT_BACKENDS: AgentBackends = {
-  scaffold: "claude",      // 需要深度理解代码结构
-  decomposer: "claude",    // 需要准确的模块拆分
-  writer: "claude",        // 需要高质量文档写作
-  checker: "codex",        // 结构校验用 Codex，更快
-  flowAnalyzer: "claude",  // 需要跨模块理解
+  scaffold: "codex",
+  decomposer: "codex",
+  writer: "codex",
+  checker: "claude",
+  flowAnalyzer: "codex",
 };
 ```
 
@@ -139,7 +139,7 @@ const RECOVERABLE: ReadonlySet<GraphStatusType> = new Set([
 autoDoc 的产物不是一堆平铺的 Markdown 文件。它是一棵**自索引的递归树**，每一层都是一个 JSON 图 + 若干 Markdown 叶子页面：
 
 ```
-web/doc/{projectName}/
+src/souko/doc/{projectName}/
 ├── top.json                          # 根图：项目概览 + 顶层模块列表
 ├── {Module}/
 │   ├── {Module}.json                 # 子图：描述 + codeScope + 子节点列表
@@ -197,8 +197,8 @@ autoDoc 的 MCP Server（`src/mcp/`）把所有文档操作封装成工具，分
 | `get_graph(project, nodeId)` | 获取某个模块的子图（子节点 + 边 + codeScope） |
 | `get_page(project, nodeId, ref)` | 读取叶子页面的 Markdown 内容 |
 | `search_nodes(project, query)` | 跨层级关键词搜索，返回完整路径 |
-| `list_history` / `get_history` | 查看文档的 git 历史和特定版本内容 |
-| `read_source_files` | 读取源代码文件（支持行号范围切片） |
+| `list_docs` / `read_docs` | 批量列出/读取文档原文 |
+| `list_source_files` / `read_source_files` | 定位并读取源代码文件 |
 
 **写入工具**（`src/mcp/tools/mutate.ts`）：
 
@@ -208,9 +208,8 @@ autoDoc 的 MCP Server（`src/mcp/`）把所有文档操作封装成工具，分
 | `update_page` | 全量重写一个叶子页面 |
 | `create_node` / `delete_node` | 新增或删除模块节点 |
 | `update_node` / `update_graph_meta` | 修改节点属性或图元数据 |
-| `revert` | 从 git 历史恢复文档到指定版本 |
 
-所有写入工具在操作完成后会自动执行 `git commit`，每次修改都有完整的版本记录。不需要手动传 `baseVersion` 做乐观锁——git 本身就是版本管理。
+所有写入工具只会修改 `src/souko/doc/{project}` 的文档工作区。前端 Git 面板负责查看 dirty 状态、手动 commit，并在 Markdown 预览/编辑中展示 blame。并发写入通过 project-level lock 串行化，不再使用工具层乐观锁。
 
 **为什么要用 MCP 而不是让 Agent 直接读写文件？** 两个原因：
 
@@ -232,7 +231,7 @@ autoDoc 生成文档时，会同时在目标仓库的 `.claude/skills/doc-drill/
 
 核心原则是**懒加载**：不到需要时不读叶子页面（每个页面 5-15KB），不到需要时不读源代码。Agent 先用图结构定位，确认相关性后再深入。这让 token 消耗保持在最低限度。
 
-用户通过 Claude Code 或wanqing提问时，Agent 自动加载这个 Skill，按协议逐层导航文档树，找到相关模块后回答问题。比如问"登录流程涉及哪些模块"，Agent 会：
+用户通过 Claude Code 或 Codex 提问时，Agent 自动加载这个 Skill，按协议逐层导航文档树，找到相关模块后回答问题。比如问"登录流程涉及哪些模块"，Agent 会：
 
 1. `get_top` → 扫描顶层模块描述，定位到 Auth 和 Session 模块
 2. `get_graph("Auth")` → 看到子节点有 OAuth、PasswordLogin、TokenManager
@@ -297,9 +296,7 @@ pnpm install
 
 # 配置 API Key（.env 文件）
 cp .env.example .env
-# 填入 ANTHROPIC_API_KEY 和/或 OPENAI_API_KEY
-
-实际还是最建议买两个Claude 20x max和一个gpt pro，价格是wanqing的1/10不到，用的还是官方纯血模型，跑完之后剩下的额度还能自己玩
+# 填入需要的 Agent 后端凭证；OPENAI_API_KEY 也用于前端 AI Chat
 ```
 
 需要 Node.js 18+ 和 pnpm。
@@ -319,10 +316,13 @@ pnpm start
 打开浏览器访问前端页面。在首页输入你项目的 git URL，点击开始。autoDoc 会自动：
 
 1. Clone 仓库到本地
-2. 运行 Scaffold → Decomposer → Writer 流水线
-3. 实时展示进度（哪些模块在处理、哪些已完成）
+2. 可选进入 Knowledge Elicitor 补充领域知识
+3. 运行 Scaffold → Checker → Decomposer → Checker → Writer → FlowAnalyzer 流水线
+4. 实时展示进度（哪些模块在处理、哪些已完成）
 
 生成完成后，你会看到一个交互式的模块图（AntV G6 渲染）。点击任意节点可以查看该模块的详细文档，支持在线编辑。
+
+如果启用 **Review all decompositions**，Scaffold / Decomposer 输出会进入人工审核队列。你可以在审核面板里编辑节点和边、直接批准，或输入反馈让对应 Agent 续写重跑。
 
 ### 5.4 增量更新
 
@@ -332,7 +332,7 @@ Manual 模式下，每个 PR 处理前后都有人工确认环节，你可以在
 
 ### 5.5 对文档提问
 
-autoDoc 生成文档时会同时产出一个 `doc-drill` skill，部署到wanqing就可以了
+autoDoc 生成文档时会同时产出一个 `doc-drill` skill，并写入目标仓库的 Claude Code / Codex MCP 配置。之后在目标仓里向 Code Agent 提问时，它会通过 `/mcp` 逐层读取文档。
 
 ### 5.6 Knowledge 前置知识
 
@@ -412,10 +412,10 @@ MCP 工具分两类文件：
 
 ### 6.5 产物结构
 
-生成的文档存储在 `web/doc/{projectName}/` 下，结构是自索引的：
+生成的文档存储在 `src/souko/doc/{projectName}/` 下，结构是自索引的：
 
 ```
-web/doc/{projectName}/
+src/souko/doc/{projectName}/
 ├── top.json                          # 根图：项目概览 + 顶层模块列表
 ├── {Module}/
 │   ├── {Module}.json                 # 子图：描述 + codeScope + 子节点
@@ -447,7 +447,7 @@ web/doc/{projectName}/
 | `src/mcp/tools/query.ts` | MCP 查询工具 |
 | `src/mcp/tools/mutate.ts` | MCP 写入工具 |
 | `src/mcp/docStore.ts` | 文档存储层（读写 JSON / Markdown） |
-| `src/mcp/docGit.ts` | Git 版本管理（自动 commit / revert） |
+| `src/mcp/docGit.ts` | 文档 Git status / 手动 commit / blame |
 | `src/workflow/updateOrchestrator.ts` | PR 增量更新编排（Auto / Manual 模式） |
 | `src/git/prDiscovery.ts` | PR / commit 发现（gh CLI 或 git log） |
 | `src/skill-template/SKILL.md` | doc-drill skill 模板（对文档提问的能力） |

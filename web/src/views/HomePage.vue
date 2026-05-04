@@ -9,6 +9,7 @@ import UpdateQueuePanel from '../components/UpdateQueuePanel.vue'
 import DocGitPanel from '../components/DocGitPanel.vue'
 import DecompositionReviewPanel from '../components/DecompositionReviewPanel.vue'
 import { useTheme } from '../composables/useTheme'
+import { firstRouteParam } from '../utils/routeParams'
 import type { TopGraph, GraphNode } from '../types'
 
 const { isDark, toggle: toggleTheme } = useTheme()
@@ -55,9 +56,7 @@ const agentBackendFields: Array<{ key: keyof AgentBackends; label: string }> = [
 ]
 
 function getRouteProject(): string {
-  const p = route.params.project
-  if (!p) return ''
-  return Array.isArray(p) ? (p[0] ?? '') : p
+  return firstRouteParam(route.params.project)
 }
 
 function getProjectName(gitUrlValue: string): string {
@@ -658,9 +657,10 @@ async function handleRetryErrors() {
   max-width: 300px;
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border);
+  backdrop-filter: blur(18px);
   display: flex;
   flex-direction: column;
-  padding: 24px 0;
+  padding: 22px 0;
   box-sizing: border-box;
 }
 
@@ -673,15 +673,16 @@ async function handleRetryErrors() {
 }
 
 .sidebar-header h2 {
-  font-size: 20px;
-  font-weight: 700;
+  font-size: 19px;
+  font-weight: 650;
   color: var(--text-heading);
   margin: 0;
+  letter-spacing: -0.02em;
 }
 
 .theme-btn {
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: var(--bg-surface);
   color: var(--text-secondary);
   cursor: pointer;
@@ -700,7 +701,7 @@ async function handleRetryErrors() {
 }
 
 .sidebar-input {
-  padding: 16px 16px 12px;
+  padding: 16px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -711,7 +712,7 @@ async function handleRetryErrors() {
   color: var(--text-secondary);
   margin-bottom: 8px;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.04em;
 }
 
 .select-label {
@@ -725,9 +726,10 @@ async function handleRetryErrors() {
 
 .path-input {
   flex: 1;
-  padding: 7px 10px;
+  height: 34px;
+  padding: 0 10px;
   border: 1px solid var(--border-strong);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-size: 13px;
   outline: none;
   min-width: 0;
@@ -737,6 +739,7 @@ async function handleRetryErrors() {
 
 .path-input:focus {
   border-color: var(--accent);
+  box-shadow: var(--shadow-focus);
 }
 
 .path-input:disabled {
@@ -745,9 +748,10 @@ async function handleRetryErrors() {
 }
 
 .config-btn {
-  padding: 7px 8px;
+  width: 34px;
+  height: 34px;
   border: 1px solid var(--border-strong);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: var(--bg-surface);
   color: var(--text-secondary);
   cursor: pointer;
@@ -769,9 +773,10 @@ async function handleRetryErrors() {
 }
 
 .run-btn {
-  padding: 7px 14px;
+  min-height: 34px;
+  padding: 0 14px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: var(--accent);
   color: #fff;
   font-size: 13px;
@@ -782,6 +787,7 @@ async function handleRetryErrors() {
 
 .run-btn:hover:not(:disabled) {
   background: var(--accent-hover);
+  transform: translateY(-1px);
 }
 
 .run-btn:disabled {
@@ -798,9 +804,10 @@ async function handleRetryErrors() {
 
 .project-select {
   width: 100%;
-  padding: 7px 10px;
+  height: 34px;
+  padding: 0 10px;
   border: 1px solid var(--border-strong);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-size: 13px;
   outline: none;
   background: var(--bg-surface);
@@ -809,6 +816,7 @@ async function handleRetryErrors() {
 
 .project-select:focus {
   border-color: var(--accent);
+  box-shadow: var(--shadow-focus);
 }
 
 .project-select:disabled {
@@ -819,10 +827,11 @@ async function handleRetryErrors() {
 .knowledge-btn {
   margin-top: 10px;
   width: 100%;
-  padding: 8px 12px;
+  min-height: 36px;
+  padding: 7px 12px;
   border: 1px dashed var(--border-strong);
-  border-radius: 6px;
-  background: transparent;
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--bg-surface) 70%, transparent);
   color: var(--text-secondary);
   font-size: 12px;
   cursor: pointer;
@@ -856,6 +865,7 @@ async function handleRetryErrors() {
 .sidebar-progress {
   padding: 14px 16px;
   border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-surface) 48%, transparent);
 }
 
 .progress-header {
@@ -873,7 +883,7 @@ async function handleRetryErrors() {
 
 .pause-btn {
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: var(--bg-surface);
   color: var(--text-secondary);
   cursor: pointer;
@@ -898,17 +908,17 @@ async function handleRetryErrors() {
 .retry-btn {
   width: 100%;
   padding: 8px 12px;
-  border: 1px solid var(--error, #e53e3e);
-  border-radius: 6px;
+  border: 1px solid var(--color-red);
+  border-radius: var(--radius-control);
   background: transparent;
-  color: var(--error, #e53e3e);
+  color: var(--color-red);
   font-size: 13px;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
 
 .retry-btn:hover {
-  background: var(--error, #e53e3e);
+  background: var(--color-red);
   color: #fff;
 }
 
@@ -960,7 +970,7 @@ async function handleRetryErrors() {
   margin-top: 10px;
   padding: 8px 12px;
   border: 1px solid var(--accent);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: var(--bg-surface);
   color: var(--accent);
   font-size: 13px;
@@ -980,9 +990,10 @@ async function handleRetryErrors() {
 
 .search-input {
   width: 100%;
-  padding: 6px 10px;
+  height: 32px;
+  padding: 0 10px;
   border: 1px solid var(--border-strong);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-size: 13px;
   outline: none;
   box-sizing: border-box;
@@ -992,6 +1003,7 @@ async function handleRetryErrors() {
 
 .search-input:focus {
   border-color: var(--accent);
+  box-shadow: var(--shadow-focus);
 }
 
 .search-results {
@@ -1004,7 +1016,7 @@ async function handleRetryErrors() {
 
 .search-result-item {
   padding: 6px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   display: flex;
   flex-direction: column;
@@ -1058,7 +1070,8 @@ async function handleRetryErrors() {
 }
 
 .canvas-header {
-  padding: 24px 32px 16px;
+  min-height: 68px;
+  padding: 18px 32px 14px;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -1066,10 +1079,11 @@ async function handleRetryErrors() {
 
 .canvas-header h1 {
   font-size: 18px;
-  font-weight: 500;
+  font-weight: 560;
   color: var(--text-secondary);
   margin: 0;
   line-height: 1.5;
+  letter-spacing: -0.01em;
 }
 
 .project-chip {
@@ -1097,9 +1111,10 @@ async function handleRetryErrors() {
 }
 
 .update-btn {
-  padding: 4px 14px;
+  min-height: 30px;
+  padding: 0 14px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: var(--bg-surface);
   color: var(--text-primary);
   font-size: 13px;
@@ -1111,6 +1126,7 @@ async function handleRetryErrors() {
 .update-btn:hover {
   border-color: var(--accent);
   color: var(--accent);
+  background: var(--bg-surface-hover);
 }
 
 .live-badge {
@@ -1135,8 +1151,10 @@ async function handleRetryErrors() {
   flex: 1;
   margin: 0 16px 16px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   overflow: hidden;
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-soft);
 }
 
 .canvas-empty {
@@ -1146,6 +1164,7 @@ async function handleRetryErrors() {
   height: 100%;
   color: var(--text-muted);
   font-size: 15px;
+  letter-spacing: -0.01em;
 }
 
 .canvas-empty.error {
@@ -1191,6 +1210,7 @@ async function handleRetryErrors() {
   position: fixed;
   inset: 0;
   background: var(--bg-overlay);
+  backdrop-filter: blur(14px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1200,11 +1220,11 @@ async function handleRetryErrors() {
 .dialog {
   background: var(--bg-surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-card);
   width: 420px;
   max-width: 90vw;
   max-height: 80vh;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+  box-shadow: var(--shadow-panel);
   display: flex;
   flex-direction: column;
 }
@@ -1219,7 +1239,7 @@ async function handleRetryErrors() {
 .dialog-header h3 {
   margin: 0;
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 650;
   color: var(--text-heading);
 }
 
@@ -1253,7 +1273,7 @@ async function handleRetryErrors() {
   margin-top: 14px;
   padding: 10px 12px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   background: var(--bg-surface-alt);
   color: var(--text-primary);
   cursor: pointer;

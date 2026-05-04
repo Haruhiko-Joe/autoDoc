@@ -177,25 +177,27 @@ Each Agent role independently uses **Claude** (Claude Agent SDK) or **Codex** (O
 
 | Role | Default Backend |
 |------|----------------|
-| Scaffold | Claude |
-| Decomposer | Claude |
-| Writer | Claude |
-| Checker | Codex |
-| Flow Analyzer | Claude |
-| Updater | Claude |
+| Scaffold | Codex |
+| Decomposer | Codex |
+| Writer | Codex |
+| Checker | Claude |
+| Flow Analyzer | Codex |
+| Updater | Codex |
 
 ## Key Features
 
 - **🔗 One-step git URL ingestion** — paste an SSH/HTTPS git URL; backend auto-clones, tracks the main branch head, keeps everything under `src/souko/`
 - **🔁 Per-PR incremental updates** — discovers all newly merged PRs via `gh pr list` (or `git log` fallback) and PrUpdater Agent navigates docs via MCP tools for targeted edits. Auto mode runs hands-free; Manual mode adds a review gate with session continuation for iterative refinement
+- **🧭 Human decomposition review** — optionally pause after Scaffold / Decomposer outputs, edit the graph directly, approve it, or rerun decomposition with feedback
+- **🧠 Knowledge Elicitor** — before first generation, chat with an Agent to create `knowledge.md` and inject domain context / decomposition preferences into downstream Agents
 - **🛰️ HTTP MCP server** — same-process `/mcp` endpoint (Streamable HTTP) exposes the full query + mutate toolset for direct Code Agent access
 - **📜 Manual Git commits and blame** — doc writes only create uncommitted changes; the Git panel shows dirty status, commits manually, and surfaces Git blame in preview/editing views
-- **🔗 Interactive directed graphs** — [AntV G6](https://g6.antv.antgroup.com/) with 6 semantic edge types (calls, depends, data-flow, event, extends, composes) and hover popovers
+- **🔗 Interactive directed graphs** — [AntV G6](https://g6.antv.antgroup.com/) with 6 semantic edge types (calls, depends, data-flow, event, extends, composes), hover popovers, node filtering, and focus mode
 - **🔍 Progressive disclosure** — start at the top-level overview, drill into nodes down to leaf Markdown
 - **🔄 Interaction flow diagrams** — cross-module business flows auto-extracted and rendered as sequence diagrams with participants, steps, and code references
 - **🔎 Module search** — sidebar search over all modules
 - **💬 AI chat panel** — floating chat window for doc follow-ups (requires `OPENAI_API_KEY`)
-- **🌙 Dark mode** — Tokyo Night theme
+- **🌙 Dark mode** — low-distraction dark interface
 - **📊 Real-time progress** — live generation progress on the home page (distinguishes initial / incremental / noop modes)
 - **🌐 Multi-language** — generate Chinese (default) or English doc sites
 
@@ -254,7 +256,7 @@ The matching [doc-drill skill](src/skill-template/SKILL.md) is a thin instructio
 | `patch_page` | Targeted string-match-and-replace edits to a leaf md, more efficient and safer than update_page |
 | `update_page` | Overwrite a leaf md |
 
-Write flow: **read → mutate tools dirty the working tree → review dirty status in the frontend Git panel → user commits manually**. Mutate tools no longer accept `baseVersion` and never auto-commit; concurrent writes are serialized by the project-level lock.
+Write flow: **read → mutate tools dirty the working tree → review dirty status in the frontend Git panel → user commits manually**. Mutate tools only leave documentation working-tree changes; concurrent writes are serialized by the project-level lock.
 
 > ⚠️ `/mcp` is unauthenticated and CORS-open by default. Add access control or bind to loopback before production use.
 
@@ -345,9 +347,9 @@ autoDoc/
 │       └── SKILL.md              # Thin doc-drill skill (points at /mcp)
 ├── web/                          # Vue 3 frontend
 │   └── src/
-│       ├── views/                # GraphPage, DocPage, HomePage (git URL input), FlowsPage
+│       ├── views/                # HomePage, GraphPage (graph + doc preview/edit), FlowsPage, KnowledgePage
 │       ├── components/           # ChatPanel, etc.
-│       └── services/doc.ts       # API client (startRun → { ok, mode })
+│       └── services/doc.ts       # API client (run/status/doc/search/chat/update/knowledge/doc-git)
 ├── package.json
 └── pnpm-workspace.yaml
 ```

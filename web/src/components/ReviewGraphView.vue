@@ -341,7 +341,7 @@ watch(isDark, recreateGraph)
   width: 100%;
   height: 100%;
   position: relative;
-  background: var(--bg-body);
+  background: var(--bg-surface);
 }
 
 :global(.review-graph-node) {
@@ -353,18 +353,18 @@ watch(isDark, recreateGraph)
   justify-content: center;
   padding: 0 12px;
   border: 1px solid var(--border-card);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   background: var(--bg-surface);
   color: var(--text-heading);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 650;
   cursor: pointer;
   overflow: hidden;
 }
 
 :global(.review-graph-node.is-selected) {
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-shadow);
+  box-shadow: var(--shadow-focus);
 }
 
 :global(.review-graph-node-name) {
@@ -380,9 +380,9 @@ watch(isDark, recreateGraph)
   transform: translate(-50%, 10px);
   padding: 12px;
   border: 1px solid var(--border-card);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   background: var(--bg-surface);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--shadow-panel);
 }
 
 .edge-popover-header {
@@ -432,9 +432,10 @@ watch(isDark, recreateGraph)
 }
 
 .edge-popover-actions button {
-  padding: 5px 10px;
+  min-height: 28px;
+  padding: 0 10px;
   border: 1px solid var(--border);
-  border-radius: 5px;
+  border-radius: var(--radius-control);
   background: var(--bg-surface);
   color: var(--text-primary);
   font-size: 12px;
