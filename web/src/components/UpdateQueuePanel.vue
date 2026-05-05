@@ -219,6 +219,8 @@ async function handleStart() {
   width: 380px;
   background: var(--bg-sidebar);
   border-left: 1px solid var(--border);
+  backdrop-filter: blur(18px);
+  box-shadow: -16px 0 42px rgba(0, 0, 0, 0.08);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -236,7 +238,9 @@ async function handleStart() {
 .panel-header h3 {
   margin: 0;
   font-size: 15px;
+  font-weight: 650;
   color: var(--text-heading);
+  letter-spacing: -0.01em;
 }
 
 .panel-close {
@@ -264,7 +268,7 @@ async function handleStart() {
   padding: 3px;
   background: var(--bg-surface-alt);
   border: 1px solid var(--border);
-  border-radius: 9px;
+  border-radius: var(--radius-card);
   isolation: isolate;
 }
 
@@ -275,8 +279,8 @@ async function handleStart() {
   width: calc(50% - 3px);
   height: calc(100% - 6px);
   background: var(--accent);
-  border-radius: 6px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25), 0 0 0 0.5px rgba(255, 255, 255, 0.06) inset;
+  border-radius: var(--radius-control);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18), 0 0 0 0.5px rgba(255, 255, 255, 0.08) inset;
   transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
   z-index: 0;
 }
@@ -312,7 +316,7 @@ async function handleStart() {
 }
 
 .mode-switch:focus-within {
-  box-shadow: 0 0 0 2px var(--accent);
+  box-shadow: var(--shadow-focus);
 }
 
 .mode-hint {
@@ -325,9 +329,10 @@ async function handleStart() {
 }
 
 .start-btn {
-  padding: 8px 16px;
+  min-height: 34px;
+  padding: 0 16px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: var(--accent);
   color: #fff;
   font-size: 14px;
@@ -335,7 +340,7 @@ async function handleStart() {
   cursor: pointer;
 }
 
-.start-btn:hover { opacity: 0.9; }
+.start-btn:hover { background: var(--accent-hover); transform: translateY(-1px); }
 
 .panel-error {
   font-size: 13px;
@@ -374,9 +379,10 @@ async function handleStart() {
 
 .cancel-btn {
   font-size: 12px;
-  padding: 3px 10px;
+  min-height: 26px;
+  padding: 0 10px;
   border: 1px solid var(--color-red);
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   background: none;
   color: var(--color-red);
   cursor: pointer;
@@ -421,7 +427,7 @@ async function handleStart() {
   font-size: 12px;
   color: var(--text-disabled);
   border: 1px dashed var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   margin-top: 4px;
 }
 

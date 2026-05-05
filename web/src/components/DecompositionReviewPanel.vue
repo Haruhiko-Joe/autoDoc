@@ -456,6 +456,8 @@ function handleEdgeDelete(source: string, edgeTarget: string, edgeType: EdgeType
   box-sizing: border-box;
   background: var(--bg-sidebar);
   border-left: 1px solid var(--border);
+  backdrop-filter: blur(18px);
+  box-shadow: -18px 0 44px rgba(0, 0, 0, 0.1);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -506,6 +508,7 @@ function handleEdgeDelete(source: string, edgeTarget: string, edgeType: EdgeType
 .panel-header h3 {
   margin: 0 0 4px;
   font-size: 15px;
+  font-weight: 650;
   color: var(--text-heading);
 }
 
@@ -540,7 +543,7 @@ function handleEdgeDelete(source: string, edgeTarget: string, edgeType: EdgeType
   min-width: 150px;
   padding: 8px 10px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-card);
   background: var(--bg-surface);
   color: var(--text-primary);
   cursor: pointer;
@@ -549,7 +552,7 @@ function handleEdgeDelete(source: string, edgeTarget: string, edgeType: EdgeType
 
 .review-tab.active {
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent);
+  box-shadow: var(--shadow-focus);
 }
 
 .review-tab span {
@@ -573,7 +576,7 @@ function handleEdgeDelete(source: string, edgeTarget: string, edgeType: EdgeType
   margin-top: 8px;
   padding: 5px 8px;
   border: 1px solid var(--accent);
-  border-radius: 5px;
+  border-radius: var(--radius-control);
   background: transparent;
   color: var(--accent);
   font-size: 11px;
@@ -620,7 +623,7 @@ function handleEdgeDelete(source: string, edgeTarget: string, edgeType: EdgeType
   position: relative;
   margin: 0 20px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   overflow: hidden;
   background: var(--bg-body);
   min-height: 280px;
@@ -634,7 +637,7 @@ function handleEdgeDelete(source: string, edgeTarget: string, edgeType: EdgeType
   height: auto;
   min-height: 0;
   border-color: var(--accent);
-  box-shadow: 0 18px 70px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--shadow-panel);
 }
 
 .fullscreen-bar {
@@ -679,7 +682,7 @@ function handleEdgeDelete(source: string, edgeTarget: string, edgeType: EdgeType
   width: 32px;
   height: 32px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: var(--bg-surface);
   color: var(--text-primary);
   font-size: 20px;
@@ -705,7 +708,7 @@ function handleEdgeDelete(source: string, edgeTarget: string, edgeType: EdgeType
   width: 32px;
   height: 32px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: var(--bg-surface);
   color: var(--text-primary);
   font-size: 15px;
@@ -752,7 +755,7 @@ function handleEdgeDelete(source: string, edgeTarget: string, edgeType: EdgeType
   min-height: 78px;
   padding: 9px 10px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-card);
   background: var(--bg-surface);
   color: var(--text-primary);
   font: inherit;
@@ -762,6 +765,7 @@ function handleEdgeDelete(source: string, edgeTarget: string, edgeType: EdgeType
 .feedback-box textarea:focus {
   outline: none;
   border-color: var(--accent);
+  box-shadow: var(--shadow-focus);
 }
 
 .panel-actions {
@@ -773,8 +777,9 @@ function handleEdgeDelete(source: string, edgeTarget: string, edgeType: EdgeType
 
 .btn-primary,
 .btn-secondary {
-  padding: 8px 14px;
-  border-radius: 6px;
+  min-height: 32px;
+  padding: 0 14px;
+  border-radius: var(--radius-control);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
@@ -802,7 +807,7 @@ function handleEdgeDelete(source: string, edgeTarget: string, edgeType: EdgeType
   margin: 20px;
   padding: 18px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   background: var(--bg-surface);
   color: var(--text-secondary);
   font-size: 13px;

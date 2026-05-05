@@ -124,7 +124,10 @@ gitUrl ──► git clone ──► src/souko/repo/{name}
                 ▼                                   ▼
              Writer                              Writer
                 │                                   │
-                └────────────► Flow Analyzer ◄──────┘
+                └───────► Assemble MCP / Skill ◄────┘
+                                       │
+                                       ▼
+                                Flow Analyzer
                                        │
                                        ▼
                        projects.json + src/souko/doc/{name}
@@ -177,25 +180,27 @@ gitUrl ──► git clone ──► src/souko/repo/{name}
 
 | ロール | デフォルトバックエンド |
 |--------|----------------------|
-| Scaffold | Claude |
-| Decomposer | Claude |
-| Writer | Claude |
-| Checker | Codex |
-| Flow Analyzer | Claude |
-| Updater | Claude |
+| Scaffold | Codex |
+| Decomposer | Codex |
+| Writer | Codex |
+| Checker | Claude |
+| Flow Analyzer | Codex |
+| Updater | Codex |
 
 ## 主な機能
 
 - **🔗 git URL ワンクリック接続** — SSH/HTTPS git URL を入力するだけで、バックエンドが自動 clone・メインブランチの commit を追跡、すべて `src/souko/` 以下に集約
 - **🔁 PR 単位の増分更新** — `gh pr list`（または `git log` フォールバック）で新たにマージされた全 PR を自動検出し、PrUpdater Agent が MCP ツール経由で標的修正を実行。Auto モードは完全自動、Manual モードはレビューゲート + セッション継続による反復微調整付き
+- **🧭 分解レビューゲート** — Scaffold / Decomposer の出力後に任意で一時停止し、グラフを直接編集・承認、またはフィードバック付きで再分解できます
+- **🧠 Knowledge Elicitor** — 初回生成前に Agent と会話して `knowledge.md` を作成し、ドメイン背景や分解方針を下流 Agent に注入できます
 - **🛰️ HTTP MCP サーバー** — 同一プロセスの `/mcp` エンドポイント（Streamable HTTP）が query + mutate の全ツールを公開、Code Agent から直接読み書き可能
 - **📜 手動 Git commit と blame** — ドキュメント書き込みは未コミット変更だけを作成し、Git パネルで dirty 状態確認・手動 commit・preview/editing での blame 表示を行います
-- **🔗 インタラクティブ有向グラフ** — [AntV G6](https://g6.antv.antgroup.com/) ベース、6 種のセマンティックエッジ（呼び出し、依存、データフロー、イベント、継承、コンポジション）対応、ホバーで関係詳細を表示
+- **🔗 インタラクティブ有向グラフ** — [AntV G6](https://g6.antv.antgroup.com/) ベース、6 種のセマンティックエッジ（呼び出し、依存、データフロー、イベント、継承、コンポジション）対応、ホバー詳細、ノードフィルター、focus モードを搭載
 - **🔍 段階的開示** — トップレベル概要から、ノードをクリックしてリーフの Markdown まで階層的に掘り下げ
 - **🔄 インタラクションフロー図** — モジュール横断のビジネスフローを自動抽出し、参加者・ステップ・コード参照付きシーケンス図として描画
 - **🔎 モジュール検索** — サイドバーから全モジュールを高速検索
 - **💬 AI チャットパネル** — フローティングチャットでドキュメント内容に追加質問（`OPENAI_API_KEY` が必要）
-- **🌙 ダークモード** — Tokyo Night テーマ
+- **🌙 ダークモード** — 低ノイズなダーク UI
 - **📊 リアルタイム進捗** — ホーム画面で生成進捗をライブ表示（initial / incremental / noop の 3 モードを区別）
 - **🌐 多言語** — 中国語（デフォルト）または英語のドキュメントサイトを生成
 
@@ -223,7 +228,7 @@ Codex は project-scoped `.codex/config.toml` を使います。autoDoc は skil
 ```toml
 [mcp_servers.autodoc]
 url = "http://localhost:3100/mcp"
-enabled_tools = ["list_projects", "get_top", "get_graph", "get_page", "search_nodes", "list_source_files", "read_source_files", "list_docs", "read_docs", "patch_page", "update_page", "update_node", "update_graph_meta", "create_node", "delete_node", "update_top"]
+enabled_tools = ["list_projects", "get_top", "get_flows", "get_graph", "get_page", "search_nodes", "list_source_files", "read_source_files", "list_docs", "read_docs", "patch_page", "update_page", "update_node", "update_graph_meta", "create_node", "delete_node", "update_top"]
 ```
 
 対応する [doc-drill skill](src/skill-template/SKILL.md) は **MCP ツールの呼び出し方だけ**を記述した薄い説明書で、autoDoc と一緒に配布されます。
@@ -236,6 +241,7 @@ enabled_tools = ["list_projects", "get_top", "get_graph", "get_page", "search_no
 |---|---|
 | `list_projects` | 利用可能な doc project を列挙（name / description） |
 | `get_top` | プロジェクトの top.json を取得 |
+| `get_flows` | 典型的なモジュール間フローを読み、代表ケースで協調動作を理解 |
 | `get_graph` | サブグラフを取得（`codeScope`、`nodes`、`description`） |
 | `get_page` | リーフの Markdown ページを読む |
 | `search_nodes` | 全階層を横断してノード名・説明をキーワード検索 |
@@ -254,7 +260,7 @@ enabled_tools = ["list_projects", "get_top", "get_graph", "get_page", "search_no
 | `patch_page` | リーフ md 内の局所テキストを文字列マッチ＆置換で精密編集、update_page より効率的で安全 |
 | `update_page` | リーフ md を上書き |
 
-書き込みフロー: **read → mutate tool が working tree を変更 → frontend Git panel で dirty 状態を確認 → ユーザーが手動 commit**。mutate tool は `baseVersion` を受け取らず、自動 commit もしません。並行書き込みは project-level lock で直列化されます。
+書き込みフロー: **read → mutate tool が working tree を変更 → frontend Git panel で dirty 状態を確認 → ユーザーが手動 commit**。mutate tool はドキュメント working tree の変更だけを残します。並行書き込みは project-level lock で直列化されます。
 
 > ⚠️ `/mcp` はデフォルトで無認証・CORS 開放です。本番運用前にアクセス制御を追加するかループバックにバインドしてください。
 
@@ -290,12 +296,12 @@ src/souko/
 
 ## doc-drill: Code Agent ネイティブ統合
 
-autoDoc はスリム版 [doc-drill](src/skill-template/SKILL.md) skill をターゲットリポジトリの `.claude/skills/doc-drill/` に自動インストールし、Claude Code 用の `.mcp.json` と Codex 用の `.codex/config.toml` にローカル HTTP MCP サーバーへの参照を書き込みます。任意の Code Agent がこれを通じて:
+初期ドキュメント内容が完成した時点で、autoDoc はスリム版 [doc-drill](src/skill-template/SKILL.md) skill をターゲットリポジトリの `.codex/skills/doc-drill/SKILL.md` に自動インストールし、Claude Code 用の `.mcp.json` と Codex 用の `.codex/config.toml` にローカル HTTP MCP サーバーへの参照を書き込みます。この時点で `get_flows` は登録済みですが、Flow Analyzer が `flows.json` を書き込むまでは flow 未生成を通知し、書き込み後は同じツールでエンドツーエンド flow を取得できます。任意の Code Agent がこれを通じて:
 
 - **段階的ブラウジング** — `list_projects` → `get_top` → `get_graph` → `get_page`、lazy load でコンテキスト節約
 - **関係追跡** — 6 種のセマンティックエッジに沿ってモジュール間のコールチェーンとデータフローを追跡
 - **キーワード検索** — `search_nodes` で全ドキュメント階層を横断検索
-- **ビジネスフローナビ** — `flows.json` を通じてエンドツーエンドのインタラクションシナリオを理解
+- **ビジネスフローナビ** — `get_flows` / `flows.json` を通じてエンドツーエンドのインタラクションシナリオを理解
 - **直接メンテナンス** — mutate ツールでドキュメントをその場で追加削除変更し、最後に autoDoc frontend の Git panel で手動 commit
 
 > これは DeepWiki（Web チャットのみ）や Google Code Wiki（Web ブラウジングのみ）にはない、Agent ネイティブな統合能力です。
@@ -345,9 +351,9 @@ autoDoc/
 │       └── SKILL.md              # スリム版 doc-drill skill（/mcp を指す）
 ├── web/                          # Vue 3 フロントエンド
 │   └── src/
-│       ├── views/                # GraphPage, DocPage, HomePage（git URL 入力）, FlowsPage
+│       ├── views/                # HomePage, GraphPage（グラフ + 文書プレビュー/編集）, FlowsPage, KnowledgePage
 │       ├── components/           # ChatPanel 等
-│       └── services/doc.ts       # API クライアント（startRun → { ok, mode }）
+│       └── services/doc.ts       # API クライアント（run/status/doc/search/chat/update/knowledge/doc-git）
 ├── package.json
 └── pnpm-workspace.yaml
 ```

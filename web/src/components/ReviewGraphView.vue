@@ -5,7 +5,12 @@ import { EDGE_STYLES } from '../services/edgeStyles'
 import { useTheme } from '../composables/useTheme'
 import GraphNodeFilter from './GraphNodeFilter.vue'
 import { escapeHtml } from '../utils/html'
-import { assignParallelCurveOffsets, filterGraphNodes, pruneSelectedNodeNames } from '../utils/graphNodes'
+import { filterGraphNodes, pruneSelectedNodeNames } from '../utils/graphNodes'
+import {
+  PARALLEL_LINE_EDGE_TYPE,
+  assignParallelEdgeOffsets,
+  ensureParallelLineEdgeRegistered,
+} from '../utils/parallelEdges'
 import type { EdgeType, GraphNode } from '../types'
 
 const props = defineProps<{
@@ -35,7 +40,7 @@ type EdgeData = Record<string, unknown> & {
   edgeType: EdgeType
   description: string
   sourceName: string
-  curveOffset: number
+  parallelOffset: number
 }
 
 const popover = ref({
@@ -126,14 +131,14 @@ function buildData(nodes: GraphNode[], canvasW: number, canvasH: number) {
           edgeType: edge.type,
           description: edge.description,
           sourceName: node.name,
-          curveOffset: 0,
+          parallelOffset: 0,
         },
       }
       g6Edges.push(g6Edge)
     })
   }
 
-  assignParallelCurveOffsets(g6Edges, 18)
+  assignParallelEdgeOffsets(g6Edges, 18)
 
   return { nodes: g6Nodes, edges: g6Edges }
 }
@@ -141,6 +146,8 @@ function buildData(nodes: GraphNode[], canvasW: number, canvasH: number) {
 function createGraph() {
   const container = containerRef.value
   if (!container) return
+
+  ensureParallelLineEdgeRegistered()
 
   const rect = container.getBoundingClientRect()
   const canvasW = rect.width || 600
@@ -161,15 +168,15 @@ function createGraph() {
       },
     },
     edge: {
-      type: 'quadratic',
-      style: (d: { data?: { edgeType?: EdgeType; curveOffset?: number } }) => {
+      type: PARALLEL_LINE_EDGE_TYPE,
+      style: (d: { data?: { edgeType?: EdgeType; parallelOffset?: number } }) => {
         const edgeType = d.data?.edgeType ?? 'calls'
         const visual = EDGE_STYLES[edgeType]
         return {
           stroke: visual.stroke,
           lineWidth: edgeType === 'data-flow' ? 2.5 : 1.4,
           lineDash: visual.lineDash,
-          curveOffset: d.data?.curveOffset ?? 0,
+          parallelOffset: d.data?.parallelOffset ?? 0,
           endArrow: true,
           endArrowSize: 7,
           cursor: 'pointer',
@@ -341,7 +348,7 @@ watch(isDark, recreateGraph)
   width: 100%;
   height: 100%;
   position: relative;
-  background: var(--bg-body);
+  background: var(--bg-surface);
 }
 
 :global(.review-graph-node) {
@@ -353,18 +360,18 @@ watch(isDark, recreateGraph)
   justify-content: center;
   padding: 0 12px;
   border: 1px solid var(--border-card);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   background: var(--bg-surface);
   color: var(--text-heading);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 650;
   cursor: pointer;
   overflow: hidden;
 }
 
 :global(.review-graph-node.is-selected) {
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-shadow);
+  box-shadow: var(--shadow-focus);
 }
 
 :global(.review-graph-node-name) {
@@ -380,9 +387,9 @@ watch(isDark, recreateGraph)
   transform: translate(-50%, 10px);
   padding: 12px;
   border: 1px solid var(--border-card);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   background: var(--bg-surface);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--shadow-panel);
 }
 
 .edge-popover-header {
@@ -432,9 +439,10 @@ watch(isDark, recreateGraph)
 }
 
 .edge-popover-actions button {
-  padding: 5px 10px;
+  min-height: 28px;
+  padding: 0 10px;
   border: 1px solid var(--border);
-  border-radius: 5px;
+  border-radius: var(--radius-control);
   background: var(--bg-surface);
   color: var(--text-primary);
   font-size: 12px;

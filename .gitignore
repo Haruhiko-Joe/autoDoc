@@ -146,10 +146,6 @@ vite.config.ts.timestamp-*
 .Spotlight-V100
 .Trashes
 
-# Generated doc files (keep directory structure)
-web/doc/**
-!web/doc/**/
-
 # Runtime logs (keep the dir itself tracked via .gitkeep)
 log/*
 !log/.gitkeep

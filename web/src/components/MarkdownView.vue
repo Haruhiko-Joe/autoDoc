@@ -113,7 +113,7 @@ watch(() => [props.content, props.blameLines], () => render(props.content), { de
 .markdown-body :deep(pre) {
   background: var(--bg-code);
   padding: 16px;
-  border-radius: 6px;
+  border-radius: var(--radius-card);
   overflow-x: auto;
 }
 
@@ -125,7 +125,7 @@ watch(() => [props.content, props.blameLines], () => render(props.content), { de
 .markdown-body :deep(p code) {
   background: var(--bg-code-inline);
   padding: 2px 6px;
-  border-radius: 3px;
+  border-radius: var(--radius-control);
 }
 
 .markdown-body :deep(table) {
@@ -167,7 +167,7 @@ watch(() => [props.content, props.blameLines], () => render(props.content), { de
   grid-template-columns: minmax(0, 1fr) 172px;
   gap: 18px;
   align-items: start;
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   padding: 2px 0;
 }
 

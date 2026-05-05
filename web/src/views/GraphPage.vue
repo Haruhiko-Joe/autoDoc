@@ -18,6 +18,7 @@ import {
   type EdgeFormData,
   type NodeFormData,
 } from '../utils/graphNodes'
+import { firstRouteParam, routePathParam } from '../utils/routeParams'
 import type { TopGraph, SubGraph, GraphNode, EdgeType } from '../types'
 
 const route = useRoute()
@@ -44,14 +45,11 @@ const blameLines = ref<DocBlameLine[]>([])
 const gitRefreshToken = ref(0)
 
 function getPath(): string {
-  const p = route.params.path
-  return Array.isArray(p) ? p.join('/') : p
+  return routePathParam(route.params.path)
 }
 
 function getProject(): string {
-  const p = route.params.project
-  if (!p) return ''
-  return Array.isArray(p) ? (p[0] ?? '') : p
+  return firstRouteParam(route.params.project)
 }
 
 async function load() {
@@ -492,9 +490,10 @@ async function savePage() {
   max-width: 280px;
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border);
+  backdrop-filter: blur(18px);
   display: flex;
   flex-direction: column;
-  padding: 24px 0;
+  padding: 22px 0;
   box-sizing: border-box;
 }
 
@@ -504,9 +503,10 @@ async function savePage() {
 }
 
 .back-btn {
-  padding: 6px 16px;
+  min-height: 34px;
+  padding: 0 14px;
   border: 1px solid var(--border-strong);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: var(--bg-surface);
   cursor: pointer;
   font-size: 13px;
@@ -518,6 +518,7 @@ async function savePage() {
 .back-btn:hover {
   border-color: var(--accent);
   color: var(--accent);
+  background: var(--bg-surface-hover);
 }
 
 .sidebar-nav {
@@ -540,12 +541,14 @@ async function savePage() {
 }
 
 .canvas-header {
-  padding: 20px 32px 12px;
+  min-height: 72px;
+  padding: 18px 32px 14px;
 }
 
 .breadcrumb {
-  font-size: 14px;
+  font-size: 13px;
   margin-bottom: 8px;
+  color: var(--text-muted);
 }
 
 .crumb {
@@ -573,12 +576,14 @@ async function savePage() {
   color: var(--text-secondary);
   margin: 0;
   flex: 1;
+  line-height: 1.45;
+  letter-spacing: -0.01em;
 }
 
 .status-badge {
   font-size: 12px;
   padding: 2px 10px;
-  border-radius: 10px;
+  border-radius: 999px;
   font-weight: 500;
   flex-shrink: 0;
 }
@@ -594,9 +599,10 @@ async function savePage() {
 .edit-toggle,
 .git-toggle,
 .git-info-toggle {
-  padding: 4px 14px;
+  min-height: 30px;
+  padding: 0 14px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: var(--bg-surface);
   color: var(--text-primary);
   font-size: 13px;
@@ -611,6 +617,7 @@ async function savePage() {
 .git-info-toggle:hover {
   border-color: var(--accent);
   color: var(--accent);
+  background: var(--bg-surface-hover);
 }
 
 .edit-toggle.active,
@@ -624,14 +631,18 @@ async function savePage() {
   flex: 1;
   margin: 0 16px 16px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   overflow: hidden;
   position: relative;
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-soft);
 }
 
 .canvas-page {
   flex: 1;
   overflow-y: auto;
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border-light);
 }
 
 .canvas-page-edit {
@@ -650,18 +661,20 @@ async function savePage() {
 .split-editor, .split-preview {
   flex: 1;
   overflow-y: auto;
-  background: var(--bg-body);
+  background: var(--bg-surface);
 }
 
 .view-mode-group {
   display: flex;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   overflow: hidden;
+  background: var(--bg-surface);
 }
 
 .mode-btn {
-  padding: 4px 14px;
+  min-height: 30px;
+  padding: 0 14px;
   font-size: 13px;
   font-weight: 500;
   border: none;
@@ -685,9 +698,10 @@ async function savePage() {
 }
 
 .btn-save {
-  padding: 4px 16px;
+  min-height: 30px;
+  padding: 0 16px;
   border: 1px solid var(--accent);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: var(--accent);
   color: #fff;
   font-size: 13px;
@@ -697,7 +711,8 @@ async function savePage() {
 }
 
 .btn-save:hover:not(:disabled) {
-  opacity: 0.9;
+  background: var(--accent-hover);
+  transform: translateY(-1px);
 }
 
 .btn-save:disabled {

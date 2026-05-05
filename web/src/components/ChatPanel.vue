@@ -123,8 +123,8 @@ function renderMd(md: string): string {
   height: 540px;
   background: var(--bg-surface);
   border: 1px solid var(--border-card);
-  border-radius: 16px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-panel);
   display: flex;
   flex-direction: column;
   z-index: 1000;
@@ -135,7 +135,7 @@ function renderMd(md: string): string {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 20px;
+  padding: 14px 18px;
   border-bottom: 1px solid var(--border-light);
   flex-shrink: 0;
 }
@@ -191,7 +191,7 @@ function renderMd(md: string): string {
 .msg-bubble {
   max-width: 85%;
   padding: 10px 14px;
-  border-radius: 12px;
+  border-radius: var(--radius-card);
   font-size: 14px;
   line-height: 1.6;
   word-break: break-word;
@@ -262,7 +262,7 @@ function renderMd(md: string): string {
 .chat-input-area {
   display: flex;
   gap: 8px;
-  padding: 12px 16px;
+  padding: 12px 14px;
   border-top: 1px solid var(--border-light);
   flex-shrink: 0;
 }
@@ -271,7 +271,7 @@ function renderMd(md: string): string {
   flex: 1;
   padding: 9px 14px;
   border: 1px solid var(--border-strong);
-  border-radius: 12px;
+  border-radius: var(--radius-card);
   font-size: 14px;
   outline: none;
   min-width: 0;
@@ -284,6 +284,7 @@ function renderMd(md: string): string {
 
 .chat-input:focus {
   border-color: var(--accent);
+  box-shadow: var(--shadow-focus);
 }
 
 .chat-input:disabled {
@@ -306,6 +307,7 @@ function renderMd(md: string): string {
 
 .chat-send:hover:not(:disabled) {
   background: var(--accent-hover);
+  transform: translateY(-1px);
 }
 
 .chat-send:disabled {

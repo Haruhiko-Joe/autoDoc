@@ -240,8 +240,8 @@ function handleKeydown(e: KeyboardEvent) {
 .dialog-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.55);
-  backdrop-filter: blur(3px);
+  background: var(--bg-overlay);
+  backdrop-filter: blur(16px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -254,8 +254,8 @@ function handleKeydown(e: KeyboardEvent) {
   height: min(720px, calc(100vh - 64px));
   background: var(--bg-surface);
   border: 1px solid var(--border);
-  border-radius: 14px;
-  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.03);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-panel);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -285,14 +285,14 @@ function handleKeydown(e: KeyboardEvent) {
   color: var(--accent);
   background: var(--bg-surface-alt);
   padding: 3px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   flex-shrink: 0;
 }
 
 .dialog-title {
   margin: 0;
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 650;
   color: var(--text-heading);
   line-height: 1.35;
   flex: 1;
@@ -330,7 +330,7 @@ function handleKeydown(e: KeyboardEvent) {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: 999px;
   border: 1px solid var(--border);
 }
 
@@ -364,7 +364,7 @@ function handleKeydown(e: KeyboardEvent) {
   margin-top: 10px;
   padding: 10px 12px;
   background: var(--bg-surface-alt);
-  border-radius: 6px;
+  border-radius: var(--radius-card);
   max-height: 140px;
   overflow-y: auto;
   font-size: 12px;
@@ -430,7 +430,7 @@ function handleKeydown(e: KeyboardEvent) {
   word-break: break-word;
   padding: 10px 12px;
   background: var(--bg-surface-alt);
-  border-radius: 6px;
+  border-radius: var(--radius-card);
   border: 1px solid var(--border);
 }
 
@@ -459,7 +459,7 @@ function handleKeydown(e: KeyboardEvent) {
   color: var(--accent);
   background: var(--bg-surface);
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   border: 1px solid var(--border);
   flex-shrink: 0;
 }
@@ -470,7 +470,7 @@ function handleKeydown(e: KeyboardEvent) {
   padding: 10px 12px;
   background: var(--bg-surface-alt);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-card);
   max-height: 240px;
   overflow-y: auto;
   display: flex;
@@ -492,7 +492,7 @@ function handleKeydown(e: KeyboardEvent) {
 .error-block {
   padding: 12px 14px;
   border: 1px solid var(--color-red);
-  border-radius: 6px;
+  border-radius: var(--radius-card);
   background: rgba(255, 80, 80, 0.08);
   color: var(--color-red);
   font-size: 13px;
@@ -532,7 +532,7 @@ function handleKeydown(e: KeyboardEvent) {
 .md-body :deep(pre) {
   background: var(--bg-code, rgba(0, 0, 0, 0.3));
   padding: 12px 14px;
-  border-radius: 6px;
+  border-radius: var(--radius-card);
   overflow-x: auto;
   margin: 10px 0;
 }
@@ -577,7 +577,7 @@ function handleKeydown(e: KeyboardEvent) {
   padding: 10px 12px;
   background: var(--bg-surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-card);
   font-family: inherit;
   font-size: 13.5px;
   line-height: 1.5;
@@ -590,7 +590,7 @@ function handleKeydown(e: KeyboardEvent) {
 .prompt-input:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(99, 143, 255, 0.2);
+  box-shadow: var(--shadow-focus);
 }
 
 .prompt-input::placeholder {
@@ -636,8 +636,9 @@ function handleKeydown(e: KeyboardEvent) {
 
 .btn-primary,
 .btn-ghost {
-  padding: 7px 16px;
-  border-radius: 6px;
+  min-height: 32px;
+  padding: 0 16px;
+  border-radius: var(--radius-control);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -649,7 +650,7 @@ function handleKeydown(e: KeyboardEvent) {
   color: #fff;
   border: 1px solid var(--accent);
 }
-.btn-primary:hover { opacity: 0.9; }
+.btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); }
 
 .btn-ghost {
   background: transparent;

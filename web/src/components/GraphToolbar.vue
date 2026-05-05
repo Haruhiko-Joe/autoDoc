@@ -35,16 +35,16 @@ defineProps<{
   gap: 6px;
   background: var(--bg-surface);
   border: 1px solid var(--border-card);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   padding: 4px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--shadow-soft);
 }
 
 .toolbar-btn {
   width: 32px;
   height: 32px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: var(--bg-surface);
   cursor: pointer;
   display: flex;

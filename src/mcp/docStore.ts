@@ -10,6 +10,10 @@ import {
   type ScaffoldNodeT,
   type TopGraphT,
 } from "./schema.js"
+import {
+  FlowAnalyzerOutput,
+  type FlowAnalyzerOutput as FlowAnalyzerOutputT,
+} from "../agents/schemas/schema.js"
 import { DocGit } from "./docGit.js"
 import { withDocProjectLock } from "./docLock.js"
 import { assertProjectName } from "../souko/registry.js"
@@ -74,6 +78,10 @@ export class DocStore {
     return this.resolveWithin(project, path.join(...parts, `${ref}.md`))
   }
 
+  private flowsFilePath(project: string): string {
+    return this.resolveWithin(project, "flows.json")
+  }
+
   // ─── Listings ───────────────────────────────────────────────
 
   async listProjects(): Promise<{ name: string; description: string }[]> {
@@ -110,6 +118,19 @@ export class DocStore {
   ): Promise<{ content: string }> {
     const content = await readFile(this.pageFilePath(project, nodeId, ref), "utf-8")
     return { content }
+  }
+
+  async readFlows(project: string): Promise<FlowAnalyzerOutputT> {
+    const filePath = this.flowsFilePath(project)
+    try {
+      const raw = JSON.parse(await readFile(filePath, "utf-8"))
+      return FlowAnalyzerOutput.parse(raw)
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === "ENOENT") {
+        throw new Error(`flows.json has not been generated for project: ${project}`)
+      }
+      throw e
+    }
   }
 
   async searchNodes(

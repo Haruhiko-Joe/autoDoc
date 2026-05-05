@@ -91,9 +91,9 @@ function onNodeChange(name: string, event: Event) {
   gap: 8px;
   padding: 0 10px;
   border: 1px solid var(--border-card);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: var(--bg-surface);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--shadow-soft);
   cursor: pointer;
   list-style: none;
   user-select: none;
@@ -116,9 +116,9 @@ function onNodeChange(name: string, event: Event) {
   padding: 8px;
   overflow: auto;
   border: 1px solid var(--border-card);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   background: var(--bg-surface);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--shadow-panel);
 }
 
 .node-filter-actions {
@@ -131,7 +131,7 @@ function onNodeChange(name: string, event: Event) {
   flex: 1;
   height: 28px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: var(--bg-surface-alt);
   color: var(--text-primary);
   font-size: 12px;
@@ -149,7 +149,7 @@ function onNodeChange(name: string, event: Event) {
   align-items: center;
   gap: 8px;
   padding: 3px 4px;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   cursor: pointer;
 }
 

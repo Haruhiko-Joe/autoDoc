@@ -5,6 +5,7 @@ import { fetchFlows, fetchTopGraph } from '../services/doc'
 import DocTree from '../components/DocTree.vue'
 import EdgeLegend from '../components/EdgeLegend.vue'
 import { EDGE_STYLES } from '../services/edgeStyles'
+import { firstRouteParam } from '../utils/routeParams'
 import type { FlowsData, FlowCase, FlowStep, TopGraph } from '../types'
 
 const route = useRoute()
@@ -17,8 +18,7 @@ const activeIndex = ref(0)
 const expandedStep = ref<number | null>(null)
 
 function getProject(): string {
-  const p = route.params.project
-  return Array.isArray(p) ? (p[0] ?? '') : (p ?? '')
+  return firstRouteParam(route.params.project)
 }
 
 async function load() {
@@ -236,10 +236,6 @@ function selectFlow(i: number) {
   </div>
 </template>
 
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=DM+Mono:ital,wght@0,400;0,500;1,400&display=swap');
-</style>
-
 <style scoped>
 /* ─── Layout Shell ─── */
 
@@ -247,7 +243,7 @@ function selectFlow(i: number) {
   display: flex;
   height: 100vh;
   overflow: hidden;
-  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;
   background: var(--flows-bg);
   color: var(--flows-text);
 }
@@ -258,6 +254,7 @@ function selectFlow(i: number) {
   max-width: 280px;
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border);
+  backdrop-filter: blur(18px);
   display: flex;
   flex-direction: column;
   padding: 24px 0;
@@ -270,9 +267,10 @@ function selectFlow(i: number) {
 }
 
 .back-btn {
-  padding: 6px 16px;
+  min-height: 34px;
+  padding: 0 14px;
   border: 1px solid var(--border-strong);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: var(--bg-surface);
   cursor: pointer;
   font-size: 13px;
@@ -398,7 +396,7 @@ function selectFlow(i: number) {
 }
 
 .tab-idx {
-  font-family: 'DM Mono', monospace;
+  font-family: 'SFMono-Regular', Consolas, monospace;
   font-weight: 500;
   margin-right: 5px;
   opacity: 0.6;
@@ -423,11 +421,9 @@ function selectFlow(i: number) {
 .diagram {
   background: var(--flows-diagram-bg);
   border: 1px solid var(--flows-diagram-border);
-  border-radius: 12px;
+  border-radius: var(--radius-card);
   overflow: hidden;
-  box-shadow:
-    0 1px 2px rgba(0,0,0,0.04),
-    0 4px 16px rgba(0,0,0,0.03);
+  box-shadow: var(--shadow-soft);
 }
 
 /* Shared layout primitives */
@@ -472,8 +468,8 @@ function selectFlow(i: number) {
   padding: 10px 10px 8px;
   background: var(--flows-participant-card-bg);
   border: 1px solid var(--flows-participant-card-border);
-  border-radius: 10px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-soft);
   transition: all 0.2s ease;
   position: relative;
 }
@@ -505,7 +501,7 @@ function selectFlow(i: number) {
 }
 
 .p-name {
-  font-family: 'DM Mono', monospace;
+  font-family: 'SFMono-Regular', Consolas, monospace;
   font-size: 12px;
   font-weight: 500;
   color: var(--flows-text);
@@ -555,12 +551,12 @@ function selectFlow(i: number) {
 }
 
 .step-num {
-  font-family: 'DM Mono', monospace;
+  font-family: 'SFMono-Regular', Consolas, monospace;
   font-size: 11px;
   font-weight: 500;
   width: 22px;
   height: 22px;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -662,11 +658,11 @@ function selectFlow(i: number) {
 }
 
 .al-edge {
-  font-family: 'DM Mono', monospace;
+  font-family: 'SFMono-Regular', Consolas, monospace;
   font-size: 9px;
   font-weight: 500;
   padding: 1px 6px;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   letter-spacing: 0.02em;
 }
 
@@ -735,15 +731,15 @@ function selectFlow(i: number) {
 }
 
 .sd-num {
-  font-family: 'DM Mono', monospace;
+  font-family: 'SFMono-Regular', Consolas, monospace;
   font-size: 11px;
   font-weight: 500;
   padding: 2px 8px;
-  border-radius: 5px;
+  border-radius: var(--radius-control);
 }
 
 .sd-ep {
-  font-family: 'DM Mono', monospace;
+  font-family: 'SFMono-Regular', Consolas, monospace;
   font-size: 13px;
   font-weight: 500;
   color: var(--flows-text);
@@ -755,11 +751,11 @@ function selectFlow(i: number) {
 }
 
 .sd-edge {
-  font-family: 'DM Mono', monospace;
+  font-family: 'SFMono-Regular', Consolas, monospace;
   font-size: 10px;
   font-weight: 500;
   padding: 2px 8px;
-  border-radius: 5px;
+  border-radius: var(--radius-control);
   border: 1px solid;
 }
 
@@ -772,12 +768,12 @@ function selectFlow(i: number) {
 }
 
 .sd-ref {
-  font-family: 'DM Mono', monospace;
+  font-family: 'SFMono-Regular', Consolas, monospace;
   font-size: 11px;
   background: var(--flows-ref-bg);
   color: var(--flows-text-secondary);
   padding: 4px 10px;
-  border-radius: 5px;
+  border-radius: var(--radius-control);
   display: inline-block;
   border: 1px solid var(--flows-ref-border);
 }

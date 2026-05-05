@@ -6,7 +6,7 @@ import { join, resolve, basename } from "node:path"
 const [,, docRoot, project, ...rest] = process.argv
 
 if (!docRoot || !project) {
-  console.error("Usage: node browse.mjs <doc-root> <project> [module-path] [--read|--search <kw>]")
+  console.error("Usage: node browse.mjs <doc-root> <project> [module-path] [--read|--search <kw>|--flows]")
   process.exit(1)
 }
 
@@ -41,6 +41,28 @@ function formatNode(node, indent = "") {
   return line
 }
 
+function formatFlow(flow, index) {
+  const lines = [`## ${index + 1}. ${flow.title}`, flow.description, ""]
+  if (flow.participants?.length > 0) {
+    lines.push("Participants:")
+    for (const participant of flow.participants) {
+      const suffix = participant.docPath ? ` (${participant.docPath})` : ""
+      lines.push(`  - ${participant.name}${suffix}: ${participant.description}`)
+    }
+    lines.push("")
+  }
+  if (flow.steps?.length > 0) {
+    lines.push("Steps:")
+    flow.steps.forEach((step, stepIndex) => {
+      const edge = step.edgeType ? ` [${step.edgeType}]` : ""
+      lines.push(`  ${stepIndex + 1}. ${step.from} -> ${step.to}${edge}: ${step.action}`)
+      lines.push(`     ${step.detail}`)
+      if (step.codeRef) lines.push(`     code: ${step.codeRef}`)
+    })
+  }
+  return lines.join("\n")
+}
+
 function collectAllNodes(dir, prefix = "") {
   const results = []
   if (!existsSync(dir)) return results
@@ -70,8 +92,26 @@ function collectAllNodes(dir, prefix = "") {
 
 const searchIdx = rest.indexOf("--search")
 const readFlag = rest.includes("--read")
+const flowsFlag = rest.includes("--flows")
 
-if (searchIdx !== -1) {
+if (flowsFlag) {
+  const flowsPath = join(base, "flows.json")
+  if (!existsSync(flowsPath)) {
+    console.error(`flows.json not found at ${flowsPath}`)
+    process.exit(1)
+  }
+  const data = readJSON(flowsPath)
+  const flows = Array.isArray(data.flows) ? data.flows : []
+  console.log(`# ${project} interaction flows\n`)
+  if (flows.length === 0) {
+    console.log("No flows found.")
+  } else {
+    flows.forEach((flow, index) => {
+      console.log(formatFlow(flow, index))
+      console.log()
+    })
+  }
+} else if (searchIdx !== -1) {
   const keyword = rest.slice(searchIdx + 1).join(" ").toLowerCase()
   if (!keyword) {
     console.error("--search requires a keyword")
