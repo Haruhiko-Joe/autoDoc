@@ -5,7 +5,12 @@ import { EDGE_STYLES } from '../services/edgeStyles'
 import { useTheme } from '../composables/useTheme'
 import GraphNodeFilter from './GraphNodeFilter.vue'
 import { escapeHtml } from '../utils/html'
-import { assignParallelCurveOffsets, filterGraphNodes, pruneSelectedNodeNames } from '../utils/graphNodes'
+import { filterGraphNodes, pruneSelectedNodeNames } from '../utils/graphNodes'
+import {
+  PARALLEL_LINE_EDGE_TYPE,
+  assignParallelEdgeOffsets,
+  ensureParallelLineEdgeRegistered,
+} from '../utils/parallelEdges'
 import type { GraphNode, EdgeType } from '../types'
 
 const props = defineProps<{
@@ -215,7 +220,7 @@ type G6EdgeData = Record<string, unknown> & {
   description: string
   detail: string
   sourceName: string
-  curveOffset: number
+  parallelOffset: number
 }
 
 function buildData(nodes: GraphNode[], canvasW: number, canvasH: number) {
@@ -248,19 +253,21 @@ function buildData(nodes: GraphNode[], canvasW: number, canvasH: number) {
           description: edge.description,
           detail: edge.detail ?? '',
           sourceName: node.name,
-          curveOffset: 0,
+          parallelOffset: 0,
         },
       })
     }
   }
 
-  assignParallelCurveOffsets(g6Edges, 25)
+  assignParallelEdgeOffsets(g6Edges, 25)
 
   return { nodes: g6Nodes, edges: g6Edges }
 }
 
 function createGraph() {
   if (!containerRef.value) return
+
+  ensureParallelLineEdgeRegistered()
 
   const rect = containerRef.value.getBoundingClientRect()
   const canvasW = rect.width || 800
@@ -285,17 +292,17 @@ function createGraph() {
       },
     },
     edge: {
-      type: 'quadratic',
-      style: (d: { data?: { edgeType?: EdgeType; description?: string; curveOffset?: number } }) => {
+      type: PARALLEL_LINE_EDGE_TYPE,
+      style: (d: { data?: { edgeType?: EdgeType; description?: string; parallelOffset?: number } }) => {
         const edgeType = d.data?.edgeType ?? 'calls'
         const visual = EDGE_STYLES[edgeType]
         const dark = isDark.value
-        const offset = d.data?.curveOffset ?? 0
+        const offset = d.data?.parallelOffset ?? 0
         return {
           stroke: visual.stroke,
           lineWidth: edgeType === 'data-flow' ? 3 : 1.5,
           lineDash: visual.lineDash,
-          curveOffset: offset,
+          parallelOffset: offset,
           endArrow: true,
           endArrowSize: 8,
           cursor: 'pointer',

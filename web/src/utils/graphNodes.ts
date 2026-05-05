@@ -16,12 +16,6 @@ export interface EdgeFormData {
 
 export type EdgeIdentity = Pick<GraphEdge, 'target' | 'type'>
 
-export type CurveEdge = {
-  source: string
-  target: string
-  data: { curveOffset: number }
-}
-
 export function cloneGraphNodes(nodes: GraphNode[]): GraphNode[] {
   const cloned = nodes.map((node) => ({
     ...node,
@@ -157,38 +151,4 @@ export function normalizeGraphNodes(nodes: GraphNode[], forceGraphChild: boolean
     }
   })
   return normalized
-}
-
-export function assignParallelCurveOffsets<T extends CurveEdge>(edges: T[], gap: number): void {
-  const pairMap = new Map<string, T[]>()
-  for (const edge of edges) {
-    const key = [edge.source, edge.target].sort().join('|')
-    const group = pairMap.get(key)
-    if (group) group.push(edge)
-    else pairMap.set(key, [edge])
-  }
-
-  for (const group of pairMap.values()) {
-    if (group.length < 2) continue
-
-    const sorted = group.sort((a, b) => {
-      const dirA = `${a.source}->${a.target}`
-      const dirB = `${b.source}->${b.target}`
-      return dirA.localeCompare(dirB)
-    })
-
-    sorted
-      .filter((edge) => edge.source <= edge.target)
-      .forEach((edge, index) => {
-        const curveOffset = gap * (index + 1)
-        edge.data.curveOffset = curveOffset
-      })
-
-    sorted
-      .filter((edge) => edge.source > edge.target)
-      .forEach((edge, index) => {
-        const curveOffset = gap * (index + 1)
-        edge.data.curveOffset = curveOffset
-      })
-  }
 }

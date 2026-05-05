@@ -5,7 +5,12 @@ import { EDGE_STYLES } from '../services/edgeStyles'
 import { useTheme } from '../composables/useTheme'
 import GraphNodeFilter from './GraphNodeFilter.vue'
 import { escapeHtml } from '../utils/html'
-import { assignParallelCurveOffsets, filterGraphNodes, pruneSelectedNodeNames } from '../utils/graphNodes'
+import { filterGraphNodes, pruneSelectedNodeNames } from '../utils/graphNodes'
+import {
+  PARALLEL_LINE_EDGE_TYPE,
+  assignParallelEdgeOffsets,
+  ensureParallelLineEdgeRegistered,
+} from '../utils/parallelEdges'
 import type { EdgeType, GraphNode } from '../types'
 
 const props = defineProps<{
@@ -35,7 +40,7 @@ type EdgeData = Record<string, unknown> & {
   edgeType: EdgeType
   description: string
   sourceName: string
-  curveOffset: number
+  parallelOffset: number
 }
 
 const popover = ref({
@@ -126,14 +131,14 @@ function buildData(nodes: GraphNode[], canvasW: number, canvasH: number) {
           edgeType: edge.type,
           description: edge.description,
           sourceName: node.name,
-          curveOffset: 0,
+          parallelOffset: 0,
         },
       }
       g6Edges.push(g6Edge)
     })
   }
 
-  assignParallelCurveOffsets(g6Edges, 18)
+  assignParallelEdgeOffsets(g6Edges, 18)
 
   return { nodes: g6Nodes, edges: g6Edges }
 }
@@ -141,6 +146,8 @@ function buildData(nodes: GraphNode[], canvasW: number, canvasH: number) {
 function createGraph() {
   const container = containerRef.value
   if (!container) return
+
+  ensureParallelLineEdgeRegistered()
 
   const rect = container.getBoundingClientRect()
   const canvasW = rect.width || 600
@@ -161,15 +168,15 @@ function createGraph() {
       },
     },
     edge: {
-      type: 'quadratic',
-      style: (d: { data?: { edgeType?: EdgeType; curveOffset?: number } }) => {
+      type: PARALLEL_LINE_EDGE_TYPE,
+      style: (d: { data?: { edgeType?: EdgeType; parallelOffset?: number } }) => {
         const edgeType = d.data?.edgeType ?? 'calls'
         const visual = EDGE_STYLES[edgeType]
         return {
           stroke: visual.stroke,
           lineWidth: edgeType === 'data-flow' ? 2.5 : 1.4,
           lineDash: visual.lineDash,
-          curveOffset: d.data?.curveOffset ?? 0,
+          parallelOffset: d.data?.parallelOffset ?? 0,
           endArrow: true,
           endArrowSize: 7,
           cursor: 'pointer',
