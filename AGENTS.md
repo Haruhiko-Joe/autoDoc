@@ -20,7 +20,7 @@ pnpm monorepo with two packages: root (backend) and `web/` (frontend).
 The system generates interactive documentation for any code repository using a pipeline of 5 full-generation agent roles orchestrated by the **Arranger** state machine:
 
 ```
-Scaffold → Checker → [per-module loop: Decomposer → Checker → Writer] → Flow Analyzer → done
+Scaffold → Checker → [per-module loop: Decomposer → Checker → Writer] → Assemble MCP/Skill → Flow Analyzer → done
 ```
 
 - **Scaffold**: Analyzes entire repo, produces `top.json` with top-level modules
@@ -28,6 +28,8 @@ Scaffold → Checker → [per-module loop: Decomposer → Checker → Writer] �
 - **Writer**: Generates Markdown documentation for leaf `page` nodes
 - **Checker**: Validates graph structures from Scaffold and Decomposer (not Writer output); failures trigger retry via `agent.continue()`
 - **Flow Analyzer**: Extracts 3-7 cross-module interaction flows into `flows.json`
+
+After all graph JSON and leaf Markdown pages are complete, the Arranger assembles the target repo's `.mcp.json`, `.codex/config.toml`, and Codex `doc-drill` skill. `get_flows` is enabled at this point, but returns a clear "not generated yet" error until Flow Analyzer creates `flows.json`. Flow Analyzer then runs against the completed documentation content and source repo; `flows.json` is not an input, because Flow Analyzer is responsible for creating it.
 
 Each agent has both a Claude Code and Codex backend implementation, located in `src/agents/tsukai/` (e.g. `claudescaffold.ts` / `codexscaffold.ts`). All share identical interface: `run(prompt, workpath)`, `continue(prompt)`, `restore(sessionId, workpath)`, `getSessionId()`. A barrel file `src/agents/tsukai/index.ts` re-exports all classes.
 
@@ -65,10 +67,10 @@ API endpoints: `POST /api/update/{start,continue,skip,cancel}`, `POST /api/updat
 
 The `autodoc` MCP server exposes tools for agents to read/write doc artifacts:
 
-- **Query tools** (`src/mcp/tools/query.ts`): `list_projects`, `get_top`, `get_graph`, `get_page`, `search_nodes`, `list_source_files`, `read_source_files`, `list_docs`, `read_docs`
+- **Query tools** (`src/mcp/tools/query.ts`): `list_projects`, `get_top`, `get_flows`, `get_graph`, `get_page`, `search_nodes`, `list_source_files`, `read_source_files`, `list_docs`, `read_docs`
 - **Mutation tools** (`src/mcp/tools/mutate.ts`): `patch_page` (string match + replace), `update_page`, `update_node`, `update_graph_meta`, `create_node`, `delete_node`, `update_top`
 
-All write tools share the project-level document lock and only dirty the documentation working tree. Users commit accumulated doc changes manually through `/api/doc-git/commit`; blame data comes from `/api/doc-git/blame`. The doc-drill skill template at `src/skill-template/SKILL.md` documents the MCP tools for agent consumption.
+All write tools share the project-level document lock and only dirty the documentation working tree. Users commit accumulated doc changes manually through `/api/doc-git/commit`; blame data comes from `/api/doc-git/blame`. The doc-drill skill template at `src/skill-template/SKILL.md` is installed to `.codex/skills/doc-drill/SKILL.md` in generated target repos.
 
 ### Frontend: Vue 3 + TypeScript
 

@@ -96,6 +96,18 @@ export function registerQueryTools(mcp: McpServer, store: DocStore): void {
   )
 
   mcp.registerTool(
+    "get_flows",
+    {
+      description:
+        "Get the project's typical cross-module interaction flows. Use this for classic end-to-end cases before drilling into graph nodes or pages.",
+      inputSchema: {
+        project: z.string(),
+      },
+    },
+    async ({ project }) => json(await store.readFlows(project)),
+  )
+
+  mcp.registerTool(
     "get_graph",
     {
       description:

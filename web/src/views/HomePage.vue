@@ -352,7 +352,7 @@ const progressPhaseLabel = computed(() => {
   if (p === 'scaffold') return 'Analyzing project structure...'
   if (p === 'processing') return 'Processing modules...'
   if (p === 'awaiting-review') return 'Waiting for decomposition review...'
-  if (p === 'assembling') return 'Assembling doc-drill skill...'
+  if (p === 'assembling') return 'Publishing doc-drill integration...'
   if (p === 'flows') return 'Generating interaction flows...'
   return 'Preparing...'
 })

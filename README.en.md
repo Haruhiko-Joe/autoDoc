@@ -124,7 +124,10 @@ gitUrl ──► git clone ──► src/souko/repo/{name}
                 ▼                                   ▼
              Writer                              Writer
                 │                                   │
-                └────────────► Flow Analyzer ◄──────┘
+                └───────► Assemble MCP / Skill ◄────┘
+                                       │
+                                       ▼
+                                Flow Analyzer
                                        │
                                        ▼
                        projects.json + src/souko/doc/{name}
@@ -225,7 +228,7 @@ Codex uses project-scoped `.codex/config.toml`; autoDoc writes the equivalent co
 ```toml
 [mcp_servers.autodoc]
 url = "http://localhost:3100/mcp"
-enabled_tools = ["list_projects", "get_top", "get_graph", "get_page", "search_nodes", "list_source_files", "read_source_files", "list_docs", "read_docs", "patch_page", "update_page", "update_node", "update_graph_meta", "create_node", "delete_node", "update_top"]
+enabled_tools = ["list_projects", "get_top", "get_flows", "get_graph", "get_page", "search_nodes", "list_source_files", "read_source_files", "list_docs", "read_docs", "patch_page", "update_page", "update_node", "update_graph_meta", "create_node", "delete_node", "update_top"]
 ```
 
 The matching [doc-drill skill](src/skill-template/SKILL.md) is a thin instruction set that only describes **how to call the MCP tools**, and ships with autoDoc.
@@ -238,6 +241,7 @@ The matching [doc-drill skill](src/skill-template/SKILL.md) is a thin instructio
 |---|---|
 | `list_projects` | List available doc projects (name / description) |
 | `get_top` | Read a project's top.json |
+| `get_flows` | Read typical cross-module flows to understand classic module collaboration cases |
 | `get_graph` | Read a sub-graph with `codeScope`, `nodes`, and `description` |
 | `get_page` | Read a leaf Markdown page |
 | `search_nodes` | Search node names/descriptions across all levels |
@@ -292,12 +296,12 @@ Each module's documentation is a self-contained unit. Three ways to edit it:
 
 ## doc-drill: Native Code Agent Integration
 
-autoDoc installs the thin [doc-drill](src/skill-template/SKILL.md) skill into the target repo's `.claude/skills/doc-drill/`, then writes Claude Code's `.mcp.json` and Codex's `.codex/config.toml` to point at the local HTTP MCP server. Any Code Agent can then:
+After the initial documentation content is complete, autoDoc installs the thin [doc-drill](src/skill-template/SKILL.md) skill into the target repo's `.codex/skills/doc-drill/SKILL.md`, then writes Claude Code's `.mcp.json` and Codex's `.codex/config.toml` to point at the local HTTP MCP server. `get_flows` is registered at this point; before Flow Analyzer writes `flows.json`, it reports that flows have not been generated yet, and after that the same tool serves the end-to-end flows. Any Code Agent can then:
 
 - **Browse progressively** — `list_projects` → `get_top` → `get_graph` → `get_page`, lazy-loaded, context-efficient
 - **Trace relationships** — follow the 6 semantic edge types to trace call chains and data flows
 - **Keyword search** — `search_nodes` across all doc layers
-- **Navigate business flows** — understand end-to-end interactions via `flows.json`
+- **Navigate business flows** — understand end-to-end interactions via `get_flows` / `flows.json`
 - **Maintain directly** — edit docs in place via mutate tools, then let the user commit from autoDoc's frontend Git panel
 
 > This Agent-native integration is something DeepWiki (web chat only) and Google Code Wiki (web browsing only) do not offer.

@@ -17,6 +17,8 @@ autoDoc has already generated a complete progressive documentation site for the 
 
 Your task is to supplement the documentation site's missing **runtime perspective** — after reading the architecture graph and module documentation, what users most want to know is "how these modules collaborate in real business scenarios."
 
+Important: \`flows.json\` has not been generated yet. The target repo's MCP / doc-drill integration may already be assembled, but \`get_flows\` has no data to return yet. Generating the flow data is your responsibility. Derive the classic cases from the existing documentation tree and source code, then return structured output to autoDoc; after autoDoc writes \`flows.json\`, the same MCP tool can serve those flows through \`get_flows\`.
+
 ## Input Resources
 
 ### Documentation Files
@@ -33,6 +35,8 @@ The documentation site has been generated at the local directory \`{{DOC_DIR}}\`
 │       ├── {SubModule}.json
 │       └── ...
 \`\`\`
+
+Do not expect \`flows.json\` to exist here. If an old \`flows.json\` is present, do not use it as an input source; this run's output must be derived from the current documentation tree.
 
 Directly read these JSON and Markdown files. Progressive drill flow:
 

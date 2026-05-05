@@ -124,7 +124,10 @@ gitUrl ──► git clone ──► src/souko/repo/{name}
                 ▼                                   ▼
              Writer                              Writer
                 │                                   │
-                └────────────► Flow Analyzer ◄──────┘
+                └───────► Assemble MCP / Skill ◄────┘
+                                       │
+                                       ▼
+                                Flow Analyzer
                                        │
                                        ▼
                        projects.json + src/souko/doc/{name}
@@ -225,7 +228,7 @@ Codex は project-scoped `.codex/config.toml` を使います。autoDoc は skil
 ```toml
 [mcp_servers.autodoc]
 url = "http://localhost:3100/mcp"
-enabled_tools = ["list_projects", "get_top", "get_graph", "get_page", "search_nodes", "list_source_files", "read_source_files", "list_docs", "read_docs", "patch_page", "update_page", "update_node", "update_graph_meta", "create_node", "delete_node", "update_top"]
+enabled_tools = ["list_projects", "get_top", "get_flows", "get_graph", "get_page", "search_nodes", "list_source_files", "read_source_files", "list_docs", "read_docs", "patch_page", "update_page", "update_node", "update_graph_meta", "create_node", "delete_node", "update_top"]
 ```
 
 対応する [doc-drill skill](src/skill-template/SKILL.md) は **MCP ツールの呼び出し方だけ**を記述した薄い説明書で、autoDoc と一緒に配布されます。
@@ -238,6 +241,7 @@ enabled_tools = ["list_projects", "get_top", "get_graph", "get_page", "search_no
 |---|---|
 | `list_projects` | 利用可能な doc project を列挙（name / description） |
 | `get_top` | プロジェクトの top.json を取得 |
+| `get_flows` | 典型的なモジュール間フローを読み、代表ケースで協調動作を理解 |
 | `get_graph` | サブグラフを取得（`codeScope`、`nodes`、`description`） |
 | `get_page` | リーフの Markdown ページを読む |
 | `search_nodes` | 全階層を横断してノード名・説明をキーワード検索 |
@@ -292,12 +296,12 @@ src/souko/
 
 ## doc-drill: Code Agent ネイティブ統合
 
-autoDoc はスリム版 [doc-drill](src/skill-template/SKILL.md) skill をターゲットリポジトリの `.claude/skills/doc-drill/` に自動インストールし、Claude Code 用の `.mcp.json` と Codex 用の `.codex/config.toml` にローカル HTTP MCP サーバーへの参照を書き込みます。任意の Code Agent がこれを通じて:
+初期ドキュメント内容が完成した時点で、autoDoc はスリム版 [doc-drill](src/skill-template/SKILL.md) skill をターゲットリポジトリの `.codex/skills/doc-drill/SKILL.md` に自動インストールし、Claude Code 用の `.mcp.json` と Codex 用の `.codex/config.toml` にローカル HTTP MCP サーバーへの参照を書き込みます。この時点で `get_flows` は登録済みですが、Flow Analyzer が `flows.json` を書き込むまでは flow 未生成を通知し、書き込み後は同じツールでエンドツーエンド flow を取得できます。任意の Code Agent がこれを通じて:
 
 - **段階的ブラウジング** — `list_projects` → `get_top` → `get_graph` → `get_page`、lazy load でコンテキスト節約
 - **関係追跡** — 6 種のセマンティックエッジに沿ってモジュール間のコールチェーンとデータフローを追跡
 - **キーワード検索** — `search_nodes` で全ドキュメント階層を横断検索
-- **ビジネスフローナビ** — `flows.json` を通じてエンドツーエンドのインタラクションシナリオを理解
+- **ビジネスフローナビ** — `get_flows` / `flows.json` を通じてエンドツーエンドのインタラクションシナリオを理解
 - **直接メンテナンス** — mutate ツールでドキュメントをその場で追加削除変更し、最後に autoDoc frontend の Git panel で手動 commit
 
 > これは DeepWiki（Web チャットのみ）や Google Code Wiki（Web ブラウジングのみ）にはない、Agent ネイティブな統合能力です。

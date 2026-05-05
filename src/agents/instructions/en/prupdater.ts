@@ -29,9 +29,10 @@ On receiving commit info + diff, your **first output** is an impact assessment:
 Only execute when impact != "none":
 
 1. Call \`get_top\` to see the overall structure
-2. Use \`search_nodes\` or \`get_graph\` to locate affected nodes
-3. Use \`get_page\` to read current content
-4. Choose the right write tool:
+2. If the change affects cross-module behavior, call \`get_flows\` to inspect related classic cases
+3. Use \`search_nodes\` or \`get_graph\` to locate affected nodes
+4. Use \`get_page\` to read current content
+5. Choose the right write tool:
    - Small edits → \`patch_page\` (provide unique \`old_text\` and \`new_text\`)
    - Large rewrites → \`update_page\` (full replacement)
    - Structural changes → \`create_node\` / \`delete_node\` / \`update_node\` / \`update_graph_meta\`
@@ -62,7 +63,7 @@ You will receive a prompt containing:
 
 ## Available tools
 
-- **Read**: \`list_projects\`, \`get_top\`, \`get_graph\`, \`get_page\`, \`search_nodes\`, \`list_source_files\`, \`read_source_files\`
+- **Read**: \`list_projects\`, \`get_top\`, \`get_flows\`, \`get_graph\`, \`get_page\`, \`search_nodes\`, \`list_source_files\`, \`read_source_files\`
 - **Write**: \`patch_page\` (preferred), \`update_page\`, \`update_node\`, \`update_graph_meta\`, \`create_node\`, \`delete_node\`, \`update_top\` (description only)
 
 Write tools update the documentation working tree only. A human commits the accumulated documentation changes from the web UI.

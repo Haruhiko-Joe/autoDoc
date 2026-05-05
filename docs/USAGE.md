@@ -41,9 +41,10 @@ pnpm start
 此时后端会：
 
 1. 自动 `git clone` 到 `src/souko/repo/{项目名}/`
-2. 可选收集 `knowledge.md`，并跑 **Scaffold → Checker → Decomposer → Checker → Writer → Flow Analyzer** 的全量管线
-3. 把文档产物写进 `src/souko/doc/{项目名}/`
-4. 在 `src/souko/projects.json` 里登记 sourceUrl / branch / head / lastUpdated
+2. 可选收集 `knowledge.md`，并跑 **Scaffold → Checker → Decomposer → Checker → Writer** 生成完整文档内容
+3. 写入目标仓库的 `.mcp.json`、`.codex/config.toml` 和 `.codex/skills/doc-drill/SKILL.md`，让 MCP / doc-drill 先可用；此时 `get_flows` 会提示 flow 尚未生成
+4. 基于完整文档内容和源码运行 **Flow Analyzer**，由它创建 `flows.json`
+5. 在 `src/souko/projects.json` 里登记 sourceUrl / branch / head / lastUpdated
 
 **进度面板**实时显示当前阶段和每个节点的状态。如果中途卡住或手动停掉服务，重新 `pnpm start` 后再次点开始会从断点恢复，不会从零重跑。
 
@@ -94,6 +95,7 @@ autoDoc 自带一个 HTTP MCP server，挂在同进程同端口的 `/mcp` 上，
 | 类型 | 工具 | 说明 |
 |---|---|---|
 | Query | `list_projects` | 列出所有项目 |
+| Query | `get_flows` | 读取典型跨模块交互流程 |
 | Query | `get_top` / `get_graph` / `get_page` | 逐层读取结构和叶子文档 |
 | Query | `search_nodes` | 按关键字搜 |
 | Query | `list_source_files` / `read_source_files` | 定位并读取源码 |
@@ -104,7 +106,7 @@ autoDoc 自带一个 HTTP MCP server，挂在同进程同端口的 `/mcp` 上，
 
 所有 mutate 工具共用**项目级锁**：写操作会串行执行，只产生未提交变更。用户在前端 Git 面板里审阅 dirty 状态并手动提交；blame 信息也从 Git 提供。
 
-同时，autoDoc 会把一份超薄的 `doc-drill` skill 自动写进目标仓库的 `.claude/skills/doc-drill/`，并写入 Claude Code / Codex 对应的 MCP 配置，告诉 Agent 怎么用这些 MCP 工具。
+同时，autoDoc 会在初步文档内容完成后，把一份超薄的 `doc-drill` skill 自动写进目标仓库的 `.codex/skills/doc-drill/SKILL.md`，并写入 Claude Code / Codex 对应的 MCP 配置，告诉 Agent 怎么用这些 MCP 工具。`get_flows` 在 `flows.json` 生成前会提示 flow 尚未生成，生成后即可返回典型流程。
 
 > ⚠️ `/mcp` 默认无鉴权、CORS 开放，只适合本地/内网。部署到 公网/团队使用 请加访问控制或绑定 loopback。
 
@@ -169,9 +171,10 @@ Once the backend prints `listening on 3100` and the frontend Vite dev server is 
 The backend will then:
 
 1. `git clone` into `src/souko/repo/{name}/`
-2. Optionally collect `knowledge.md`, then run the full **Scaffold → Checker → Decomposer → Checker → Writer → Flow Analyzer** pipeline
-3. Write output to `src/souko/doc/{name}/`
-4. Register `sourceUrl` / `branch` / `head` / `lastUpdated` in `src/souko/projects.json`
+2. Optionally collect `knowledge.md`, then run **Scaffold → Checker → Decomposer → Checker → Writer** to complete the documentation content
+3. Write the target repo's `.mcp.json`, `.codex/config.toml`, and `.codex/skills/doc-drill/SKILL.md` so MCP / doc-drill are available; `get_flows` reports that flows have not been generated yet
+4. Run **Flow Analyzer** against the completed docs and source repo so it creates `flows.json`
+5. Register `sourceUrl` / `branch` / `head` / `lastUpdated` in `src/souko/projects.json`
 
 The progress panel shows live phase + per-node status. If the server is killed mid-run, restarting `pnpm start` and hitting Start again will resume from the saved session state instead of starting over.
 
@@ -222,6 +225,7 @@ Open that repo in Claude Code and the Agent will have access to these tools. Cod
 | Kind | Tool | Purpose |
 |---|---|---|
 | Query | `list_projects` | List all registered projects |
+| Query | `get_flows` | Read typical cross-module interaction flows |
 | Query | `get_top` / `get_graph` / `get_page` | Read structure and leaf docs layer by layer |
 | Query | `search_nodes` | Keyword search |
 | Query | `list_source_files` / `read_source_files` | Locate and read source files |
@@ -232,7 +236,7 @@ Open that repo in Claude Code and the Agent will have access to these tools. Cod
 
 Every mutate tool shares a **project-level lock**: writes are serialized and dirty the working tree. The user reviews dirty status and commits from the frontend Git panel; blame data also comes from Git.
 
-autoDoc also installs a thin `doc-drill` skill into the target repo's `.claude/skills/doc-drill/` and writes the Claude Code / Codex MCP config that tells Agents how to use these tools.
+After the initial documentation content is complete, autoDoc installs a thin `doc-drill` skill into the target repo's `.codex/skills/doc-drill/SKILL.md` and writes the Claude Code / Codex MCP config that tells Agents how to use these tools. `get_flows` reports that flows have not been generated until `flows.json` exists, then returns the typical flows.
 
 > ⚠️ `/mcp` is unauthenticated and CORS-open by default — suitable for local/intranet use only. Put it behind access control or bind to loopback before public deployment.
 
@@ -290,9 +294,10 @@ pnpm start
 バックエンドが以下を実行します:
 
 1. `src/souko/repo/{プロジェクト名}/` に `git clone`
-2. 必要に応じて `knowledge.md` を収集し、**Scaffold → Checker → Decomposer → Checker → Writer → Flow Analyzer** の全量パイプラインを実行
-3. 成果物を `src/souko/doc/{プロジェクト名}/` に書き込み
-4. `src/souko/projects.json` に sourceUrl / branch / head / lastUpdated を登録
+2. 必要に応じて `knowledge.md` を収集し、**Scaffold → Checker → Decomposer → Checker → Writer** でドキュメント内容を完成
+3. 対象リポジトリの `.mcp.json`、`.codex/config.toml`、`.codex/skills/doc-drill/SKILL.md` を書き込み、MCP / doc-drill を先に利用可能にします。この時点の `get_flows` は flow 未生成を通知します
+4. 完成したドキュメントとソースを元に **Flow Analyzer** を実行し、Flow Analyzer 自身が `flows.json` を作成
+5. `src/souko/projects.json` に sourceUrl / branch / head / lastUpdated を登録
 
 進捗パネルが現在のフェーズとノード毎の状態をリアルタイム表示します。途中でサーバーが止まっても、`pnpm start` で再起動し再度開始を押すとセッション状態から途中再開します。
 
@@ -343,6 +348,7 @@ autoDoc は同一プロセス同一ポートの `/mcp` に HTTP MCP サーバー
 | 種類 | ツール | 用途 |
 |---|---|---|
 | Query | `list_projects` | 全プロジェクト一覧 |
+| Query | `get_flows` | 典型的なモジュール間インタラクションフローを読む |
 | Query | `get_top` / `get_graph` / `get_page` | 構造とリーフを階層的に読む |
 | Query | `search_nodes` | キーワード検索 |
 | Query | `list_source_files` / `read_source_files` | ソースファイルの探索と読み取り |
@@ -353,7 +359,7 @@ autoDoc は同一プロセス同一ポートの `/mcp` に HTTP MCP サーバー
 
 すべての mutate ツールは**project-level lock**を共有します。書き込みは直列化され、working tree を dirty にします。ユーザーが frontend Git panel で dirty 状態を確認して手動 commit します。blame 情報も Git から取得します。
 
-autoDoc はスリム版 `doc-drill` skill を対象リポジトリの `.claude/skills/doc-drill/` にも自動インストールし、Claude Code / Codex 用の MCP 設定も書き込んで Agent にツールの使い方を教えます。
+初期ドキュメント内容が完成した後、autoDoc はスリム版 `doc-drill` skill を対象リポジトリの `.codex/skills/doc-drill/SKILL.md` に自動インストールし、Claude Code / Codex 用の MCP 設定も書き込んで Agent にツールの使い方を教えます。`flows.json` ができるまでは `get_flows` が flow 未生成を通知し、生成後は典型 flow を返します。
 
 > ⚠️ `/mcp` はデフォルトで無認証・CORS 開放です。ローカル / 社内ネットワーク向け。公開環境に出す前にアクセス制御を追加するかループバックに bind してください。
 

@@ -9,6 +9,7 @@ const MCP_URL = process.env.AUTODOC_MCP_URL ?? `http://localhost:${process.env.P
 const AUTODOC_TOOLS = [
   "list_projects",
   "get_top",
+  "get_flows",
   "get_graph",
   "get_page",
   "search_nodes",

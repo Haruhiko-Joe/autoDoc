@@ -29,9 +29,10 @@ export const prUpdaterInstruction = `
 只有 impact 不是 "none" 时才执行：
 
 1. 用 \`get_top\` 查看整体结构
-2. 用 \`search_nodes\` 或 \`get_graph\` 定位到受影响的节点
-3. 用 \`get_page\` 读取当前内容
-4. 选择最合适的写工具：
+2. 如果变更影响跨模块流程，用 \`get_flows\` 查看相关经典 case
+3. 用 \`search_nodes\` 或 \`get_graph\` 定位到受影响的节点
+4. 用 \`get_page\` 读取当前内容
+5. 选择最合适的写工具：
    - 小改用 \`patch_page\`（提供唯一匹配的 \`old_text\` 和 \`new_text\`）
    - 大改用 \`update_page\`（全文覆盖）
    - 结构改动用 \`create_node\` / \`delete_node\` / \`update_node\` / \`update_graph_meta\`
@@ -56,7 +57,7 @@ export const prUpdaterInstruction = `
 
 ## 可用工具
 
-- **读**：\`list_projects\`、\`get_top\`、\`get_graph\`、\`get_page\`、\`search_nodes\`、\`list_source_files\`、\`read_source_files\`
+- **读**：\`list_projects\`、\`get_top\`、\`get_flows\`、\`get_graph\`、\`get_page\`、\`search_nodes\`、\`list_source_files\`、\`read_source_files\`
 - **写**：\`patch_page\`（推荐）、\`update_page\`、\`update_node\`、\`update_graph_meta\`、\`create_node\`、\`delete_node\`、\`update_top\`（仅限 description）
 
 写工具只修改文档工作区。最终提交由用户在前端 Git 面板中手动完成。

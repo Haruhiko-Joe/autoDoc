@@ -299,12 +299,12 @@ PR 驱动的增量更新管线已上线：
 
 **安装体验：** 相比 DeepWiki（URL 替换）和 Google Code Wiki（URL 替换），autoDoc 需要 Node.js + pnpm + Claude Code 安装，首次安装有一定摩擦。
 
-**生成后使用体验（领先竞品）：** autoDoc 自动生成 `doc-drill` Claude Code Skill 并安装到目标仓库的 `.claude/skills/` 目录，提供：
+**生成后使用体验（领先竞品）：** autoDoc 在初步文档内容产出后自动生成 Codex 项目级 `doc-drill` Skill，并安装到目标仓库的 `.codex/skills/doc-drill/SKILL.md`；Flow Analyzer 写入 `flows.json` 后，同一套 MCP / skill 继续提供 flow 查询能力：
 - **渐进式浏览**（lazy-load，节省上下文）：从顶层模块逐步深入到实现细节
 - **关系追踪**：沿 6 种语义边追踪模块间调用链和数据流
 - **关键词搜索**：跨所有文档层级搜索
 - **代码范围映射**：每个节点标注覆盖的源文件/目录
-- **业务流程导航**：通过 `flows.json` 理解端到端交互场景
+- **业务流程导航**：通过 `get_flows` / `flows.json` 理解端到端交互场景
 
 任何 code agent 都能通过 doc-drill **自顶向下理解一个函数的作用、影响范围和在全局架构中的位置**。这是 DeepWiki（仅网页 Chat）和 Google Code Wiki（仅网页浏览）不具备的深度 Agent 集成能力。
 

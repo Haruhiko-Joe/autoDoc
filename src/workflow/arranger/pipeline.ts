@@ -23,6 +23,7 @@ const SKILL_TEMPLATE_DIR = path.resolve(__dirname, "..", "..", "skill-template")
 const AUTODOC_MCP_TOOLS = [
   "list_projects",
   "get_top",
+  "get_flows",
   "get_graph",
   "get_page",
   "search_nodes",
@@ -205,17 +206,20 @@ export class Pipeline {
   }
 
   async assembleSkill(repoPath: string): Promise<string> {
-    const skillDir = path.join(repoPath, ".claude", "skills", "doc-drill");
-    console.log(`[Arranger] Assembling doc-drill skill at ${skillDir}...`);
-    await mkdir(skillDir, { recursive: true });
-    await copyFile(
-      path.join(SKILL_TEMPLATE_DIR, "SKILL.md"),
-      path.join(skillDir, "SKILL.md"),
+    const claudeSkillDir = path.join(repoPath, ".claude", "skills", "doc-drill");
+    const codexSkillDir = path.join(repoPath, ".codex", "skills", "doc-drill");
+    const templatePath = path.join(SKILL_TEMPLATE_DIR, "SKILL.md");
+    console.log(`[Arranger] Assembling doc-drill skill at ${claudeSkillDir} and ${codexSkillDir}...`);
+    await Promise.all(
+      [claudeSkillDir, codexSkillDir].map(async (dir) => {
+        await mkdir(dir, { recursive: true });
+        await copyFile(templatePath, path.join(dir, "SKILL.md"));
+      }),
     );
     await this.writeClaudeMcpConfig(repoPath);
     await this.writeCodexMcpConfig(repoPath);
-    console.log(`[Arranger] Skill assembled at ${skillDir}`);
-    return skillDir;
+    console.log(`[Arranger] Skill assembled.`);
+    return codexSkillDir;
   }
 
   async runFlowAnalysis(): Promise<void> {
@@ -409,18 +413,42 @@ export class Pipeline {
     const filePath = path.join(codexDir, "config.toml");
     await mkdir(codexDir, { recursive: true });
     const current = await readFile(filePath, "utf-8").catch(() => "");
-    if (current.includes("[mcp_servers.autodoc]")) return;
-
-    const block = [
-      "[mcp_servers.autodoc]",
-      `url = "${this.mcpUrl()}"`,
-      `enabled_tools = [${AUTODOC_MCP_TOOLS.map((tool) => `"${tool}"`).join(", ")}]`,
-      "",
-    ].join("\n");
-    await writeFile(filePath, current.trim() ? `${current.trimEnd()}\n\n${block}` : block);
+    await writeFile(filePath, updateAutodocMcpBlock(current, this.mcpUrl()));
   }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function renderAutodocMcpBlock(url: string): string {
+  return [
+    "[mcp_servers.autodoc]",
+    `url = "${url}"`,
+    `enabled_tools = [${AUTODOC_MCP_TOOLS.map((tool) => `"${tool}"`).join(", ")}]`,
+    "",
+  ].join("\n");
+}
+
+function updateAutodocMcpBlock(current: string, url: string): string {
+  const block = renderAutodocMcpBlock(url);
+  if (!current.trim()) return block;
+
+  const lines = current.split(/\r?\n/);
+  const start = lines.findIndex((line) => line.trim() === "[mcp_servers.autodoc]");
+  if (start < 0) return `${current.trimEnd()}\n\n${block}`;
+
+  let end = start + 1;
+  while (end < lines.length) {
+    const line = lines[end];
+    if (line === undefined || line.trim().startsWith("[")) break;
+    end++;
+  }
+
+  const next = [
+    ...lines.slice(0, start),
+    ...block.trimEnd().split("\n"),
+    ...lines.slice(end),
+  ];
+  return `${next.join("\n").trimEnd()}\n`;
 }
