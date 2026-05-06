@@ -4,8 +4,10 @@ import { fileURLToPath } from "node:url";
 import { appendRunLog } from "../../souko/runLog.js";
 import type {
   AncestorContext as AncestorContextType,
+  CheckerIssue as CheckerIssueType,
   Graph as GraphType,
   GraphNode as GraphNodeType,
+  IChecker,
   IDecomposer,
   IScaffold,
   IWriter,
@@ -63,34 +65,8 @@ export class Pipeline {
         repoPath,
       );
 
-      let topResult = result;
-      let finalSessionId = sessionId;
-
-      const checker = agentFactory.makeChecker();
-      for (let retry = 0; ; retry++) {
-        await appendRunLog(store.projectName, `checker invoke scope=scaffold retry=${retry}`);
-        const checkerPrompt = promptBuilder.scaffoldCheckerPrompt(topResult);
-
-        const checkerResult = checker.getSessionId()
-          ? await checker.continue(checkerPrompt)
-          : await checker.run(checkerPrompt, repoPath);
-
-        if (checkerResult.result.passed) {
-          console.log("[Arranger] Scaffold check passed.");
-          await appendRunLog(store.projectName, `checker pass scope=scaffold`);
-          break;
-        }
-        if (retry >= 5) throw new Error(`Scaffold check failed after 5 retries: ${JSON.stringify(checkerResult.result.issues)}`);
-
-        console.log(`[Arranger] Scaffold check failed (retry ${retry + 1}/5)`);
-        await appendRunLog(store.projectName, `checker fail scope=scaffold retry=${retry + 1}`);
-        await appendRunLog(store.projectName, `scaffold continue retry=${retry + 1}`);
-        const fixed = await scaffold.continue(promptBuilder.scaffoldFixPrompt(checkerResult.result.issues));
-        topResult = fixed.result;
-        finalSessionId = fixed.sessionId;
-      }
-
-      return { topResult, finalSessionId };
+      const checked = await this.checkScaffoldResult(result, scaffold, sessionId);
+      return { topResult: checked.topResult, finalSessionId: checked.finalSessionId };
     });
 
     if (this.options.decompositionReview === "all") {
@@ -269,27 +245,57 @@ export class Pipeline {
       )).result;
     }
 
+    const checked = await this.checkerLoop({
+      scope: "decomposer",
+      nodeId,
+      initialResult: rawGraph,
+      checker,
+      getCheckerPrompt: (r) => promptBuilder.graphCheckerPrompt(nodeId, r),
+      runChecker: (c, prompt) => withSemaphore(semaphore, () =>
+        c.getSessionId() ? c.continue(prompt) : c.run(prompt, repoPath)),
+      fix: (issues) => withSemaphore(semaphore, async () => {
+        const { result, sessionId } = await decomposer.continue(promptBuilder.decomposerFixPrompt(issues));
+        return { result, sessionId };
+      }),
+    });
+    return { rawGraph: checked.result, decomposerSessionId: decomposer.getSessionId() ?? "" };
+  }
+
+  private async checkerLoop<T>(opts: {
+    scope: string;
+    nodeId?: string;
+    initialResult: T;
+    checker?: IChecker;
+    getCheckerPrompt: (result: T) => string;
+    fix: (issues: CheckerIssueType[]) => Promise<{ result: T; sessionId: string }>;
+    runChecker?: (checker: IChecker, prompt: string) => Promise<{ result: { passed: boolean; issues: CheckerIssueType[] } }>;
+  }): Promise<{ result: T; sessionId: string }> {
+    const { agentFactory, repoPath, store } = this.options;
+    const checker = opts.checker ?? agentFactory.makeChecker();
+    let result = opts.initialResult;
+    let sessionId = "";
+    const label = opts.nodeId ? `${opts.scope} node=${opts.nodeId}` : opts.scope;
+
+    const runChecker = opts.runChecker ?? ((c: IChecker, prompt: string) =>
+      c.getSessionId() ? c.continue(prompt) : c.run(prompt, repoPath));
+
     for (let retry = 0; ; retry++) {
-      const checkerPrompt = promptBuilder.graphCheckerPrompt(nodeId, rawGraph);
-      const checkerMode = checker.getSessionId() ? "continue" : "run";
-      await appendRunLog(store.projectName, `checker invoke scope=decomposer node=${nodeId} mode=${checkerMode} retry=${retry}`);
-      const checkerResult = await withSemaphore(semaphore, () =>
-        checker.getSessionId()
-          ? checker.continue(checkerPrompt)
-          : checker.run(checkerPrompt, repoPath),
-      );
+      await appendRunLog(store.projectName, `checker invoke scope=${label} retry=${retry}`);
+      const checkerResult = await runChecker(checker, opts.getCheckerPrompt(result));
 
       if (checkerResult.result.passed) {
-        console.log(`[Arranger] Decomposer check passed: ${nodeId}`);
-        await appendRunLog(store.projectName, `checker pass scope=decomposer node=${nodeId}`);
-        return { rawGraph, decomposerSessionId: decomposer.getSessionId() ?? "" };
+        console.log(`[Arranger] ${opts.scope} check passed${opts.nodeId ? `: ${opts.nodeId}` : ""}.`);
+        await appendRunLog(store.projectName, `checker pass scope=${label}`);
+        return { result, sessionId };
       }
-      if (retry >= 5) throw new Error(`Decomposer check failed after 5 retries for ${nodeId}`);
+      if (retry >= 5) throw new Error(`${opts.scope} check failed after 5 retries${opts.nodeId ? ` for ${opts.nodeId}` : ""}: ${JSON.stringify(checkerResult.result.issues)}`);
 
-      console.log(`[Arranger] Decomposer check failed: ${nodeId} (retry ${retry + 1}/5)`);
-      await appendRunLog(store.projectName, `checker fail scope=decomposer node=${nodeId} retry=${retry + 1}`);
-      await appendRunLog(store.projectName, `decomposer continue node=${nodeId} retry=${retry + 1}`);
-      rawGraph = (await withSemaphore(semaphore, () => decomposer.continue(promptBuilder.decomposerFixPrompt(checkerResult.result.issues)))).result;
+      console.log(`[Arranger] ${opts.scope} check failed${opts.nodeId ? `: ${opts.nodeId}` : ""} (retry ${retry + 1}/5)`);
+      await appendRunLog(store.projectName, `checker fail scope=${label} retry=${retry + 1}`);
+      await appendRunLog(store.projectName, `${opts.scope} continue${opts.nodeId ? ` node=${opts.nodeId}` : ""} retry=${retry + 1}`);
+      const fixed = await opts.fix(checkerResult.result.issues);
+      result = fixed.result;
+      sessionId = fixed.sessionId;
     }
   }
 
@@ -298,33 +304,17 @@ export class Pipeline {
     scaffold: IScaffold,
     initialSessionId: string,
   ): Promise<{ topResult: RawTopGraphType; finalSessionId: string }> {
-    const { agentFactory, promptBuilder, repoPath, store } = this.options;
-    let topResult = initialTopResult;
-    let finalSessionId = initialSessionId;
-    const checker = agentFactory.makeChecker();
-
-    for (let retry = 0; ; retry++) {
-      await appendRunLog(store.projectName, `checker invoke scope=scaffold retry=${retry}`);
-      const checkerPrompt = promptBuilder.scaffoldCheckerPrompt(topResult);
-
-      const checkerResult = checker.getSessionId()
-        ? await checker.continue(checkerPrompt)
-        : await checker.run(checkerPrompt, repoPath);
-
-      if (checkerResult.result.passed) {
-        console.log("[Arranger] Scaffold check passed.");
-        await appendRunLog(store.projectName, `checker pass scope=scaffold`);
-        return { topResult, finalSessionId };
-      }
-      if (retry >= 5) throw new Error(`Scaffold check failed after 5 retries: ${JSON.stringify(checkerResult.result.issues)}`);
-
-      console.log(`[Arranger] Scaffold check failed (retry ${retry + 1}/5)`);
-      await appendRunLog(store.projectName, `checker fail scope=scaffold retry=${retry + 1}`);
-      await appendRunLog(store.projectName, `scaffold continue retry=${retry + 1}`);
-      const fixed = await scaffold.continue(promptBuilder.scaffoldFixPrompt(checkerResult.result.issues));
-      topResult = fixed.result;
-      finalSessionId = fixed.sessionId;
-    }
+    const { promptBuilder } = this.options;
+    const { result: topResult, sessionId } = await this.checkerLoop({
+      scope: "scaffold",
+      initialResult: initialTopResult,
+      getCheckerPrompt: (r) => promptBuilder.scaffoldCheckerPrompt(r),
+      fix: async (issues) => {
+        const fixed = await scaffold.continue(promptBuilder.scaffoldFixPrompt(issues));
+        return { result: fixed.result, sessionId: fixed.sessionId };
+      },
+    });
+    return { topResult, finalSessionId: sessionId || initialSessionId };
   }
 
   private async checkRawGraphWithFix(
@@ -332,32 +322,20 @@ export class Pipeline {
     initialRawGraph: RawGraphType,
     decomposer: IDecomposer,
   ): Promise<{ rawGraph: RawGraphType; decomposerSessionId: string }> {
-    const { promptBuilder, repoPath, semaphore, store } = this.options;
-    const checker = this.options.agentFactory.makeChecker();
-    let rawGraph = initialRawGraph;
-
-    for (let retry = 0; ; retry++) {
-      const checkerPrompt = promptBuilder.graphCheckerPrompt(nodeId, rawGraph);
-      const checkerMode = checker.getSessionId() ? "continue" : "run";
-      await appendRunLog(store.projectName, `checker invoke scope=decomposer node=${nodeId} mode=${checkerMode} retry=${retry}`);
-      const checkerResult = await withSemaphore(semaphore, () =>
-        checker.getSessionId()
-          ? checker.continue(checkerPrompt)
-          : checker.run(checkerPrompt, repoPath),
-      );
-
-      if (checkerResult.result.passed) {
-        console.log(`[Arranger] Decomposer check passed: ${nodeId}`);
-        await appendRunLog(store.projectName, `checker pass scope=decomposer node=${nodeId}`);
-        return { rawGraph, decomposerSessionId: decomposer.getSessionId() ?? "" };
-      }
-      if (retry >= 5) throw new Error(`Decomposer check failed after 5 retries for ${nodeId}`);
-
-      console.log(`[Arranger] Decomposer check failed: ${nodeId} (retry ${retry + 1}/5)`);
-      await appendRunLog(store.projectName, `checker fail scope=decomposer node=${nodeId} retry=${retry + 1}`);
-      await appendRunLog(store.projectName, `decomposer continue node=${nodeId} retry=${retry + 1}`);
-      rawGraph = (await withSemaphore(semaphore, () => decomposer.continue(promptBuilder.decomposerFixPrompt(checkerResult.result.issues)))).result;
-    }
+    const { promptBuilder, semaphore } = this.options;
+    const { result: rawGraph } = await this.checkerLoop({
+      scope: "decomposer",
+      nodeId,
+      initialResult: initialRawGraph,
+      getCheckerPrompt: (r) => promptBuilder.graphCheckerPrompt(nodeId, r),
+      runChecker: (c, prompt) => withSemaphore(this.options.semaphore, () =>
+        c.getSessionId() ? c.continue(prompt) : c.run(prompt, this.options.repoPath)),
+      fix: (issues) => withSemaphore(semaphore, async () => {
+        const { result, sessionId } = await decomposer.continue(promptBuilder.decomposerFixPrompt(issues));
+        return { result, sessionId };
+      }),
+    });
+    return { rawGraph, decomposerSessionId: decomposer.getSessionId() ?? "" };
   }
 
   private async writePage(

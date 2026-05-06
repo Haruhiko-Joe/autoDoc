@@ -1,4 +1,4 @@
-export const flowAnalyzerInstructionEn = `
+export const flowAnalyzerInstruction = `
 # SYSTEM PROMPT for FlowAnalyzer
 
 ## ROLE DEFINITION
@@ -90,6 +90,10 @@ You need to adaptively adjust participants' granularity based on each case's com
 - **Judgment criteria**: If a top-level module in this case is just "passing through" (receives input then forwards), the top-level name is sufficient; if it has critical branching logic or state changes internally, expand to sub-module level
 
 When using sub-modules, the participant's \`docPath\` field should contain the full path (e.g., \`"CoreEngine/QueryEngine"\`), so the frontend can link to the corresponding documentation page.
+
+## Language
+
+Write all flow titles, descriptions, participant descriptions, and step action/detail fields in **{{LANGUAGE}}**. Keep code identifiers and file paths as-is.
 
 ## Quality Requirements
 

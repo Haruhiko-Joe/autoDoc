@@ -10,7 +10,7 @@ import type {
 
 function formatIssue(issue: CheckerIssue, index: number): string {
   const severity = issue.severity === "error" ? "[ERROR]" : "[WARNING]";
-  const files = issue.files.length > 0 ? `\n   相关文件: ${issue.files.join(", ")}` : "";
+  const files = issue.files.length > 0 ? `\n   Related files: ${issue.files.join(", ")}` : "";
   return `${index + 1}. ${severity} [${issue.type}] ${issue.description}${files}`;
 }
 
@@ -39,33 +39,33 @@ export class PromptBuilder {
 
   scaffoldFixPrompt(issues: CheckerIssue[]): string {
     const parts = [
-      "你的顶层模块图经过 Checker 校验未通过，存在以下问题：",
+      "Your top-level module graph failed Checker validation with the following issues:",
       "",
     ];
     issues.forEach((issue, i) => parts.push(formatIssue(issue, i)));
     parts.push(
       "",
-      "请修正后重新输出完整的顶层模块图，确保：",
-      "- 所有 codeScope 路径在目标仓库中实际存在",
-      "- 所有 edges[].target 指向当前图中存在的节点名称",
-      "- 每个节点的 description 非空且有意义",
+      "Please fix and re-output the complete top-level module graph, ensuring:",
+      "- All codeScope paths actually exist in the target repository",
+      "- All edges[].target point to node names that exist in the current graph",
+      "- Each node's description is non-empty and meaningful",
     );
     return parts.join("\n");
   }
 
   scaffoldReviewFeedbackPrompt(current: RawTopGraph, feedback: string): string {
     return this.appendKnowledge([
-      "用户人工审查了你的顶层模块拆解，并要求重做。",
+      "The user has manually reviewed your top-level module decomposition and requested a redo.",
       "",
-      "## 当前候选拆解",
+      "## Current candidate decomposition",
       "```json",
       JSON.stringify(current, null, 2),
       "```",
       "",
-      "## 用户反馈",
+      "## User feedback",
       feedback,
       "",
-      "请根据用户反馈重新输出完整的顶层模块图。",
+      "Please re-output the complete top-level module graph based on the user's feedback.",
     ].join("\n"));
   }
 
@@ -101,19 +101,19 @@ export class PromptBuilder {
   }
 
   decomposerFixPrompt(issues: CheckerIssue[]): string {
-    const parts = ["你的子图产出经过 Checker 校验未通过，存在以下问题：", ""];
+    const parts = ["Your subgraph output failed Checker validation with the following issues:", ""];
 
     issues.forEach((issue, i) => parts.push(formatIssue(issue, i)));
     parts.push("");
 
     parts.push(
-      "请根据以上问题修正你的输出：",
-      "- edges[].target 必须指向当前图中实际存在的节点名称",
-      "- codeScope 中的路径必须是目标仓库中实际存在的文件或目录",
-      "- 每个节点的 description 必须非空且有意义",
-      "- child.ref 使用简洁英文标识符，不含空格和特殊字符",
+      "Please fix your output based on the issues above:",
+      "- edges[].target must point to node names that actually exist in the current graph",
+      "- codeScope paths must be actually existing files or directories in the target repository",
+      "- Each node's description must be non-empty and meaningful",
+      "- child.ref must be a concise English identifier without spaces or special characters",
       "",
-      "请重新输出完整的、修正后的子图 JSON。",
+      "Please re-output the complete, corrected subgraph JSON.",
     );
 
     return parts.join("\n");
@@ -121,17 +121,17 @@ export class PromptBuilder {
 
   decomposerReviewFeedbackPrompt(nodeId: string, current: RawGraph, feedback: string): string {
     return this.appendKnowledge([
-      `用户人工审查了模块 "${nodeId}" 的子图拆解，并要求重做。`,
+      `The user has manually reviewed the subgraph decomposition for module "${nodeId}" and requested a redo.`,
       "",
-      "## 当前候选拆解",
+      "## Current candidate decomposition",
       "```json",
       JSON.stringify(current, null, 2),
       "```",
       "",
-      "## 用户反馈",
+      "## User feedback",
       feedback,
       "",
-      "请根据用户反馈重新输出完整的子图 JSON。",
+      "Please re-output the complete subgraph JSON based on the user's feedback.",
     ].join("\n"));
   }
 

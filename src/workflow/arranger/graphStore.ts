@@ -161,7 +161,7 @@ export class GraphStore {
       nodes: rawGraph.nodes,
       decomposerSessionId: undefined,
       checkerSessionId: undefined,
-      writerSessionIds: undefined,
+
       pageTasks: hasPages ? pageTasks : undefined,
     });
   }
@@ -176,7 +176,7 @@ export class GraphStore {
       nodes: rawGraph.nodes,
       decomposerSessionId,
       checkerSessionId: undefined,
-      writerSessionIds: undefined,
+
       pageTasks: undefined,
     });
     this.onChange();
@@ -418,7 +418,7 @@ export class GraphStore {
           pageTasks,
           decomposerSessionId: clearDecomposerSession ? undefined : graph.decomposerSessionId,
           checkerSessionId: undefined,
-          writerSessionIds: undefined,
+    
         });
         resetCount++;
       } catch {

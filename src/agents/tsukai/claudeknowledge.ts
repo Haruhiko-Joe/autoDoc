@@ -1,87 +1,14 @@
-import { query } from "@anthropic-ai/claude-agent-sdk";
-import { KnowledgeTurn, toOutputSchema } from "../schemas/schema.js";
-import type { AgentResult, IKnowledge, Language } from "../schemas/schema.js";
-import { knowledgeInstruction } from "../instructions/cn/knowledge.js";
-import { knowledgeInstructionEn } from "../instructions/en/knowledge.js";
+import { KnowledgeTurn } from "../schemas/schema.js";
+import type { IKnowledge, Language } from "../schemas/schema.js";
+import { knowledgeInstruction } from "../instructions/knowledge.js";
+import { ClaudeAgent } from "./claudeBase.js";
 
-const outputFormat = {
-  type: "json_schema" as const,
-  schema: toOutputSchema(KnowledgeTurn),
-};
-
-export class claudeKnowledge implements IKnowledge {
-  private sessionId: string | undefined;
-  private cwd: string | undefined;
-  private readonly language: Language;
-
+export class claudeKnowledge extends ClaudeAgent<typeof KnowledgeTurn> implements IKnowledge {
   constructor(language: Language = "zh") {
-    this.language = language;
-  }
-
-  getSessionId(): string | undefined { return this.sessionId; }
-
-  restore(sessionId: string, workpath: string): void {
-    this.sessionId = sessionId;
-    this.cwd = workpath;
-  }
-
-  async run(prompt: string, workpath: string): Promise<AgentResult<KnowledgeTurn>> {
-    if (this.sessionId) {
-      throw new Error("Session already active. Use continue() or create a new claudeKnowledge instance.");
-    }
-    this.cwd = workpath;
-    return this.execute(prompt);
-  }
-
-  async continue(prompt: string): Promise<AgentResult<KnowledgeTurn>> {
-    if (!this.sessionId) {
-      throw new Error("No active session. Call run() first.");
-    }
-    return this.execute(prompt, this.sessionId);
-  }
-
-  private async execute(
-    prompt: string,
-    resumeSessionId?: string,
-  ): Promise<AgentResult<KnowledgeTurn>> {
-    let sessionId = "";
-    let result: KnowledgeTurn | undefined;
-
-    for await (const message of query({
-      prompt,
-      options: {
-        model: "claude-opus-4-7[1m]",
-        betas: ["context-1m-2025-08-07"],
-        permissionMode: "bypassPermissions",
-        allowDangerouslySkipPermissions: true,
-        tools: { type: "preset", preset: "claude_code" },
-        allowedTools: ["Read", "Glob", "Grep"],
-        cwd: this.cwd,
-        outputFormat,
-        systemPrompt: {
-          type: "preset",
-          preset: "claude_code",
-          append: this.language === "en" ? knowledgeInstructionEn : knowledgeInstruction,
-        },
-        ...(resumeSessionId ? { resume: resumeSessionId } : {}),
-      },
-    })) {
-      if (message.type === "system" && message.subtype === "init") {
-        this.sessionId = message.session_id;
-        sessionId = message.session_id;
-      }
-      if (message.type === "result") {
-        this.sessionId = message.session_id;
-        sessionId = message.session_id;
-        if (message.subtype === "success" && message.structured_output) {
-          result = KnowledgeTurn.parse(message.structured_output);
-        } else {
-          throw new Error(`claudeKnowledge failed: ${message.subtype}, result: ${JSON.stringify((message as Record<string, unknown>).result ?? "").slice(0, 500)}`);
-        }
-      }
-    }
-
-    if (!result) throw new Error("claudeKnowledge returned no result");
-    return { sessionId, result };
+    super(language, {
+      instruction: knowledgeInstruction,
+      outputSchema: KnowledgeTurn,
+      errorPrefix: "claudeKnowledge",
+    });
   }
 }

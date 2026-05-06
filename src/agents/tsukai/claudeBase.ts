@@ -1,0 +1,100 @@
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import { toOutputSchema, resolveInstruction } from "../schemas/schema.js";
+import type { AgentResult, Language } from "../schemas/schema.js";
+import type { z } from "zod";
+
+export interface ClaudeAgentConfig<T extends z.ZodType> {
+  instruction: string;
+  outputSchema: T;
+  errorPrefix: string;
+  allowedTools?: string[];
+}
+
+export class ClaudeAgent<S extends z.ZodType, T = z.infer<S>> {
+  private sessionId: string | undefined;
+  private cwd: string | undefined;
+  protected readonly language: Language;
+
+  constructor(
+    language: Language,
+    private readonly config: ClaudeAgentConfig<S>,
+  ) {
+    this.language = language;
+  }
+
+  getSessionId(): string | undefined { return this.sessionId; }
+
+  restore(sessionId: string, workpath: string): void {
+    this.sessionId = sessionId;
+    this.cwd = workpath;
+  }
+
+  async run(prompt: string, workpath: string): Promise<AgentResult<T>> {
+    if (this.sessionId) {
+      throw new Error(`Session already active. Use continue() or create a new instance.`);
+    }
+    this.cwd = workpath;
+    return this.execute(prompt);
+  }
+
+  async continue(prompt: string): Promise<AgentResult<T>> {
+    if (!this.sessionId) {
+      throw new Error("No active session. Call run() first.");
+    }
+    return this.execute(prompt, this.sessionId);
+  }
+
+  protected getInstruction(): string {
+    return resolveInstruction(this.config.instruction, this.language);
+  }
+
+  private async execute(
+    prompt: string,
+    resumeSessionId?: string,
+  ): Promise<AgentResult<T>> {
+    let sessionId = "";
+    let result: T | undefined;
+
+    const outputFormat = {
+      type: "json_schema" as const,
+      schema: toOutputSchema(this.config.outputSchema),
+    };
+
+    for await (const message of query({
+      prompt,
+      options: {
+        model: "claude-opus-4-7[1m]",
+        betas: ["context-1m-2025-08-07"],
+        permissionMode: "bypassPermissions",
+        allowDangerouslySkipPermissions: true,
+        tools: { type: "preset", preset: "claude_code" },
+        allowedTools: this.config.allowedTools ?? ["Read", "Glob", "Grep"],
+        cwd: this.cwd,
+        outputFormat,
+        systemPrompt: {
+          type: "preset",
+          preset: "claude_code",
+          append: this.getInstruction(),
+        },
+        ...(resumeSessionId ? { resume: resumeSessionId } : {}),
+      },
+    })) {
+      if (message.type === "system" && message.subtype === "init") {
+        this.sessionId = message.session_id;
+        sessionId = message.session_id;
+      }
+      if (message.type === "result") {
+        this.sessionId = message.session_id;
+        sessionId = message.session_id;
+        if (message.subtype === "success" && message.structured_output) {
+          result = this.config.outputSchema.parse(message.structured_output) as T;
+        } else {
+          throw new Error(`${this.config.errorPrefix} failed: ${message.subtype}, result: ${JSON.stringify((message as Record<string, unknown>).result ?? "").slice(0, 500)}`);
+        }
+      }
+    }
+
+    if (!result) throw new Error(`${this.config.errorPrefix} returned no result`);
+    return { sessionId, result };
+  }
+}

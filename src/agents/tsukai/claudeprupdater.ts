@@ -1,7 +1,7 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
+import { resolveInstruction } from "../schemas/schema.js";
 import type { AgentResult, IPrUpdater, Language, PrUpdaterDelta } from "../schemas/schema.js";
-import { prUpdaterInstruction } from "../instructions/cn/prupdater.js";
-import { prUpdaterInstructionEn } from "../instructions/en/prupdater.js";
+import { prUpdaterInstruction } from "../instructions/prupdater.js";
 
 const MCP_URL = process.env.AUTODOC_MCP_URL ?? `http://localhost:${process.env.PORT ?? 3100}/mcp`;
 
@@ -80,7 +80,7 @@ export class claudePrUpdater implements IPrUpdater {
         systemPrompt: {
           type: "preset",
           preset: "claude_code",
-          append: this.language === "en" ? prUpdaterInstructionEn : prUpdaterInstruction,
+          append: resolveInstruction(prUpdaterInstruction, this.language),
         },
         ...(resumeSessionId ? { resume: resumeSessionId } : {}),
       },

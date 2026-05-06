@@ -95,7 +95,6 @@ export const Graph = z.object({
   nodes: z.array(GraphNode),
   decomposerSessionId: z.string().optional(),
   checkerSessionId: z.string().optional(),
-  writerSessionIds: z.record(z.string(), z.string()).optional(),
   pageTasks: z.record(z.string(), PageTask).optional(),
 })
 
@@ -286,4 +285,8 @@ export type Language = "zh" | "en";
 export function toOutputSchema(zodType: z.ZodType): Record<string, unknown> {
   const { $schema, ...schema } = z.toJSONSchema(zodType) as Record<string, unknown>;
   return schema;
+}
+
+export function resolveInstruction(instruction: string, language: Language): string {
+  return instruction.replaceAll("{{LANGUAGE}}", language === "en" ? "English" : "Chinese");
 }

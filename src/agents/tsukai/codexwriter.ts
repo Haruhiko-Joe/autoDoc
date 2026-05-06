@@ -1,78 +1,15 @@
-import { Codex } from "@openai/codex-sdk";
-import type { Thread } from "@openai/codex-sdk";
-import { WriterOutput, toOutputSchema } from "../schemas/schema.js";
-import type { AgentResult, IWriter, Language } from "../schemas/schema.js";
-import { writerInstruction } from "../instructions/cn/wirter.js";
-import { writerInstructionEn } from "../instructions/en/wirter.js";
+import { WriterOutput } from "../schemas/schema.js";
+import type { IWriter, Language } from "../schemas/schema.js";
+import { writerInstruction } from "../instructions/writer.js";
+import { CodexAgent } from "./codexBase.js";
 
-const outputSchema = toOutputSchema(WriterOutput);
-
-export class codexWriter implements IWriter {
-  private codex: Codex | null = null;
-  private thread: Thread | null = null;
-  private threadId: string | undefined;
-  private cwd: string | undefined;
-  private readonly language: Language;
-
+export class codexWriter extends CodexAgent<typeof WriterOutput> implements IWriter {
   constructor(language: Language = "zh") {
-    this.language = language;
-  }
-
-  getSessionId(): string | undefined { return this.threadId; }
-
-  restore(sessionId: string, workpath: string): void {
-    this.threadId = sessionId;
-    this.cwd = workpath;
-  }
-
-  async run(prompt: string, workpath: string): Promise<AgentResult<WriterOutput>> {
-    if (this.threadId) {
-      throw new Error("Session already active. Use continue() or create a new codexWriter instance.");
-    }
-    this.cwd = workpath;
-    const instruction = this.language === "en" ? writerInstructionEn : writerInstruction;
-    this.codex = new Codex({
-      config: {
-        profile: "writer",
-        developer_instructions: instruction,
-      },
+    super(language, {
+      profile: "writer",
+      instruction: writerInstruction,
+      outputSchema: WriterOutput,
+      errorPrefix: "codexWriter",
     });
-    this.thread = this.codex.startThread({
-      workingDirectory: workpath,
-      skipGitRepoCheck: true,
-    });
-    return this.execute(prompt);
-  }
-
-  async continue(prompt: string): Promise<AgentResult<WriterOutput>> {
-    if (!this.threadId) {
-      throw new Error("No active session. Call run() first.");
-    }
-    if (!this.codex) {
-      const instruction = this.language === "en" ? writerInstructionEn : writerInstruction;
-      this.codex = new Codex({
-        config: {
-          profile: "writer",
-          developer_instructions: instruction,
-        },
-      });
-    }
-    if (!this.thread) {
-      this.thread = this.codex.resumeThread(this.threadId, {
-        workingDirectory: this.cwd,
-        skipGitRepoCheck: true,
-      });
-    }
-    return this.execute(prompt);
-  }
-
-  private async execute(prompt: string): Promise<AgentResult<WriterOutput>> {
-    if (!this.thread) throw new Error("No active thread");
-    const turn = await this.thread.run(prompt, { outputSchema });
-    const threadId = this.thread.id;
-    if (!threadId) throw new Error("Thread has no ID after execution");
-    this.threadId = threadId;
-    const result = WriterOutput.parse(JSON.parse(turn.finalResponse));
-    return { sessionId: threadId, result };
   }
 }

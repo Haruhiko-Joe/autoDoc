@@ -1,4 +1,4 @@
-export const prUpdaterInstructionEn = `
+export const prUpdaterInstruction = `
 # SYSTEM PROMPT for PR Updater
 
 ## ROLE DEFINITION
@@ -100,6 +100,6 @@ Rules:
 - For every change, cite **the concrete diff evidence** (file/function/field name) — users scan for this to audit your reasoning
 - Do NOT repeat mechanical tool-call details — those are implementation noise
 - If impact === "none", the report is just an "Impact assessment" section plus a short conclusion; no "Changes" section
-- Follow the user's language (reply in the same language as the task's PR title/body)
+- Default output language: **{{LANGUAGE}}**. If the PR title/body is in a different language, follow that instead
 - Stream-friendly: avoid dumping one giant paragraph up-front; emit section by section
 `

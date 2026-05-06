@@ -1,8 +1,8 @@
 import { Codex } from "@openai/codex-sdk";
 import type { Thread } from "@openai/codex-sdk";
+import { resolveInstruction } from "../schemas/schema.js";
 import type { AgentResult, IPrUpdater, Language, PrUpdaterDelta } from "../schemas/schema.js";
-import { prUpdaterInstruction } from "../instructions/cn/prupdater.js";
-import { prUpdaterInstructionEn } from "../instructions/en/prupdater.js";
+import { prUpdaterInstruction } from "../instructions/prupdater.js";
 
 const MCP_URL = process.env.AUTODOC_MCP_URL ?? `http://localhost:${process.env.PORT ?? 3100}/mcp`;
 
@@ -53,7 +53,7 @@ export class codexPrUpdater implements IPrUpdater {
       throw new Error("Session already active. Use continue() or create a new codexPrUpdater instance.");
     }
     this.cwd = workpath;
-    const instruction = this.language === "en" ? prUpdaterInstructionEn : prUpdaterInstruction;
+    const instruction = resolveInstruction(prUpdaterInstruction, this.language);
     this.codex = new Codex({
       config: {
         profile: "prupdater",
@@ -73,7 +73,7 @@ export class codexPrUpdater implements IPrUpdater {
       throw new Error("No active session. Call run() first.");
     }
     if (!this.codex) {
-      const instruction = this.language === "en" ? prUpdaterInstructionEn : prUpdaterInstruction;
+      const instruction = resolveInstruction(prUpdaterInstruction, this.language);
       this.codex = new Codex({
         config: {
           profile: "prupdater",
