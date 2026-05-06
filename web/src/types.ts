@@ -50,7 +50,7 @@ export interface SubGraph {
 export interface FlowParticipant {
   name: string
   description: string
-  docPath?: string
+  docPath: string
 }
 
 export interface FlowStep {
@@ -58,8 +58,8 @@ export interface FlowStep {
   to: string
   action: string
   detail: string
-  edgeType?: EdgeType
-  codeRef?: string
+  edgeType: EdgeType
+  codeRef: string
 }
 
 export interface FlowCase {

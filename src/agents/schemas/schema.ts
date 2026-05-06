@@ -110,7 +110,7 @@ export const WriterOutput = z.object({
 export const FlowParticipant = z.object({
   name: z.string(),
   description: z.string(),
-  docPath: z.string().optional(),
+  docPath: z.string(),
 })
 
 export const FlowStep = z.object({
@@ -118,8 +118,8 @@ export const FlowStep = z.object({
   to: z.string(),
   action: z.string(),
   detail: z.string(),
-  edgeType: EdgeType.optional(),
-  codeRef: z.string().optional(),
+  edgeType: EdgeType,
+  codeRef: z.string(),
 })
 
 export const FlowCase = z.object({
