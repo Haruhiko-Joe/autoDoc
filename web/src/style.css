@@ -1,0 +1,212 @@
+:root {
+  /* Backgrounds */
+  --bg-body: #f5f5f7;
+  --bg-sidebar: rgba(251, 251, 253, 0.92);
+  --bg-surface: #ffffff;
+  --bg-surface-alt: #f2f2f4;
+  --bg-surface-hover: #eef5ff;
+  --bg-code: #f5f6f7;
+  --bg-code-inline: #eceef1;
+  --bg-overlay: rgba(0, 0, 0, 0.28);
+
+  /* Text */
+  --text-primary: #1d1d1f;
+  --text-heading: #111113;
+  --text-secondary: #5f6269;
+  --text-muted: #86868b;
+  --text-disabled: #b8bcc4;
+
+  /* Borders */
+  --border: rgba(29, 29, 31, 0.1);
+  --border-strong: rgba(29, 29, 31, 0.18);
+  --border-light: rgba(29, 29, 31, 0.07);
+  --border-card: rgba(29, 29, 31, 0.12);
+
+  /* Accent */
+  --accent: #0071e3;
+  --accent-hover: #0a84ff;
+  --accent-shadow: rgba(0, 113, 227, 0.18);
+  --color-green: #248a3d;
+  --color-orange: #b86200;
+  --color-red: #d70015;
+  --color-magenta: #c9348a;
+  --color-purple: #6e5bd8;
+  --color-cyan: #007d8a;
+
+  /* Shape + elevation */
+  --radius-control: 6px;
+  --radius-card: 8px;
+  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 26px rgba(0, 0, 0, 0.06);
+  --shadow-panel: 0 20px 54px rgba(0, 0, 0, 0.18);
+  --shadow-focus: 0 0 0 3px rgba(0, 113, 227, 0.14);
+
+  /* Status badge backgrounds */
+  --badge-done-bg: rgba(36, 138, 61, 0.1);
+  --badge-done-border: rgba(36, 138, 61, 0.22);
+  --badge-pending-bg: rgba(184, 98, 0, 0.1);
+  --badge-active-bg: rgba(0, 113, 227, 0.1);
+  --badge-error-bg: rgba(215, 0, 21, 0.1);
+
+  /* Chat */
+  --chat-assistant-bg: #f4f5f7;
+  --chat-assistant-code: #eaecf0;
+  --chat-assistant-code-inline: #e5e7eb;
+
+  /* Graph label */
+  --graph-label-bg: #fff;
+
+  /* Flows page */
+  --flows-bg: #f5f5f7;
+  --flows-tab-border: rgba(29, 29, 31, 0.11);
+  --flows-tab-active-bg: #1d1d1f;
+  --flows-tab-active-text: #fff;
+  --flows-tab-text: #6e737c;
+  --flows-diagram-bg: #fff;
+  --flows-diagram-border: rgba(29, 29, 31, 0.1);
+  --flows-participant-bg: linear-gradient(180deg, #fbfbfd 0%, #fff 100%);
+  --flows-participant-card-bg: #fff;
+  --flows-participant-card-border: rgba(29, 29, 31, 0.11);
+  --flows-lifeline: rgba(29, 29, 31, 0.08);
+  --flows-step-hover: #fbfbfd;
+  --flows-step-expanded: #eef5ff;
+  --flows-step-divider: rgba(29, 29, 31, 0.07);
+  --flows-detail-bg: #fbfcff;
+  --flows-detail-border: rgba(0, 113, 227, 0.1);
+  --flows-ref-bg: #f1f4f8;
+  --flows-ref-border: rgba(29, 29, 31, 0.09);
+  --flows-label-bg: rgba(255, 255, 255, 0.88);
+  --flows-text: #1d1d1f;
+  --flows-text-secondary: #5f6269;
+  --flows-breadcrumb-link: #0071e3;
+  --flows-breadcrumb-sep: #b8bcc4;
+}
+
+[data-theme="dark"] {
+  /* Backgrounds */
+  --bg-body: #0b0c0f;
+  --bg-sidebar: rgba(22, 23, 27, 0.92);
+  --bg-surface: #1c1d21;
+  --bg-surface-alt: #25262b;
+  --bg-surface-hover: #202a36;
+  --bg-code: #17181d;
+  --bg-code-inline: #25262b;
+  --bg-overlay: rgba(0, 0, 0, 0.6);
+
+  /* Text */
+  --text-primary: #f5f5f7;
+  --text-heading: #ffffff;
+  --text-secondary: #b4b8c2;
+  --text-muted: #7d828e;
+  --text-disabled: #565b66;
+
+  /* Borders */
+  --border: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.18);
+  --border-light: rgba(255, 255, 255, 0.07);
+  --border-card: rgba(255, 255, 255, 0.12);
+
+  /* Accent */
+  --accent: #0a84ff;
+  --accent-hover: #409cff;
+  --accent-shadow: rgba(10, 132, 255, 0.24);
+  --color-green: #30d158;
+  --color-orange: #ff9f0a;
+  --color-red: #ff453a;
+  --color-magenta: #ff4f9a;
+  --color-purple: #8e8cff;
+  --color-cyan: #64d2ff;
+
+  --shadow-soft: 0 1px 1px rgba(0, 0, 0, 0.4), 0 12px 30px rgba(0, 0, 0, 0.28);
+  --shadow-panel: 0 24px 60px rgba(0, 0, 0, 0.48);
+  --shadow-focus: 0 0 0 3px rgba(10, 132, 255, 0.22);
+
+  /* Status badge backgrounds */
+  --badge-done-bg: rgba(158, 206, 106, 0.1);
+  --badge-done-border: rgba(158, 206, 106, 0.3);
+  --badge-pending-bg: rgba(224, 175, 104, 0.1);
+  --badge-active-bg: rgba(122, 162, 247, 0.1);
+  --badge-error-bg: rgba(247, 118, 142, 0.1);
+
+  /* Chat */
+  --chat-assistant-bg: #1c1d21;
+  --chat-assistant-code: #1e2030;
+  --chat-assistant-code-inline: #292e42;
+
+  /* Graph label */
+  --graph-label-bg: #1c1d21;
+
+  /* Flows page */
+  --flows-bg: #0b0c0f;
+  --flows-tab-border: rgba(255, 255, 255, 0.12);
+  --flows-tab-active-bg: #f5f5f7;
+  --flows-tab-active-text: #111113;
+  --flows-tab-text: #b4b8c2;
+  --flows-diagram-bg: #1c1d21;
+  --flows-diagram-border: rgba(255, 255, 255, 0.12);
+  --flows-participant-bg: linear-gradient(180deg, #202126 0%, #1c1d21 100%);
+  --flows-participant-card-bg: #1c1d21;
+  --flows-participant-card-border: rgba(255, 255, 255, 0.12);
+  --flows-lifeline: rgba(255, 255, 255, 0.1);
+  --flows-step-hover: #25262b;
+  --flows-step-expanded: rgba(10, 132, 255, 0.12);
+  --flows-step-divider: #292e42;
+  --flows-detail-bg: #1f2335;
+  --flows-detail-border: #3b4261;
+  --flows-ref-bg: #1e2030;
+  --flows-ref-border: #3b4261;
+  --flows-label-bg: rgba(36, 40, 59, 0.92);
+  --flows-text: #f5f5f7;
+  --flows-text-secondary: #b4b8c2;
+  --flows-breadcrumb-link: #0a84ff;
+  --flows-breadcrumb-sep: #565b66;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;
+  color: var(--text-primary);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(245, 245, 247, 0) 240px),
+    var(--bg-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  transition: background 0.3s, color 0.3s;
+}
+
+[data-theme="dark"] body {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(11, 12, 15, 0) 240px),
+    var(--bg-body);
+}
+
+#app {
+  width: 100%;
+  min-height: 100vh;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button,
+select,
+input,
+textarea {
+  transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+
+button:focus-visible,
+select:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}

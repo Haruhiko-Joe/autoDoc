@@ -1,0 +1,31 @@
+{
+  "name": "auto-doc",
+  "version": "1.0.0",
+  "description": "",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx src/server.ts",
+    "start": "tsx src/server.ts & cd web && pnpm dev",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "joeyanbo608@gmail.com",
+  "license": "AGPL-3.0-only",
+  "packageManager": "pnpm@10.33.0",
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.128",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@openai/codex-sdk": "^0.128.0",
+    "dotenv": "^17.4.2",
+    "ignore": "^7.0.5",
+    "openai": "^6.34.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^24.12.2",
+    "esbuild": "^0.24.2",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3"
+  }
+}
