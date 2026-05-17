@@ -31,6 +31,7 @@ const agentBackends = reactive<AgentBackends>({
 })
 const language = ref<'zh' | 'en'>('zh')
 const decompositionReview = ref<DecompositionReviewMode>('off')
+const checkerEnabled = ref(true)
 const reviewEnabled = computed({
   get: () => decompositionReview.value === 'all',
   set: (enabled: boolean) => {
@@ -119,6 +120,7 @@ onMounted(async () => {
     Object.assign(agentBackends, s.config.agentBackends)
     language.value = s.config.language
     decompositionReview.value = s.config.decompositionReview ?? 'off'
+    checkerEnabled.value = s.config.checkerEnabled ?? true
   }
 
   const routeProject = getRouteProject()
@@ -161,7 +163,7 @@ async function handleRun() {
   if (!url) return
   errorMsg.value = ''
   try {
-    const { project } = await startRun(url, maxConcurrency.value, { ...agentBackends }, language.value, decompositionReview.value)
+    const { project } = await startRun(url, maxConcurrency.value, { ...agentBackends }, language.value, decompositionReview.value, checkerEnabled.value)
     mergeProjectEntries([
       ...projectEntries.value,
       { name: project, hasDoc: false, sourceUrl: url, branch: '', head: '', lastUpdated: '' },
@@ -483,11 +485,22 @@ async function handleRetryErrors() {
                   <small>Pause after Scaffold and Decomposer outputs for manual approval.</small>
                 </span>
               </label>
+              <label class="review-toggle">
+                <input v-model="checkerEnabled" type="checkbox" />
+                <span>
+                  <strong>Enable Checker validation</strong>
+                  <small>Run the LLM Checker after Scaffold and Decomposer outputs.</small>
+                </span>
+              </label>
               <div class="dialog-section-title">Agent Backends</div>
               <div class="agent-grid">
                 <template v-for="field in agentBackendFields" :key="field.key">
                   <label class="agent-label">{{ field.label }}</label>
-                  <select v-model="agentBackends[field.key]" class="project-select">
+                  <select
+                    v-model="agentBackends[field.key]"
+                    class="project-select"
+                    :disabled="field.key === 'checker' && !checkerEnabled"
+                  >
                     <option value="codex">Codex (GPT)</option>
                     <option value="claude">Claude</option>
                   </select>

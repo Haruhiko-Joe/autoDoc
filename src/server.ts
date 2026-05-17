@@ -282,6 +282,7 @@ async function handleRunContinue(): Promise<{ ok: boolean }> {
     agentBackends: config.agentBackends,
     language: config.language,
     decompositionReview: config.decompositionReview ?? "off",
+    checkerEnabled: config.checkerEnabled ?? true,
   });
   state = { phase: "running", gitUrl, project, repoDir, docDir, arranger };
   arranger.onProgress(debouncedBroadcast);
@@ -354,6 +355,7 @@ interface RunConfig {
   agentBackends: AgentBackends;
   language: Language;
   decompositionReview: "off" | "all";
+  checkerEnabled: boolean;
 }
 
 interface StatusResponse {

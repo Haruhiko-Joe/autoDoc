@@ -9,6 +9,7 @@ export interface RunBody {
   agentBackends?: Partial<AgentBackends>;
   language?: Language;
   decompositionReview?: DecompositionReviewMode;
+  checkerEnabled?: boolean;
 }
 
 interface RunRouteDeps {

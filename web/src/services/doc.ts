@@ -92,6 +92,7 @@ export interface RunConfig {
   agentBackends: AgentBackends
   language: 'zh' | 'en'
   decompositionReview: DecompositionReviewMode
+  checkerEnabled: boolean
 }
 
 export type RunPhase = 'idle' | 'cloning' | 'awaiting-knowledge' | 'running' | 'done' | 'error'
@@ -132,8 +133,9 @@ export async function startRun(
   agentBackends?: Partial<AgentBackends>,
   language?: 'zh' | 'en',
   decompositionReview?: DecompositionReviewMode,
+  checkerEnabled?: boolean,
 ): Promise<{ ok: boolean; project: string }> {
-  const body = { gitUrl, maxConcurrency, agentBackends, language, decompositionReview }
+  const body = { gitUrl, maxConcurrency, agentBackends, language, decompositionReview, checkerEnabled }
   return postJson(`${API}/run`, body, 'Failed to start')
 }
 

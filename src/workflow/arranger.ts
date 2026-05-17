@@ -34,6 +34,7 @@ export class Arranger {
   private readonly agentBackends: AgentBackends;
   private readonly language: Language;
   private readonly decompositionReview: DecompositionReviewMode;
+  private readonly checkerEnabled: boolean;
   private readonly sem: Semaphore;
   private readonly docGit = new DocGit(DOC_ROOT);
   private readonly agentFactory: AgentFactory;
@@ -56,6 +57,7 @@ export class Arranger {
     this.agentBackends = resolveAgentBackends(options);
     this.language = options?.language ?? "zh";
     this.decompositionReview = options?.decompositionReview ?? "off";
+    this.checkerEnabled = options?.checkerEnabled ?? true;
     this.sem = new Semaphore(this.maxConcurrency);
     this.agentFactory = new AgentFactory(this.agentBackends, this.language);
   }
@@ -94,6 +96,7 @@ export class Arranger {
       agentBackends: this.agentBackends,
       language: this.language,
       decompositionReview: this.decompositionReview,
+      checkerEnabled: this.checkerEnabled,
     };
   }
 
@@ -105,7 +108,7 @@ export class Arranger {
   async run(repoPath: string, docDir = path.resolve("src/souko/doc", path.basename(path.resolve(repoPath)))): Promise<void> {
     const { pipeline, store } = await this.prepareRun(repoPath, docDir);
 
-    await appendRunLog(store.projectName, `arranger run repo=${repoPath} backends=${JSON.stringify(this.agentBackends)} language=${this.language} concurrency=${this.maxConcurrency === 0 ? 'unlimited' : this.maxConcurrency} review=${this.decompositionReview}`);
+    await appendRunLog(store.projectName, `arranger run repo=${repoPath} backends=${JSON.stringify(this.agentBackends)} language=${this.language} concurrency=${this.maxConcurrency === 0 ? 'unlimited' : this.maxConcurrency} review=${this.decompositionReview} checker=${this.checkerEnabled ? "on" : "off"}`);
 
     if (!(await store.hasTopGraph())) {
       console.log("[Arranger] Running scaffold...");
@@ -224,6 +227,7 @@ export class Arranger {
       promptBuilder,
       semaphore: this.sem,
       decompositionReview: this.decompositionReview,
+      checkerEnabled: this.checkerEnabled,
     });
 
     this.graphStore = store;

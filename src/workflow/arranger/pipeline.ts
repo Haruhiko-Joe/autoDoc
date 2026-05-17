@@ -49,6 +49,7 @@ interface PipelineOptions {
   promptBuilder: PromptBuilder
   semaphore: Semaphore
   decompositionReview: DecompositionReviewMode
+  checkerEnabled: boolean
 }
 
 export class Pipeline {
@@ -223,12 +224,12 @@ export class Pipeline {
   ): Promise<{ rawGraph: RawGraphType; decomposerSessionId: string }> {
     const { agentFactory, promptBuilder, repoPath, semaphore, store } = this.options;
     const decomposer = agentFactory.makeDecomposer();
-    const checker = agentFactory.makeChecker();
+    const checker = this.options.checkerEnabled ? agentFactory.makeChecker() : undefined;
 
     if (existing?.decomposerSessionId) {
       decomposer.restore(existing.decomposerSessionId, repoPath);
     }
-    if (existing?.checkerSessionId) {
+    if (checker && existing?.checkerSessionId) {
       checker.restore(existing.checkerSessionId, repoPath);
     }
 
@@ -243,6 +244,11 @@ export class Pipeline {
           ? decomposer.continue(prompt)
           : decomposer.run(prompt, repoPath),
       )).result;
+    }
+
+    if (!this.options.checkerEnabled) {
+      await appendRunLog(store.projectName, `checker skip scope=decomposer node=${nodeId}`);
+      return { rawGraph, decomposerSessionId: decomposer.getSessionId() ?? "" };
     }
 
     const checked = await this.checkerLoop({
@@ -304,7 +310,12 @@ export class Pipeline {
     scaffold: IScaffold,
     initialSessionId: string,
   ): Promise<{ topResult: RawTopGraphType; finalSessionId: string }> {
-    const { promptBuilder } = this.options;
+    const { promptBuilder, store } = this.options;
+    if (!this.options.checkerEnabled) {
+      await appendRunLog(store.projectName, `checker skip scope=scaffold`);
+      return { topResult: initialTopResult, finalSessionId: initialSessionId };
+    }
+
     const { result: topResult, sessionId } = await this.checkerLoop({
       scope: "scaffold",
       initialResult: initialTopResult,
@@ -322,7 +333,12 @@ export class Pipeline {
     initialRawGraph: RawGraphType,
     decomposer: IDecomposer,
   ): Promise<{ rawGraph: RawGraphType; decomposerSessionId: string }> {
-    const { promptBuilder, semaphore } = this.options;
+    const { promptBuilder, semaphore, store } = this.options;
+    if (!this.options.checkerEnabled) {
+      await appendRunLog(store.projectName, `checker skip scope=decomposer node=${nodeId}`);
+      return { rawGraph: initialRawGraph, decomposerSessionId: decomposer.getSessionId() ?? "" };
+    }
+
     const { result: rawGraph } = await this.checkerLoop({
       scope: "decomposer",
       nodeId,
