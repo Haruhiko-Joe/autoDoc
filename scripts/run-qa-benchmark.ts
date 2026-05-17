@@ -6,6 +6,7 @@ import { Codex } from "@openai/codex-sdk";
 import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
+import { assertDirectory, assertFile, optionalPath, optionalString, parseFlagMap, positiveInt, splitList } from "./lib/cli-utils.js";
 
 const Provider = z.enum(["codex", "claude"]);
 const Language = z.enum(["zh", "en"]);
@@ -134,60 +135,6 @@ function parseArgs(argv: string[]): BenchmarkOptions {
     codexModel: optionalString(values.get("codex-model")),
     claudeModel: optionalString(values.get("claude-model")),
   };
-}
-
-function parseFlagMap(argv: string[]): Map<string, string> {
-  const values = new Map<string, string>();
-  let index = 0;
-  while (index < argv.length) {
-    const token = argv[index];
-    if (token === undefined) break;
-    if (!token.startsWith("--")) {
-      throw new Error(`Unexpected argument: ${token}`);
-    }
-    const key = token.slice(2);
-    const next = argv[index + 1];
-    if (next === undefined || next.startsWith("--")) {
-      values.set(key, "true");
-      index += 1;
-    } else {
-      values.set(key, next);
-      index += 2;
-    }
-  }
-  return values;
-}
-
-function splitList(value: string): string[] {
-  return value.split(",").map((part) => part.trim()).filter((part) => part.length > 0);
-}
-
-function positiveInt(value: string, name: string): number {
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isInteger(parsed) || parsed < 1) {
-    throw new Error(`--${name} must be a positive integer`);
-  }
-  return parsed;
-}
-
-function optionalString(value: string | undefined): string | undefined {
-  if (value === undefined || value.trim() === "") return undefined;
-  return value;
-}
-
-function optionalPath(value: string | undefined): string | undefined {
-  const clean = optionalString(value);
-  return clean === undefined ? undefined : path.resolve(clean);
-}
-
-async function assertDirectory(dir: string, label: string): Promise<void> {
-  const info = await stat(dir).catch(() => undefined);
-  if (!info?.isDirectory()) throw new Error(`${label} is not a directory: ${dir}`);
-}
-
-async function assertFile(filePath: string, label: string): Promise<void> {
-  const info = await stat(filePath).catch(() => undefined);
-  if (!info?.isFile()) throw new Error(`${label} is not a file: ${filePath}`);
 }
 
 async function findLatestGeneratedFile(options: BenchmarkOptions): Promise<string> {
@@ -363,12 +310,14 @@ async function runClaudeAnswer(
     if (message.type === "system" && message.subtype === "init") {
       sessionId = message.session_id;
     } else if (message.type === "assistant") {
-      const content = message.message.content;
-      for (const block of content) {
+      // Only keep the latest assistant message — earlier ones are intermediate narration
+      const texts: string[] = [];
+      for (const block of message.message.content) {
         if (block.type === "text" && block.text.trim().length > 0) {
-          answerText += block.text;
+          texts.push(block.text);
         }
       }
+      if (texts.length > 0) answerText = texts.join("");
     } else if (message.type === "result") {
       sessionId = message.session_id;
       if (message.subtype !== "success") {
@@ -411,18 +360,27 @@ function commandFromCodexItem(item: unknown): string | undefined {
   return item.command;
 }
 
+const ALLOWED_CLAUDE_TOOLS = new Set(["Bash", "Read"]);
+const WRITE_TOOLS = new Set(["Edit", "Write", "NotebookEdit"]);
+
 function validateClaudeToolUses(
   toolUses: ToolUse[],
   browseScript: string,
   repoPath: string,
   minDocDrillCalls: number,
 ): void {
-  const commands = toolUses.map((toolUse) => toolUse.command).filter((command) => command.length > 0);
   for (const toolUse of toolUses) {
-    if (toolUse.toolName !== "Bash") {
-      throw new Error(`Docs-only benchmark used non-doc-drill tool: ${toolUse.toolName}`);
+    if (WRITE_TOOLS.has(toolUse.toolName)) {
+      throw new Error(`Docs-only benchmark used a write tool: ${toolUse.toolName}`);
+    }
+    if (!ALLOWED_CLAUDE_TOOLS.has(toolUse.toolName)) {
+      throw new Error(`Docs-only benchmark used disallowed tool: ${toolUse.toolName}`);
     }
   }
+  const commands = toolUses
+    .filter((toolUse) => toolUse.toolName === "Bash")
+    .map((toolUse) => toolUse.command)
+    .filter((command) => command.length > 0);
   validateDocDrillUsage(commands, browseScript, repoPath, minDocDrillCalls);
 }
 
@@ -432,12 +390,31 @@ function validateDocDrillUsage(
   repoPath: string,
   minDocDrillCalls: number,
 ): void {
-  const badCommand = commands.find((command) => !isDocDrillCommand(command, browseScript) || command.includes(repoPath) || command.includes(".."));
-  if (badCommand) throw new Error(`Docs-only benchmark used a disallowed command: ${badCommand}`);
-  const callCount = commands.filter((command) => isDocDrillCommand(command, browseScript)).length;
+  const resolvedRepoPath = path.resolve(repoPath) + path.sep;
+  for (const command of commands) {
+    if (!isDocDrillCommand(command, browseScript)) {
+      throw new Error(`Docs-only benchmark used a non-doc-drill command: ${command}`);
+    }
+    if (referencesPath(command, resolvedRepoPath)) {
+      throw new Error(`Docs-only benchmark accessed source repo: ${command}`);
+    }
+  }
+  const callCount = commands.length;
   if (callCount < minDocDrillCalls) {
     throw new Error(`Expected at least ${minDocDrillCalls} doc-drill calls, got ${callCount}`);
   }
+}
+
+function referencesPath(command: string, resolvedDir: string): boolean {
+  const tokens = command.split(/\s+/);
+  return tokens.some((token) => {
+    try {
+      const resolved = path.resolve(token);
+      return resolved.startsWith(resolvedDir) || resolved === resolvedDir.slice(0, -1);
+    } catch {
+      return false;
+    }
+  });
 }
 
 function isDocDrillCommand(command: string, browseScript: string): boolean {

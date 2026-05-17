@@ -98,17 +98,16 @@ function collectAllNodes(dir, prefix = "") {
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry);
     const st = statSync(full);
-    if (st.isFile() && entry.endsWith(".json") && entry !== "top.json") {
-      try {
-        const graph = readJSON(full);
-        if (graph.nodes) {
-          const moduleName = basename(entry, ".json");
-          const modulePath = prefix ? `${prefix}/${moduleName}` : moduleName;
-          for (const node of graph.nodes) {
-            results.push({ ...node, _modulePath: modulePath });
-          }
+    const skipFiles = new Set(["top.json", "flows.json", "config.json"]);
+    if (st.isFile() && entry.endsWith(".json") && !skipFiles.has(entry)) {
+      const graph = readJSON(full);
+      if (Array.isArray(graph.nodes)) {
+        const moduleName = basename(entry, ".json");
+        const modulePath = prefix ? `${prefix}/${moduleName}` : moduleName;
+        for (const node of graph.nodes) {
+          results.push({ ...node, _modulePath: modulePath });
         }
-      } catch {}
+      }
     } else if (st.isDirectory() && !entry.startsWith("_") && !entry.startsWith(".")) {
       const sub = prefix ? `${prefix}/${entry}` : entry;
       results.push(...collectAllNodes(full, sub));
