@@ -115,6 +115,7 @@ export class GraphStore {
   }
 
   async initializeFromScaffold(topResult: RawTopGraphType, finalSessionId: string): Promise<void> {
+    this.validateScaffoldNodes(topResult.nodes);
     const topGraph: TopGraphType = {
       status: "done",
       retryCount: 0,
@@ -137,6 +138,7 @@ export class GraphStore {
   }
 
   async initializeScaffoldReview(topResult: RawTopGraphType, finalSessionId: string): Promise<void> {
+    this.validateScaffoldNodes(topResult.nodes);
     const topGraph: TopGraphType = {
       status: "awaiting-review",
       retryCount: 0,
@@ -149,6 +151,7 @@ export class GraphStore {
   }
 
   async markGraphDecomposed(nodeId: string, rawGraph: RawGraphType, decomposerSessionId: string): Promise<void> {
+    this.validateGraphNodes(rawGraph.nodes);
     await this.ensureChildGraphs(nodeId, rawGraph.nodes);
 
     const pageTasks = this.buildPageTasks(rawGraph.nodes);

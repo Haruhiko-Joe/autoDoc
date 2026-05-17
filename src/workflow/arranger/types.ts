@@ -27,6 +27,7 @@ export interface ArrangerOptions {
   agentBackends?: Partial<AgentBackends>
   language?: Language
   decompositionReview?: DecompositionReviewMode
+  checkerEnabled?: boolean
 }
 
 export interface ArrangerConfig {
@@ -34,4 +35,5 @@ export interface ArrangerConfig {
   agentBackends: AgentBackends
   language: Language
   decompositionReview: DecompositionReviewMode
+  checkerEnabled: boolean
 }
