@@ -125,6 +125,11 @@ export class Arranger {
       console.log(`[Arranger] Recovered ${recoveredCount} node(s) to pending.`);
     }
 
+    const errorResetCount = await store.resetErrorNodes();
+    if (errorResetCount > 0) {
+      console.log(`[Arranger] Reset ${errorResetCount} error node(s) for fresh re-run.`);
+    }
+
     this.currentPhase = "processing";
     this.notify();
     await appendRunLog(store.projectName, `phase=processing`);

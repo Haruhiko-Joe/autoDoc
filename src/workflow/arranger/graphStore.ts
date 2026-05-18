@@ -261,6 +261,7 @@ export class GraphStore {
       (status) => status === "error",
       true,
       "error reset",
+      true,
     );
   }
 
@@ -405,6 +406,7 @@ export class GraphStore {
     shouldReset: (status: GraphStatusType) => boolean,
     clearDecomposerSession: boolean,
     label: string,
+    fullReset = false,
   ): Promise<number> {
     const allNodeIds = await this.scanGraphNodes(this.docDir, "");
     let resetCount = 0;
@@ -413,16 +415,27 @@ export class GraphStore {
       try {
         const graph = await this.readGraph(nodeId);
         if (!shouldReset(graph.status)) continue;
-        const pageTasks = this.resetPageTasks(graph.pageTasks);
-        const hasPendingPages = pageTasks && Object.values(pageTasks).some((task) => task.status !== "done");
-        await this.writeGraph(nodeId, {
-          ...graph,
-          status: hasPendingPages ? "writing" : "pending",
-          pageTasks,
-          decomposerSessionId: clearDecomposerSession ? undefined : graph.decomposerSessionId,
-          checkerSessionId: undefined,
-    
-        });
+
+        if (fullReset) {
+          await this.writeGraph(nodeId, {
+            status: "pending",
+            retryCount: 0,
+            sessionId: "",
+            description: graph.description,
+            codeScope: graph.codeScope,
+            nodes: [],
+          });
+        } else {
+          const pageTasks = this.resetPageTasks(graph.pageTasks);
+          const hasPendingPages = pageTasks && Object.values(pageTasks).some((task) => task.status !== "done");
+          await this.writeGraph(nodeId, {
+            ...graph,
+            status: hasPendingPages ? "writing" : "pending",
+            pageTasks,
+            decomposerSessionId: clearDecomposerSession ? undefined : graph.decomposerSessionId,
+            checkerSessionId: undefined,
+          });
+        }
         resetCount++;
       } catch {
         console.warn(`[Arranger] Skipping unreadable graph during ${label}: ${nodeId}`);
