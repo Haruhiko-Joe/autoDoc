@@ -63,7 +63,7 @@ export class ClaudeAgent<S extends z.ZodType, T = z.infer<S>> {
     for await (const message of query({
       prompt,
       options: {
-        model: "claude-opus-4-7[1m]",
+        model: "claude-opus-4-6[1m]",
         betas: ["context-1m-2025-08-07"],
         permissionMode: "bypassPermissions",
         allowDangerouslySkipPermissions: true,
