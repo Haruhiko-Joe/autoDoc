@@ -88,6 +88,7 @@ export class GraphStore {
 
   async claimNextTask(): Promise<ArrangerTask | null> {
     const allNodeIds = await this.scanGraphNodes(this.docDir, "");
+    allNodeIds.sort((a, b) => a.split("/").length - b.split("/").length);
     for (const nodeId of allNodeIds) {
       try {
         const graph = await this.readGraph(nodeId);
