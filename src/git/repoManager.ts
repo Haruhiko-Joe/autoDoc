@@ -59,6 +59,10 @@ export async function getCurrentBranch(dest: string): Promise<string> {
   return remote.replace(/^origin\//, "");
 }
 
+export async function getOriginUrl(dest: string): Promise<string> {
+  return (await run(["remote", "get-url", "origin"], { cwd: dest })).trim();
+}
+
 /**
  * Extract a project name from a git URL.
  * Handles: git@host:owner/repo.git, https://host/owner/repo.git, ssh://user@host:port/owner/repo.git

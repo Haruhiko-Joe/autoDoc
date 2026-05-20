@@ -473,7 +473,8 @@ async function listProjects(): Promise<ProjectListEntry[]> {
     const hasDoc = await stat(path.join(DOC_ROOT, name, "top.json"))
       .then((s) => s.isFile())
       .catch(() => false);
-    out.push({ name, hasDoc, ...meta });
+    const sourceUrl = meta.sourceUrl || await git.getOriginUrl(path.join(REPO_ROOT, name)).catch(() => "");
+    out.push({ name, hasDoc, ...meta, sourceUrl });
   }
   // Also surface doc directories that exist but aren't in the registry yet —
   // partial runs from a prior crash. Empty meta (no lastUpdated) is what lets
@@ -489,7 +490,7 @@ async function listProjects(): Promise<ProjectListEntry[]> {
     out.push({
       name: d.name,
       hasDoc: true,
-      sourceUrl: "",
+      sourceUrl: await git.getOriginUrl(path.join(REPO_ROOT, d.name)).catch(() => ""),
       branch: "",
       head: "",
       lastUpdated: "",
