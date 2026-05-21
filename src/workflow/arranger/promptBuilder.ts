@@ -73,6 +73,7 @@ export class PromptBuilder {
     nodeId: string,
     graph: Graph,
     ancestorContext: AncestorContext | null,
+    nodeKnowledge?: string,
   ): string {
     const parts = [
       `Analyze the code scope and produce a sub-graph for the module "${nodeId}".`,
@@ -83,10 +84,10 @@ export class PromptBuilder {
     if (ancestorContext) {
       parts.push(`\nAncestor context (the module hierarchy above this node):\n${JSON.stringify(ancestorContext, null, 2)}`);
     }
-    return this.appendKnowledge(parts.join("\n"));
+    return this.appendKnowledge(parts.join("\n"), nodeKnowledge);
   }
 
-  graphCheckerPrompt(nodeId: string, rawGraph: RawGraph): string {
+  graphCheckerPrompt(nodeId: string, rawGraph: RawGraph, nodeKnowledge?: string): string {
     return this.appendKnowledge([
       `Validate the decomposer output (graph structure only) for module "${nodeId}".`,
       `Repository root: ${this.repoPath}`,
@@ -97,7 +98,7 @@ export class PromptBuilder {
       "```",
       ``,
       `Note: Leaf Markdown documents have not been generated yet — validate graph structure only.`,
-    ].join("\n"));
+    ].join("\n"), nodeKnowledge);
   }
 
   decomposerFixPrompt(issues: CheckerIssue[]): string {
@@ -119,7 +120,7 @@ export class PromptBuilder {
     return parts.join("\n");
   }
 
-  decomposerReviewFeedbackPrompt(nodeId: string, current: RawGraph, feedback: string): string {
+  decomposerReviewFeedbackPrompt(nodeId: string, current: RawGraph, feedback: string, nodeKnowledge?: string): string {
     return this.appendKnowledge([
       `The user has manually reviewed the subgraph decomposition for module "${nodeId}" and requested a redo.`,
       "",
@@ -132,10 +133,10 @@ export class PromptBuilder {
       feedback,
       "",
       "Please re-output the complete subgraph JSON based on the user's feedback.",
-    ].join("\n"));
+    ].join("\n"), nodeKnowledge);
   }
 
-  writerPrompt(node: GraphNode, ancestorContext: AncestorContext | null): string {
+  writerPrompt(node: GraphNode, ancestorContext: AncestorContext | null, nodeKnowledge?: string): string {
     const parts = [
       `Write comprehensive Markdown documentation for the module "${node.name}".`,
       `Description: ${node.description}`,
@@ -145,16 +146,25 @@ export class PromptBuilder {
     if (ancestorContext) {
       parts.push(`\nAncestor context (the module hierarchy above this node):\n${JSON.stringify(ancestorContext, null, 2)}`);
     }
-    return this.appendKnowledge(parts.join("\n"));
+    return this.appendKnowledge(parts.join("\n"), nodeKnowledge);
   }
 
   flowPrompt(): string {
     return `Analyze the documented codebase and produce 3-7 typical business interaction flows.\nRepository root: ${this.repoPath}`;
   }
 
-  private appendKnowledge(prompt: string): string {
-    if (!this.knowledge) return prompt;
-    const header = this.language === "en" ? "# Repository Domain Knowledge" : "# 仓库领域知识";
-    return `${prompt}\n\n${header}\n${this.knowledge}`;
+  private appendKnowledge(prompt: string, nodeKnowledge?: string): string {
+    const parts = [prompt];
+    if (this.knowledge) {
+      const header = this.language === "en" ? "# Repository Domain Knowledge" : "# 仓库领域知识";
+      parts.push(`${header}\n${this.knowledge}`);
+    }
+    if (nodeKnowledge) {
+      const header = this.language === "en"
+        ? "# Module-Specific Knowledge (higher priority — overrides general knowledge when conflicting)"
+        : "# 模块专属知识（优先级高于全局知识，冲突时以此为准）";
+      parts.push(`${header}\n${nodeKnowledge}`);
+    }
+    return parts.join("\n\n");
   }
 }

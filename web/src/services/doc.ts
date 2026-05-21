@@ -228,6 +228,12 @@ export async function updateNode(
   return postJson(`${API}/doc/update-node`, body, 'Failed to update node')
 }
 
+export async function updateGraphKnowledge(
+  project: string, nodeId: string, knowledge: string,
+): Promise<SubGraph> {
+  return postJson(`${API}/doc/update-graph-knowledge`, { project, nodeId, knowledge }, 'Failed to update graph knowledge')
+}
+
 export async function deleteNode(
   project: string, parentNodeId: string, nodeName: string,
 ): Promise<SubGraph> {

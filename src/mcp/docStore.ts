@@ -206,7 +206,7 @@ export class DocStore {
   async updateGraphMeta(
     project: string,
     nodeId: string,
-    patch: { description?: string; codeScope?: string[] },
+    patch: { description?: string; codeScope?: string[]; knowledge?: string },
   ): Promise<GraphT> {
     return withDocProjectLock(project, async () => {
       const current = await this.readGraph(project, nodeId)
@@ -214,6 +214,7 @@ export class DocStore {
         ...current,
         ...(patch.description !== undefined ? { description: patch.description } : {}),
         ...(patch.codeScope !== undefined ? { codeScope: patch.codeScope } : {}),
+        ...(patch.knowledge !== undefined ? { knowledge: patch.knowledge } : {}),
       })
     })
   }

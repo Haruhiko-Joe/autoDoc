@@ -93,6 +93,7 @@ export const Graph = z.object({
   description: z.string(),
   codeScope: z.array(z.string()),
   nodes: z.array(GraphNode),
+  knowledge: z.string().optional(),
   decomposerSessionId: z.string().optional(),
   checkerSessionId: z.string().optional(),
   pageTasks: z.record(z.string(), PageTask).optional(),

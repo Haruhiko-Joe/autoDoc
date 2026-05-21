@@ -82,6 +82,7 @@ export class Pipeline {
   async processGraphTask(nodeId: string, graph: GraphType): Promise<void> {
     const { promptBuilder, store } = this.options;
     const ancestorContext = await store.buildAncestorContext(nodeId);
+    const nodeKnowledge = await store.resolveNodeKnowledge(nodeId);
 
     console.log(`[Arranger] Processing graph task: ${nodeId}`);
     await appendRunLog(store.projectName, `graph task start node=${nodeId}`);
@@ -90,13 +91,13 @@ export class Pipeline {
     let decomposerSessionId: string;
     try {
       const result = await withRetry(async (attempt) => {
-        const prompt = promptBuilder.decomposerPrompt(nodeId, graph, ancestorContext);
+        const prompt = promptBuilder.decomposerPrompt(nodeId, graph, ancestorContext, nodeKnowledge);
         const existing = attempt === 0 ? {
           rawGraph: graph.status === "checking" && graph.nodes.length > 0 ? { nodes: graph.nodes } : undefined,
           decomposerSessionId: graph.decomposerSessionId,
           checkerSessionId: graph.checkerSessionId,
         } : undefined;
-        return withTimeout(() => this.decomposeAndCheck(nodeId, prompt, existing), 15 * 60_000, `decomposer ${nodeId}`);
+        return withTimeout(() => this.decomposeAndCheck(nodeId, prompt, existing, nodeKnowledge), 15 * 60_000, `decomposer ${nodeId}`);
       });
       rawGraph = result.rawGraph;
       decomposerSessionId = result.decomposerSessionId;
@@ -136,13 +137,14 @@ export class Pipeline {
   async redoGraphReview(nodeId: string, feedback: string): Promise<void> {
     const { agentFactory, promptBuilder, repoPath, store } = this.options;
     const graph = await store.getGraphReview(nodeId);
+    const nodeKnowledge = await store.resolveNodeKnowledge(nodeId);
     const sessionId = graph.decomposerSessionId ?? graph.sessionId;
     if (!sessionId) throw new Error(`Review has no decomposer session: ${nodeId}`);
     const decomposer = agentFactory.makeDecomposer();
     decomposer.restore(sessionId, repoPath);
     await appendRunLog(store.projectName, `graph review redo node=${nodeId} feedback-len=${feedback.length}`);
-    const fixed = await decomposer.continue(promptBuilder.decomposerReviewFeedbackPrompt(nodeId, { nodes: graph.nodes }, feedback));
-    const checked = await this.checkRawGraphWithFix(nodeId, fixed.result, decomposer);
+    const fixed = await decomposer.continue(promptBuilder.decomposerReviewFeedbackPrompt(nodeId, { nodes: graph.nodes }, feedback, nodeKnowledge));
+    const checked = await this.checkRawGraphWithFix(nodeId, fixed.result, decomposer, nodeKnowledge);
     if (!(await store.isGraphStillAwaitingReview(nodeId, sessionId))) {
       await appendRunLog(store.projectName, `graph review redo aborted node=${nodeId} (state moved on)`);
       return;
@@ -154,6 +156,7 @@ export class Pipeline {
   async processPageTask(nodeId: string, ref: string, graph: GraphType): Promise<void> {
     const { store } = this.options;
     const ancestorContext = await store.buildAncestorContext(nodeId);
+    const nodeKnowledge = await store.resolveNodeKnowledge(nodeId);
     const pageNode = store.findPageNode(graph, ref);
     if (!pageNode) {
       console.error(`[Arranger] Missing page node for ${nodeId}/${ref}`);
@@ -166,7 +169,7 @@ export class Pipeline {
 
     let content: string;
     try {
-      content = await withRetry(() => withTimeout(() => this.writePage(pageNode, ancestorContext), 10 * 60_000, `writer ${pageNode.name}`));
+      content = await withRetry(() => withTimeout(() => this.writePage(pageNode, ancestorContext, nodeKnowledge), 10 * 60_000, `writer ${pageNode.name}`));
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error(`[Arranger] Write failed for ${nodeId}/${ref}:`, e);
@@ -221,6 +224,7 @@ export class Pipeline {
     nodeId: string,
     prompt: string,
     existing?: { rawGraph?: RawGraphType; decomposerSessionId?: string; checkerSessionId?: string },
+    nodeKnowledge?: string,
   ): Promise<{ rawGraph: RawGraphType; decomposerSessionId: string }> {
     const { agentFactory, promptBuilder, repoPath, semaphore, store } = this.options;
     const decomposer = agentFactory.makeDecomposer();
@@ -256,7 +260,7 @@ export class Pipeline {
       nodeId,
       initialResult: rawGraph,
       checker,
-      getCheckerPrompt: (r) => promptBuilder.graphCheckerPrompt(nodeId, r),
+      getCheckerPrompt: (r) => promptBuilder.graphCheckerPrompt(nodeId, r, nodeKnowledge),
       runChecker: (c, prompt) => withSemaphore(semaphore, () =>
         c.getSessionId() ? c.continue(prompt) : c.run(prompt, repoPath)),
       fix: (issues) => withSemaphore(semaphore, async () => {
@@ -332,6 +336,7 @@ export class Pipeline {
     nodeId: string,
     initialRawGraph: RawGraphType,
     decomposer: IDecomposer,
+    nodeKnowledge?: string,
   ): Promise<{ rawGraph: RawGraphType; decomposerSessionId: string }> {
     const { promptBuilder, semaphore, store } = this.options;
     if (!this.options.checkerEnabled) {
@@ -343,7 +348,7 @@ export class Pipeline {
       scope: "decomposer",
       nodeId,
       initialResult: initialRawGraph,
-      getCheckerPrompt: (r) => promptBuilder.graphCheckerPrompt(nodeId, r),
+      getCheckerPrompt: (r) => promptBuilder.graphCheckerPrompt(nodeId, r, nodeKnowledge),
       runChecker: (c, prompt) => withSemaphore(this.options.semaphore, () =>
         c.getSessionId() ? c.continue(prompt) : c.run(prompt, this.options.repoPath)),
       fix: (issues) => withSemaphore(semaphore, async () => {
@@ -357,10 +362,11 @@ export class Pipeline {
   private async writePage(
     pageNode: GraphNodeType,
     ancestorContext: AncestorContextType | null,
+    nodeKnowledge?: string,
   ): Promise<string> {
     const writer = this.options.agentFactory.makeWriter();
     return withSemaphore(this.options.semaphore, () =>
-      this.generatePageContent(writer, pageNode, ancestorContext),
+      this.generatePageContent(writer, pageNode, ancestorContext, nodeKnowledge),
     );
   }
 
@@ -368,13 +374,14 @@ export class Pipeline {
     writer: IWriter,
     node: GraphNodeType,
     ancestorContext: AncestorContextType | null,
+    nodeKnowledge?: string,
   ): Promise<string> {
     const { agentFactory, promptBuilder, repoPath, store } = this.options;
 
     console.log(`[Arranger] Generating page: ${node.name}`);
     await appendRunLog(store.projectName, `writer invoke node=${node.name} backend=${agentFactory.getBackend("writer")}`);
 
-    const { result } = await writer.run(promptBuilder.writerPrompt(node, ancestorContext), repoPath);
+    const { result } = await writer.run(promptBuilder.writerPrompt(node, ancestorContext, nodeKnowledge), repoPath);
     console.log(`[Arranger] Page generated: ${node.name}`);
     await appendRunLog(store.projectName, `writer return node=${node.name} len=${result.content.length}`);
     return result.content;

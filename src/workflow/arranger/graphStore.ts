@@ -403,6 +403,18 @@ export class GraphStore {
     return { path: segments, ancestors };
   }
 
+  async resolveNodeKnowledge(nodeId: string): Promise<string | undefined> {
+    const segments = nodeId.split("/").filter(Boolean);
+    for (let i = segments.length; i > 0; i--) {
+      const ancestorId = segments.slice(0, i).join("/");
+      try {
+        const graph = await this.readGraph(ancestorId);
+        if (graph.knowledge) return graph.knowledge;
+      } catch { /* skip */ }
+    }
+    return undefined;
+  }
+
   private async resetNodes(
     shouldReset: (status: GraphStatusType) => boolean,
     clearDecomposerSession: boolean,
