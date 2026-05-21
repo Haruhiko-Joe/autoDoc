@@ -43,6 +43,7 @@ export interface SubGraph {
   description: string
   codeScope: string[]
   nodes: GraphNode[]
+  knowledge?: string
 }
 
 // ─── Flow ───

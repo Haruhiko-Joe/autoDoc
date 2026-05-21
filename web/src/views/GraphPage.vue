@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { fetchTopGraph, fetchSubGraph, fetchPage, createNode, updateNode, deleteNode, updatePage, fetchDocBlame, type DocBlameLine } from '../services/doc'
+import { fetchTopGraph, fetchSubGraph, fetchPage, createNode, updateNode, deleteNode, updatePage, updateGraphKnowledge, fetchDocBlame, type DocBlameLine } from '../services/doc'
 import GraphView from '../components/GraphView.vue'
 import GraphToolbar from '../components/GraphToolbar.vue'
 import NodeFormDialog from '../components/NodeFormDialog.vue'
@@ -43,6 +43,10 @@ const showGitPanel = ref(false)
 const gitInfoEnabled = ref(false)
 const blameLines = ref<DocBlameLine[]>([])
 const gitRefreshToken = ref(0)
+
+const showKnowledgePopover = ref(false)
+const knowledgeDraft = ref('')
+const knowledgeSaving = ref(false)
 
 function getPath(): string {
   return routePathParam(route.params.path)
@@ -336,6 +340,24 @@ async function savePage() {
     pageSaving.value = false
   }
 }
+
+function openKnowledge() {
+  knowledgeDraft.value = subGraph.value?.knowledge ?? ''
+  showKnowledgePopover.value = true
+}
+
+async function saveKnowledge() {
+  knowledgeSaving.value = true
+  try {
+    await updateGraphKnowledge(getProject(), getPath(), knowledgeDraft.value)
+    if (subGraph.value) subGraph.value.knowledge = knowledgeDraft.value
+    showKnowledgePopover.value = false
+  } catch (e) {
+    alert(e instanceof Error ? e.message : 'Save failed')
+  } finally {
+    knowledgeSaving.value = false
+  }
+}
 </script>
 
 <template>
@@ -376,6 +398,18 @@ async function savePage() {
               {{ editMode ? 'Done' : 'Edit' }}
             </button>
             <button class="git-toggle" @click="showGitPanel = !showGitPanel">Git</button>
+            <div class="knowledge-wrapper">
+              <button class="git-toggle" :class="{ active: showKnowledgePopover }" @click="showKnowledgePopover ? showKnowledgePopover = false : openKnowledge()">Knowledge</button>
+              <div v-if="showKnowledgePopover" class="knowledge-popover">
+                <textarea v-model="knowledgeDraft" rows="8" placeholder="Enter module-specific knowledge..." class="knowledge-textarea"></textarea>
+                <div class="knowledge-actions">
+                  <button class="knowledge-btn cancel" @click="showKnowledgePopover = false">Cancel</button>
+                  <button class="knowledge-btn save" :disabled="knowledgeSaving" @click="saveKnowledge">
+                    {{ knowledgeSaving ? 'Saving...' : 'Save' }}
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
         <div class="canvas-graph">
@@ -730,5 +764,67 @@ async function savePage() {
 
 .error {
   color: var(--color-red);
+}
+
+.knowledge-wrapper {
+  position: relative;
+}
+
+.knowledge-popover {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 6px;
+  width: 360px;
+  padding: 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  z-index: 100;
+}
+
+.knowledge-textarea {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--bg-main);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13px;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.knowledge-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.knowledge-btn {
+  padding: 4px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.knowledge-btn.cancel {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.knowledge-btn.save {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.knowledge-btn.save:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 </style>

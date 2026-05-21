@@ -36,16 +36,17 @@ export function registerMutateTools(mcp: McpServer, store: DocStore): void {
   mcp.registerTool(
     "update_graph_meta", {
       description:
-        "Patch a subgraph's `description` and/or `codeScope`.",
+        "Patch a subgraph's `description`, `codeScope`, and/or `knowledge`.",
       inputSchema: {
         project: z.string(),
         nodeId: z.string(),
         description: z.string().optional(),
         codeScope: z.array(z.string()).optional(),
+        knowledge: z.string().optional(),
       },
     },
-    async ({ project, nodeId, description, codeScope }) => {
-      return json(await store.updateGraphMeta(project, nodeId, { description, codeScope }))
+    async ({ project, nodeId, description, codeScope, knowledge }) => {
+      return json(await store.updateGraphMeta(project, nodeId, { description, codeScope, knowledge }))
     },
   )
 

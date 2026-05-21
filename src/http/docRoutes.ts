@@ -37,6 +37,11 @@ export function createDocRoutes(deps: DocRouteDeps): RouteHandler {
       sendJson(res, { ok: true });
       return true;
     }
+    if (req.method === "POST" && url.pathname === "/api/doc/update-graph-knowledge") {
+      const body = (await parseBody(req)) as { project: string; nodeId: string; knowledge: string };
+      sendJson(res, await deps.docStore.updateGraphMeta(body.project, body.nodeId, { knowledge: body.knowledge }));
+      return true;
+    }
     if (req.method === "POST" && url.pathname === "/api/doc/patch-page") {
       const body = (await parseBody(req)) as { project: string; nodeId: string; ref: string; edits: { old_text: string; new_text: string }[] };
       sendJson(res, await deps.docStore.patchPage(body.project, body.nodeId, body.ref, body.edits));
