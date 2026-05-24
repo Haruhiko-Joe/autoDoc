@@ -65,7 +65,7 @@ API endpoints: `POST /api/update/{start,continue,skip,cancel}`, `POST /api/updat
 
 ### MCP Server (`src/mcp/`)
 
-The `autodoc` MCP server exposes tools for agents to read/write doc artifacts:
+The `acceed` MCP server exposes tools for agents to read/write doc artifacts:
 
 - **Query tools** (`src/mcp/tools/query.ts`): `list_projects`, `get_top`, `get_flows`, `get_graph`, `get_page`, `search_nodes`, `list_source_files`, `read_source_files`, `list_docs`, `read_docs`
 - **Mutation tools** (`src/mcp/tools/mutate.ts`): `patch_page` (string match + replace), `update_page`, `update_node`, `update_graph_meta`, `create_node`, `delete_node`, `update_top`

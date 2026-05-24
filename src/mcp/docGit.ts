@@ -86,8 +86,8 @@ export class DocGit {
         return
       } catch { /* not initialized yet */ }
       await run(["init"], d)
-      await run(["config", "user.name", "autoDoc"], d).catch(() => {})
-      await run(["config", "user.email", "autodoc@example.local"], d).catch(() => {})
+      await run(["config", "user.name", "ACCEED"], d).catch(() => {})
+      await run(["config", "user.email", "acceed@example.local"], d).catch(() => {})
       await writeFile(path.join(d, ".gitignore"), DOC_GITIGNORE)
       await run(["add", ".gitignore"], d)
       await run(["commit", "-m", "init", "--allow-empty"], d)

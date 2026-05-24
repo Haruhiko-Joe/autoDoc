@@ -1,6 +1,6 @@
 import { z } from "zod"
 
-// Minimal self-contained schema for autoDoc documents.
+// Minimal self-contained schema for ACCEED documents.
 // `.loose()` preserves arranger-only fields (sessionId, writerSessionIds, pageTasks, ...)
 // so mcp can read & round-trip files produced by the backend without losing data.
 

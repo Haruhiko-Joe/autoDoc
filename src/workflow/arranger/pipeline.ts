@@ -22,7 +22,7 @@ import type { DecompositionReviewMode } from "./types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SKILL_TEMPLATE_DIR = path.resolve(__dirname, "..", "..", "skill-template");
-const AUTODOC_MCP_TOOLS = [
+const ACCEED_MCP_TOOLS = [
   "list_projects",
   "get_top",
   "get_flows",
@@ -388,8 +388,8 @@ export class Pipeline {
   }
 
   private mcpUrl(): string {
-    return process.env.AUTODOC_PUBLIC_MCP_URL
-      ?? process.env.AUTODOC_MCP_URL
+    return process.env.ACCEED_PUBLIC_MCP_URL
+      ?? process.env.ACCEED_MCP_URL
       ?? `http://localhost:${process.env.PORT ?? 3100}/mcp`;
   }
 
@@ -403,7 +403,7 @@ export class Pipeline {
       ...current,
       mcpServers: {
         ...mcpServers,
-        autodoc: { type: "http", url: this.mcpUrl() },
+        acceed: { type: "http", url: this.mcpUrl() },
       },
     };
     await writeFile(filePath, JSON.stringify(next, null, 2));
@@ -414,7 +414,7 @@ export class Pipeline {
     const filePath = path.join(codexDir, "config.toml");
     await mkdir(codexDir, { recursive: true });
     const current = await readFile(filePath, "utf-8").catch(() => "");
-    await writeFile(filePath, updateAutodocMcpBlock(current, this.mcpUrl()));
+    await writeFile(filePath, updateAcceedMcpBlock(current, this.mcpUrl()));
   }
 }
 
@@ -422,21 +422,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function renderAutodocMcpBlock(url: string): string {
+function renderAcceedMcpBlock(url: string): string {
   return [
-    "[mcp_servers.autodoc]",
+    "[mcp_servers.acceed]",
     `url = "${url}"`,
-    `enabled_tools = [${AUTODOC_MCP_TOOLS.map((tool) => `"${tool}"`).join(", ")}]`,
+    `enabled_tools = [${ACCEED_MCP_TOOLS.map((tool) => `"${tool}"`).join(", ")}]`,
     "",
   ].join("\n");
 }
 
-function updateAutodocMcpBlock(current: string, url: string): string {
-  const block = renderAutodocMcpBlock(url);
+function updateAcceedMcpBlock(current: string, url: string): string {
+  const block = renderAcceedMcpBlock(url);
   if (!current.trim()) return block;
 
   const lines = current.split(/\r?\n/);
-  const start = lines.findIndex((line) => line.trim() === "[mcp_servers.autodoc]");
+  const start = lines.findIndex((line) => line.trim() === "[mcp_servers.acceed]");
   if (start < 0) return `${current.trimEnd()}\n\n${block}`;
 
   let end = start + 1;

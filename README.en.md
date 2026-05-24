@@ -1,5 +1,5 @@
 <p align="center">
-  <h1 align="center">autoDoc</h1>
+  <h1 align="center">ACCEED</h1>
   <p align="center">
     <strong>Paste a git URL. Get an interactive, incrementally-updatable, Agent-readable/writable documentation site.</strong>
   </p>
@@ -17,18 +17,18 @@
   <img src="https://img.shields.io/badge/Node.js-%3E%3D18-339933?logo=nodedotjs&logoColor=white" alt="Node.js">
   <img src="https://img.shields.io/badge/pnpm-%3E%3D10-F69220?logo=pnpm&logoColor=white" alt="pnpm">
   <img src="https://img.shields.io/badge/MCP-Streamable_HTTP-512BD4" alt="MCP">
-  <a href="https://github.com/Haruhiko-Joe/autoDoc/stargazers"><img src="https://img.shields.io/github/stars/Haruhiko-Joe/autoDoc?style=social" alt="Stars"></a>
+  <a href="https://github.com/Haruhiko-Joe/ACCEED/stargazers"><img src="https://img.shields.io/github/stars/Haruhiko-Joe/ACCEED?style=social" alt="Stars"></a>
 </p>
 
 <p align="center">
   <a href="https://github.com/Haruhiko-Joe/skills/tree/main/doc-drill">📘 Companion Skill: doc-drill</a> · Talks to any Code Agent via the same-process <code>/mcp</code> endpoint
 </p>
 
-## Why autoDoc?
+## Why ACCEED?
 
-Unlike DeepWiki, Google Code Wiki, and similar tools, autoDoc is not just "one-shot doc generation" — it is a **multi-agent documentation factory with a quality feedback loop, plus an MCP-native knowledge base that Agents can read and write directly**. It is both **the most human-friendly doc site to read** and **a knowledge source natively tailored for Code Agents**, achieving SOTA across readability, interactivity, Agent-consumability, and incremental maintenance.
+> The three great standards of a documentation site are readability, interactivity, and maintainability. Among these, readability serves as the most fundamental requirement for humans and agents alike to comprehend code, and in the realm of software engineering, it is regarded as the prerequisite that takes priority above all other development activities. Through reading documentation, developers can obtain a holistic understanding of a codebase; and if that documentation further provides structured hierarchical navigation and typed module relationships, this understanding undergoes a qualitative transcendence. In today's world, there indeed exist developers and Agents that devote their entire passion to the pursuit of this ultimate documentation experience — and the documentation system capable of bearing such devotion, we call a **knowledge foundation**. ACCEED exists specifically for those developers and Agents that have grown weary of the commonplace flat text, per-file comments, and shallow RAG retrieval fragments found throughout the world — providing them with a knowledge foundation befitting their caliber.
 
-| | autoDoc | DeepWiki | Google Code Wiki |
+| | ACCEED | DeepWiki | Google Code Wiki |
 |---|:---:|:---:|:---:|
 | Multi-agent iterative validation | **✅ 5 Agents + Checker loop** | ❌ Single pass | ❌ Single pass |
 | Direct git URL ingestion | **✅ Backend auto-clones & tracks commits** | ✅ | ✅ |
@@ -57,8 +57,8 @@ Unlike DeepWiki, Google Code Wiki, and similar tools, autoDoc is not just "one-s
 ## Quick Start
 
 ```bash
-git clone https://github.com/Haruhiko-Joe/autoDoc.git
-cd autoDoc
+git clone https://github.com/Haruhiko-Joe/ACCEED.git
+cd ACCEED
 pnpm install && cd web && pnpm install && cd ..
 pnpm start
 ```
@@ -200,7 +200,7 @@ Each Agent role independently uses **Claude** (Claude Agent SDK) or **Codex** (O
 
 ## HTTP MCP Interface
 
-The backend exposes an MCP server named `autodoc` at `http://localhost:3100/mcp` as a stateless Streamable HTTP transport. All tools operate on real files under `src/souko/doc/{project}/`.
+The backend exposes an MCP server named `acceed` at `http://localhost:3100/mcp` as a stateless Streamable HTTP transport. All tools operate on real files under `src/souko/doc/{project}/`.
 
 ### Wire it up in Claude Code / Codex
 
@@ -209,7 +209,7 @@ Drop an `.mcp.json` into the target repo root:
 ```json
 {
   "mcpServers": {
-    "autodoc": {
+    "acceed": {
       "type": "http",
       "url": "http://localhost:3100/mcp"
     }
@@ -217,15 +217,15 @@ Drop an `.mcp.json` into the target repo root:
 }
 ```
 
-Codex uses project-scoped `.codex/config.toml`; autoDoc writes the equivalent config when assembling the skill:
+Codex uses project-scoped `.codex/config.toml`; ACCEED writes the equivalent config when assembling the skill:
 
 ```toml
-[mcp_servers.autodoc]
+[mcp_servers.acceed]
 url = "http://localhost:3100/mcp"
 enabled_tools = ["list_projects", "get_top", "get_flows", "get_graph", "get_page", "search_nodes", "list_source_files", "read_source_files", "list_docs", "read_docs", "patch_page", "update_page", "update_node", "update_graph_meta", "create_node", "delete_node", "update_top"]
 ```
 
-The matching [doc-drill skill](src/skill-template/SKILL.md) is a thin instruction set that only describes **how to call the MCP tools**, and ships with autoDoc.
+The matching [doc-drill skill](src/skill-template/SKILL.md) is a thin instruction set that only describes **how to call the MCP tools**, and ships with ACCEED.
 
 ### Tool list
 
@@ -290,13 +290,13 @@ Each module's documentation is a self-contained unit. Three ways to edit it:
 
 ## doc-drill: Native Code Agent Integration
 
-After the initial documentation content is complete, autoDoc installs the thin [doc-drill](src/skill-template/SKILL.md) skill into the target repo's `.codex/skills/doc-drill/SKILL.md`, then writes Claude Code's `.mcp.json` and Codex's `.codex/config.toml` to point at the local HTTP MCP server. `get_flows` is registered at this point; before Flow Analyzer writes `flows.json`, it reports that flows have not been generated yet, and after that the same tool serves the end-to-end flows. Any Code Agent can then:
+After the initial documentation content is complete, ACCEED installs the thin [doc-drill](src/skill-template/SKILL.md) skill into the target repo's `.codex/skills/doc-drill/SKILL.md`, then writes Claude Code's `.mcp.json` and Codex's `.codex/config.toml` to point at the local HTTP MCP server. `get_flows` is registered at this point; before Flow Analyzer writes `flows.json`, it reports that flows have not been generated yet, and after that the same tool serves the end-to-end flows. Any Code Agent can then:
 
 - **Browse progressively** — `list_projects` → `get_top` → `get_graph` → `get_page`, lazy-loaded, context-efficient
 - **Trace relationships** — follow the 6 semantic edge types to trace call chains and data flows
 - **Keyword search** — `search_nodes` across all doc layers
 - **Navigate business flows** — understand end-to-end interactions via `get_flows` / `flows.json`
-- **Maintain directly** — edit docs in place via mutate tools, then let the user commit from autoDoc's frontend Git panel
+- **Maintain directly** — edit docs in place via mutate tools, then let the user commit from ACCEED's frontend Git panel
 
 > This Agent-native integration is something DeepWiki (web chat only) and Google Code Wiki (web browsing only) do not offer.
 
@@ -313,7 +313,7 @@ After the initial documentation content is complete, autoDoc installs the thin [
 ## Project Structure
 
 ```
-autoDoc/
+ACCEED/
 ├── src/
 │   ├── server.ts                 # HTTP API + /mcp (same port, stateless transport)
 │   ├── git/
@@ -354,20 +354,20 @@ autoDoc/
 
 ## Contributing
 
-autoDoc is currently in a rapid prototyping phase and may ship breaking changes frequently. If you'd like to propose a new feature, please open an Issue first so we can align on the roadmap. Individual developers are welcome to fork and build on this project, subject to the terms of the [LICENSE](LICENSE) (AGPL-3.0).
+ACCEED is currently in a rapid prototyping phase and may ship breaking changes frequently. If you'd like to propose a new feature, please open an Issue first so we can align on the roadmap. Individual developers are welcome to fork and build on this project, subject to the terms of the [LICENSE](LICENSE) (AGPL-3.0).
 
 Because this project uses a dual-licensing model ("AGPL-3.0 open source + commercial license"), every external contribution must be covered by the [Contributor License Agreement](docs/CLA.md) before it can be merged. CLA Assistant will walk you through signing on your first PR; a single signature covers all of your future contributions.
 
 **All Issues must be submitted in Chinese (中文).** Issues in any other language will be closed without a response.
 
-Issues and Pull Requests welcome! If autoDoc helps you, please consider giving it a Star.
+Issues and Pull Requests welcome! If ACCEED helps you, please consider giving it a Star.
 
 ## License & Commercial Licensing
 
-autoDoc is offered under a dual-licensing model:
+ACCEED is offered under a dual-licensing model:
 
 - **Open-source license**: [GNU AGPL-3.0-only](LICENSE). Free to use, modify, and redistribute — but **any modified version or derivative work, including deployments that expose functionality over a network, must release its complete corresponding source code to every user of that service under AGPL-3.0** (AGPL-3.0 §13).
-- **Commercial license**: if you cannot or do not wish to comply with AGPL-3.0's copyleft obligations (for example, integrating autoDoc into a closed-source product, or operating it as a SaaS without disclosing your modifications), you must obtain a written commercial license from the author in advance. See [COMMERCIAL-LICENSE.md](docs/COMMERCIAL-LICENSE.md).
+- **Commercial license**: if you cannot or do not wish to comply with AGPL-3.0's copyleft obligations (for example, integrating ACCEED into a closed-source product, or operating it as a SaaS without disclosing your modifications), you must obtain a written commercial license from the author in advance. See [COMMERCIAL-LICENSE.md](docs/COMMERCIAL-LICENSE.md).
 
 ### How to obtain a commercial license
 
@@ -388,6 +388,6 @@ Extend a formal employment offer to the author. Internship offers (including par
 ### Contact
 
 - **Commercial licensing & offers**: `joeyanbo608@gmail.com`
-- **Suggested subject line**: `[autoDoc Commercial License] <your company>` or `[autoDoc Offer] <your company>`
+- **Suggested subject line**: `[ACCEED Commercial License] <your company>` or `[ACCEED Offer] <your company>`
 
 In your first message, please include the company name, size, intended use case, and expected deployment scope so the applicable tier and next steps can be determined.

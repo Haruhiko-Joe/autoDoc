@@ -1,6 +1,6 @@
 # scripts/ — QA Benchmark 流水线
 
-评估 autoDoc 生成文档质量的两阶段流水线：先基于源码生成问答对，再测试仅用文档工具能否回答这些问题。
+评估 ACCEED 生成文档质量的两阶段流水线：先基于源码生成问答对，再测试仅用文档工具能否回答这些问题。
 
 ## 流水线概览
 
@@ -13,7 +13,7 @@ generate-qa.ts          run-qa-benchmark.ts
 └─────────────┘         └──────────────────┘
 ```
 
-**第一步** 让 Claude/Codex 阅读源码仓库和 autoDoc 文档树，生成有源码依据的问答对。
+**第一步** 让 Claude/Codex 阅读源码仓库和 ACCEED 文档树，生成有源码依据的问答对。
 **第二步** 让 Claude/Codex 在沙箱环境中仅使用文档浏览工具 (`browse.mjs`) 回答这些问题，以此衡量文档的信息覆盖度。
 
 ## 第一步：生成 QA 对
@@ -28,7 +28,7 @@ pnpm exec tsx scripts/generate-qa.ts [options]
 |---|---|---|
 | `--project <name>` | `git` | 文档根目录下的项目名 |
 | `--repo <path>` | `src/souko/repo/git` | 目标源码仓库路径 |
-| `--doc-root <path>` | `src/souko/doc` | autoDoc 文档根目录 |
+| `--doc-root <path>` | `src/souko/doc` | ACCEED 文档根目录 |
 | `--out-dir <path>` | `benchmarks/qa` | 输出根目录 |
 | `--language <zh\|en>` | `zh` | QA 语言 |
 | `--count <number>` | `20` | 每个 provider 生成的 QA 数量 |
@@ -54,7 +54,7 @@ pnpm exec tsx scripts/run-qa-benchmark.ts [options]
 |---|---|---|
 | `--input <path>` | 自动查找最新的 | `qa.generated.json` 路径 |
 | `--project <name>` | `git` | 项目名 |
-| `--doc-root <path>` | `src/souko/doc` | autoDoc 文档根目录 |
+| `--doc-root <path>` | `src/souko/doc` | ACCEED 文档根目录 |
 | `--out-dir <path>` | `benchmarks/qa` | 输出根目录 |
 | `--answer-providers <list>` | `codex,claude` | 回答问题的 provider |
 | `--limit <number>` | 全部 | 限制问题数量（用于冒烟测试） |
@@ -95,7 +95,7 @@ scripts/
 ## 环境要求
 
 两个脚本都需要：
-- 已完成的 autoDoc 文档树，即 `{doc-root}/{project}/top.json` 必须存在
+- 已完成的 ACCEED 文档树，即 `{doc-root}/{project}/top.json` 必须存在
 
 ## 使用示例
 

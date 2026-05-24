@@ -1,4 +1,4 @@
-# autoDoc 竞品横向对比分析
+# ACCEED 竞品横向对比分析
 
 ## 一、竞品全景图
 
@@ -183,7 +183,7 @@
 
 ## 三、横向对比评分表
 
-| 维度 | autoDoc | DeepWiki | Google Code Wiki | CodeWiki (FSoft) | DeepWiki-Open | Mintlify | Swimm | Sourcegraph Cody | Doxygen |
+| 维度 | ACCEED | DeepWiki | Google Code Wiki | CodeWiki (FSoft) | DeepWiki-Open | Mintlify | Swimm | Sourcegraph Cody | Doxygen |
 |------|:-------:|:--------:|:----------------:|:----------------:|:-------------:|:-------:|:-----:|:----------------:|:-------:|
 | D1. 生成方式 | **5** | 4 | 3 | 4 | 3 | 3 | 3 | 2 | 2 |
 | D2. 内容质量 | **4** | 4 | 3 | 4 | 3 | 3 | 3 | 3 | 2 |
@@ -203,13 +203,13 @@
 
 ---
 
-## 四、autoDoc 优势分析
+## 四、ACCEED 优势分析
 
 ### 核心优势（行业领先）
 
 #### 1. 多 Agent 迭代验证管线（D1=5，行业唯一）
 
-autoDoc 采用 5 个 Agent（Scaffold / Decomposer / Writer / Checker / FlowAnalyzer）协作的管线架构，每个阶段均经过 Checker Agent 独立验证。
+ACCEED 采用 5 个 Agent（Scaffold / Decomposer / Writer / Checker / FlowAnalyzer）协作的管线架构，每个阶段均经过 Checker Agent 独立验证。
 
 - **验证项**：broken-target、invalid-path、empty-content、missing-section、missing-ref
 - **重试机制**：失败后带结构化修复提示的重试循环（最多 5 次），通过 `agent.continue()` 保持会话连续性
@@ -226,7 +226,7 @@ Decomposer Agent 根据代码复杂度自主决定分解深度，而非使用固
 
 #### 3. 最丰富的交互式可视化（D4=5，最大差异化特性）
 
-| 特性 | autoDoc | DeepWiki | Google CW | CodeWiki |
+| 特性 | ACCEED | DeepWiki | Google CW | CodeWiki |
 |------|---------|----------|-----------|----------|
 | 语义边类型数 | 6 种 | 无 | 无 | 无 |
 | 交互式图导航 | AntV G6 | 无 | 无 | 无 |
@@ -253,7 +253,7 @@ Decomposer Agent 根据代码复杂度自主决定分解深度，而非使用固
 
 ---
 
-## 五、autoDoc 劣势分析
+## 五、ACCEED 劣势分析
 
 ### 待改进项
 
@@ -272,7 +272,7 @@ PR 驱动的增量更新管线已上线：
 |------|-------------|
 | Google Code Wiki | 每次代码变更后自动重新生成（D6=5） |
 | Swimm | 代码变更自动检测并更新文档（D6=5） |
-| **autoDoc** | **按 PR 粒度增量更新 + 影响评估短路 + 版本控制 + 手动审阅闸门（D6=5）** |
+| **ACCEED** | **按 PR 粒度增量更新 + 影响评估短路 + 版本控制 + 手动审阅闸门（D6=5）** |
 | Mintlify | Git 集成 + CI/CD 触发（D6=3） |
 
 #### 2. 协作能力（D10=4，已实现）
@@ -284,7 +284,7 @@ PR 驱动的增量更新管线已上线：
 
 #### 3. 集成生态（D11=4）
 
-| 集成类型 | autoDoc | DeepWiki | Mintlify |
+| 集成类型 | ACCEED | DeepWiki | Mintlify |
 |----------|---------|----------|---------|
 | Code Agent 集成 | **doc-drill Skill（自动安装）** | 无 | 无 |
 | MCP Server | **有（HTTP Streamable，query + mutate + 版本控制）** | 有 | 有 |
@@ -293,13 +293,13 @@ PR 驱动的增量更新管线已上线：
 | HTTP API | 有（run/status/doc/search/chat/update） | 有 | 完整 REST |
 | SSE 实时流 | **有（生成进度 + 增量更新队列）** | 无 | 无 |
 
-> autoDoc 的 doc-drill skill + HTTP MCP 的组合是独一无二的 Agent-native 集成：任何 code agent 都能通过它自顶向下导航文档，理解函数的作用、影响范围和全局位置，并且直接通过 MCP 工具维护文档。这是 DeepWiki（仅网页 Chat）和 Mintlify（仅文档站点）所不具备的能力。
+> ACCEED 的 doc-drill skill + HTTP MCP 的组合是独一无二的 Agent-native 集成：任何 code agent 都能通过它自顶向下导航文档，理解函数的作用、影响范围和全局位置，并且直接通过 MCP 工具维护文档。这是 DeepWiki（仅网页 Chat）和 Mintlify（仅文档站点）所不具备的能力。
 
 #### 4. 开发者体验（D5=5）
 
-**安装体验：** 相比 DeepWiki（URL 替换）和 Google Code Wiki（URL 替换），autoDoc 需要 Node.js + pnpm + Claude Code 安装，首次安装有一定摩擦。
+**安装体验：** 相比 DeepWiki（URL 替换）和 Google Code Wiki（URL 替换），ACCEED 需要 Node.js + pnpm + Claude Code 安装，首次安装有一定摩擦。
 
-**生成后使用体验（领先竞品）：** autoDoc 在初步文档内容产出后自动生成 Codex 项目级 `doc-drill` Skill，并安装到目标仓库的 `.codex/skills/doc-drill/SKILL.md`；Flow Analyzer 写入 `flows.json` 后，同一套 MCP / skill 继续提供 flow 查询能力：
+**生成后使用体验（领先竞品）：** ACCEED 在初步文档内容产出后自动生成 Codex 项目级 `doc-drill` Skill，并安装到目标仓库的 `.codex/skills/doc-drill/SKILL.md`；Flow Analyzer 写入 `flows.json` 后，同一套 MCP / skill 继续提供 flow 查询能力：
 - **渐进式浏览**（lazy-load，节省上下文）：从顶层模块逐步深入到实现细节
 - **关系追踪**：沿 6 种语义边追踪模块间调用链和数据流
 - **关键词搜索**：跨所有文档层级搜索
@@ -324,7 +324,7 @@ PR 驱动的增量更新管线已上线：
 
 ```json
 [
-  { "tool": "autoDoc",          "scores": [5, 4, 5, 5, 5, 5, 4, 4, 4, 4, 4, 5] },
+  { "tool": "ACCEED",          "scores": [5, 4, 5, 5, 5, 5, 4, 4, 4, 4, 4, 5] },
   { "tool": "DeepWiki",         "scores": [4, 4, 4, 4, 4, 2, 5, 2, 4, 2, 4, 3] },
   { "tool": "Google Code Wiki", "scores": [3, 3, 3, 3, 4, 5, 5, 2, 4, 3, 4, 4] },
   { "tool": "CodeWiki (FSoft)", "scores": [4, 4, 4, 3, 2, 1, 3, 3, 5, 1, 1, 2] },
@@ -377,15 +377,15 @@ PR 驱动的增量更新管线已上线：
 
 ### 竞争格局定位
 
-| 对比 | autoDoc 定位 |
+| 对比 | ACCEED 定位 |
 |------|-------------|
-| vs DeepWiki | autoDoc 是 **"深度派"**（验证 + 可视化），DeepWiki 是 **"便捷派"**（URL 即用 + MCP） |
-| vs Google Code Wiki | Google Code Wiki 内容单薄、结构扁平、可视化为静态图表，仅在代码新鲜度和规模上有平台优势。autoDoc 在 **内容深度、结构组织、交互可视化、生成质量保障** 上全面领先 |
-| vs CodeWiki (FSoft) | 同为多 Agent 开源方案，autoDoc 在 **可视化和容灾** 上领先，CodeWiki 在 **学术评测分数** 上领先 |
-| vs Swimm | Swimm 在 **文档同步** 上独步天下，autoDoc 在 **架构理解深度** 上更强 |
-| vs Mintlify | Mintlify 在 **集成生态** 上完胜，autoDoc 在 **生成质量保障** 上更强 |
+| vs DeepWiki | ACCEED 是 **"深度派"**（验证 + 可视化），DeepWiki 是 **"便捷派"**（URL 即用 + MCP） |
+| vs Google Code Wiki | Google Code Wiki 内容单薄、结构扁平、可视化为静态图表，仅在代码新鲜度和规模上有平台优势。ACCEED 在 **内容深度、结构组织、交互可视化、生成质量保障** 上全面领先 |
+| vs CodeWiki (FSoft) | 同为多 Agent 开源方案，ACCEED 在 **可视化和容灾** 上领先，CodeWiki 在 **学术评测分数** 上领先 |
+| vs Swimm | Swimm 在 **文档同步** 上独步天下，ACCEED 在 **架构理解深度** 上更强 |
+| vs Mintlify | Mintlify 在 **集成生态** 上完胜，ACCEED 在 **生成质量保障** 上更强 |
 
-### autoDoc 的独特护城河
+### ACCEED 的独特护城河
 
 1. **唯一** 具有多 Agent 迭代验证循环的开源代码文档方案
 2. **唯一** 具有 6 种语义边类型交互图的文档工具
@@ -394,7 +394,7 @@ PR 驱动的增量更新管线已上线：
 5. **唯一** 自动生成 Code Agent Skill（doc-drill），让 AI 编程助手原生理解代码架构
 6. **唯一** 具有 PR 粒度增量更新 + 人工审阅闸门 + Agent session 续写微调的文档维护系统
 
-### autoDoc 的竞争展望
+### ACCEED 的竞争展望
 
 当前总分 **54/60**，大幅领先 Google Code Wiki (44) 和 DeepWiki (43)。PR 驱动增量更新、HTTP MCP Server、手动审阅闸门 + session 续写已全部上线，此前标记为 🚧 的 D6/D10/D11 短板均已补齐。
 

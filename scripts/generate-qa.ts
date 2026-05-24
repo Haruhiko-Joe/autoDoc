@@ -106,7 +106,7 @@ function usage(): string {
     "Options:",
     "  --project <name>          Project name in doc root (default: git)",
     "  --repo <path>             Target source repo (default: src/souko/repo/git)",
-    "  --doc-root <path>         autoDoc docs root (default: src/souko/doc)",
+    "  --doc-root <path>         ACCEED docs root (default: src/souko/doc)",
     "  --out-dir <path>          Output root (default: benchmarks/qa)",
     "  --language <zh|en>        QA language (default: zh)",
     "  --count <number>          QA count per provider (default: 20)",
@@ -159,7 +159,7 @@ You create rigorous QA pairs for evaluating whether documentation can support de
 You are operating with high tool permissions, but your role is analysis only. Do not edit files, run formatters, or change repository state.
 
 ## TASK BACKGROUND
-The target repository has an autoDoc documentation tree. Use that documentation to choose relevant areas and navigation paths, but treat the source code as the source of truth for the question and gold answer.
+The target repository has an ACCEED documentation tree. Use that documentation to choose relevant areas and navigation paths, but treat the source code as the source of truth for the question and gold answer.
 
 ## ABOUT THE TASK
 Produce practical, challenging QA pairs in ${outputLanguage}. Each question should require reasoning about real code behavior rather than recall of a single symbol.
