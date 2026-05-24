@@ -194,8 +194,17 @@ Output: Updated I'
 9.  return I'
 ```
 
+### Knowledge Elicitation
 
+AD-IR generation quality is bounded by the information that source code alone can convey. Many architectural decisions, business conventions, and domain-specific terminology do not exist explicitly in the codebase, yet are critical for documentation accuracy and utility.
 
+**Definition 11 (Knowledge Document).** A knowledge document $\kappa$ is a natural-language text encoding extra-code domain knowledge (business context, terminology conventions, decomposition preferences, etc.). $\kappa$ is produced through multi-turn dialogue between the Knowledge Elicitor Agent and the user prior to full generation, then injected into the system prompts of Scaffold, Decomposer, Writer, and Checker.
+
+Formally, with $\kappa$ introduced, Algorithm 1's Scaffold and Decomposer calls extend to:
+
+$$G_{\text{top}} = \text{Scaffold}.\text{run}(R, \kappa); \quad G_n = \text{Decomposer}.\text{run}(n, \Sigma(n), \kappa)$$
+
+The role of $\kappa$ is to constrain the granularity and direction of recursive decomposition — for example, a user may specify "directory A is core / directory B is noise" or "these three scattered files are logically one module" — aligning AD-IR's module boundaries with actual business concepts rather than merely reflecting physical directory structure.
 
 ## Experiments
 

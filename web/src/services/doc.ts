@@ -228,6 +228,14 @@ export async function updateNode(
   return postJson(`${API}/doc/update-node`, body, 'Failed to update node')
 }
 
+export async function pauseSubgraph(project: string, nodeId: string): Promise<void> {
+  await postJson(`${API}/subgraph/pause`, { project, nodeId }, 'Failed to pause subgraph')
+}
+
+export async function resumeSubgraph(project: string, nodeId: string): Promise<void> {
+  await postJson(`${API}/subgraph/resume`, { project, nodeId }, 'Failed to resume subgraph')
+}
+
 export async function updateGraphKnowledge(
   project: string, nodeId: string, knowledge: string,
 ): Promise<SubGraph> {

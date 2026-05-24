@@ -195,6 +195,17 @@ AD-IR 的递归图结构与 ACCEED 管线之间存在双向约束关系：
 9.  return I'
 ```
 
+### 知识引出
+
+AD-IR 的生成质量受限于代码本身所能传达的信息。许多架构决策、业务约定和领域术语并不显式存在于源码中，但对文档的准确性和可用性至关重要。
+
+**定义 11（知识文档）。** 知识文档 $\kappa$ 为自然语言文本，编码仓库的代码外领域知识（业务背景、术语约定、分解偏好等）。$\kappa$ 在全量生成前通过 Knowledge Elicitor Agent 与用户的多轮对话产出，随后被注入 Scaffold、Decomposer、Writer、Checker 四个下游 Agent 的系统提示。
+
+形式化地，引入 $\kappa$ 后，Algorithm 1 的 Scaffold 和 Decomposer 调用扩展为：
+
+$$G_{\text{top}} = \text{Scaffold}.\text{run}(R, \kappa); \quad G_n = \text{Decomposer}.\text{run}(n, \Sigma(n), \kappa)$$
+
+$\kappa$ 的作用是约束递归分解的粒度和方向——例如用户可指定"目录 A 是核心、目录 B 是噪声"或"这三个分散文件在逻辑上是同一模块"——使 AD-IR 的模块边界与实际业务概念对齐，而非仅反映物理目录结构。
 
 ## Experiments
 

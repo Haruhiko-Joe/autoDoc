@@ -94,6 +94,7 @@ export const Graph = z.object({
   codeScope: z.array(z.string()),
   nodes: z.array(GraphNode),
   knowledge: z.string().optional(),
+  paused: z.boolean().optional(),
   decomposerSessionId: z.string().optional(),
   checkerSessionId: z.string().optional(),
   pageTasks: z.record(z.string(), PageTask).optional(),

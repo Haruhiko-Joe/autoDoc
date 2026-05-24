@@ -93,6 +93,7 @@ export class GraphStore {
       try {
         const graph = await this.readGraph(nodeId);
         if (!ACTIONABLE.has(graph.status)) continue;
+        if (await this.isNodePaused(nodeId)) continue;
 
         if (graph.status === "writing" && graph.pageTasks) {
           const nextPage = Object.entries(graph.pageTasks).find(([, task]) => task.status === "pending");
@@ -413,6 +414,42 @@ export class GraphStore {
       } catch { /* skip */ }
     }
     return undefined;
+  }
+
+  async pauseNode(nodeId: string): Promise<void> {
+    const graph = await this.readGraph(nodeId);
+    graph.paused = true;
+    await this.writeGraph(nodeId, graph);
+  }
+
+  async resumeNode(nodeId: string): Promise<void> {
+    const graph = await this.readGraph(nodeId);
+    delete (graph as Record<string, unknown>).paused;
+    await this.writeGraph(nodeId, graph);
+  }
+
+  async hasPausedNodes(): Promise<boolean> {
+    const allNodeIds = await this.scanGraphNodes(this.docDir, "");
+    for (const nodeId of allNodeIds) {
+      try {
+        const graph = await this.readGraph(nodeId);
+        if (graph.paused && ACTIONABLE.has(graph.status)) return true;
+        if (ACTIONABLE.has(graph.status) && await this.isNodePaused(nodeId)) return true;
+      } catch { /* skip */ }
+    }
+    return false;
+  }
+
+  async isNodePaused(nodeId: string): Promise<boolean> {
+    const segments = nodeId.split("/").filter(Boolean);
+    for (let i = segments.length; i > 0; i--) {
+      const ancestorId = segments.slice(0, i).join("/");
+      try {
+        const graph = await this.readGraph(ancestorId);
+        if (graph.paused) return true;
+      } catch { /* skip */ }
+    }
+    return false;
   }
 
   private async resetNodes(

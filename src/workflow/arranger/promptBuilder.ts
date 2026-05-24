@@ -84,7 +84,7 @@ export class PromptBuilder {
     if (ancestorContext) {
       parts.push(`\nAncestor context (the module hierarchy above this node):\n${JSON.stringify(ancestorContext, null, 2)}`);
     }
-    return this.appendKnowledge(parts.join("\n"), nodeKnowledge);
+    return this.appendKnowledge(parts.join("\n"), nodeKnowledge, false);
   }
 
   graphCheckerPrompt(nodeId: string, rawGraph: RawGraph, nodeKnowledge?: string): string {
@@ -98,7 +98,7 @@ export class PromptBuilder {
       "```",
       ``,
       `Note: Leaf Markdown documents have not been generated yet — validate graph structure only.`,
-    ].join("\n"), nodeKnowledge);
+    ].join("\n"), nodeKnowledge, false);
   }
 
   decomposerFixPrompt(issues: CheckerIssue[]): string {
@@ -133,7 +133,7 @@ export class PromptBuilder {
       feedback,
       "",
       "Please re-output the complete subgraph JSON based on the user's feedback.",
-    ].join("\n"), nodeKnowledge);
+    ].join("\n"), nodeKnowledge, false);
   }
 
   writerPrompt(node: GraphNode, ancestorContext: AncestorContext | null, nodeKnowledge?: string): string {
@@ -146,23 +146,23 @@ export class PromptBuilder {
     if (ancestorContext) {
       parts.push(`\nAncestor context (the module hierarchy above this node):\n${JSON.stringify(ancestorContext, null, 2)}`);
     }
-    return this.appendKnowledge(parts.join("\n"), nodeKnowledge);
+    return this.appendKnowledge(parts.join("\n"), nodeKnowledge, false);
   }
 
   flowPrompt(): string {
     return `Analyze the documented codebase and produce 3-7 typical business interaction flows.\nRepository root: ${this.repoPath}`;
   }
 
-  private appendKnowledge(prompt: string, nodeKnowledge?: string): string {
+  private appendKnowledge(prompt: string, nodeKnowledge?: string, topLevel = true): string {
     const parts = [prompt];
-    if (this.knowledge) {
+    if (topLevel && this.knowledge) {
       const header = this.language === "en" ? "# Repository Domain Knowledge" : "# 仓库领域知识";
       parts.push(`${header}\n${this.knowledge}`);
     }
     if (nodeKnowledge) {
       const header = this.language === "en"
-        ? "# Module-Specific Knowledge (higher priority — overrides general knowledge when conflicting)"
-        : "# 模块专属知识（优先级高于全局知识，冲突时以此为准）";
+        ? "# Module-Specific Knowledge"
+        : "# 模块专属知识";
       parts.push(`${header}\n${nodeKnowledge}`);
     }
     return parts.join("\n\n");

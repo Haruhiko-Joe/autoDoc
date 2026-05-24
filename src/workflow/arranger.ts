@@ -85,6 +85,21 @@ export class Arranger {
     this.notify();
   }
 
+  async pauseSubgraph(nodeId: string): Promise<void> {
+    const { store } = this.activeRuntime();
+    await store.pauseNode(nodeId);
+    console.log(`[Arranger] Paused subgraph: ${nodeId}`);
+    this.notify();
+  }
+
+  async resumeSubgraph(nodeId: string): Promise<void> {
+    const { store } = this.activeRuntime();
+    await store.resumeNode(nodeId);
+    console.log(`[Arranger] Resumed subgraph: ${nodeId}`);
+    this.wakeReviewWaiters();
+    this.notify();
+  }
+
   onProgress(listener: () => void): () => void {
     this.listeners.add(listener);
     return () => { this.listeners.delete(listener); };
@@ -278,7 +293,9 @@ export class Arranger {
           continue;
         }
         const seqBefore = this._reviewSeq;
-        if (await store.hasPendingReviews()) {
+        const hasReviews = await store.hasPendingReviews();
+        const hasPaused = await store.hasPausedNodes();
+        if (hasReviews || hasPaused) {
           if (this._reviewSeq !== seqBefore) continue;
           this.currentPhase = "awaiting-review";
           this.notify();
