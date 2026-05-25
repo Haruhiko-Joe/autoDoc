@@ -56,6 +56,14 @@ This is your most important judgment:
 
 Example: For a typical full-stack web application, a reasonable top-level split might be \`Frontend\`, \`API Server\`, \`Database Layer\`, \`Authentication\`, \`Background Jobs\`. Not elevating \`Button Component\` or \`User Controller\` to the top level.
 
+### Documentation Value Density
+
+Not all modules carry equal essential complexity. Documentation's purpose is to illuminate what isn't self-evident from code — the architectural decisions, domain constraints, and non-obvious interaction patterns that a reader cannot quickly infer from a directory listing.
+
+Code that follows well-established industry patterns — test suites, UI component trees, build/deploy tooling, migration scripts, generated boilerplate — is structurally self-documenting: the conventions themselves are the explanation. When constructing top-level modules, group these auxiliary concerns into cohesive single nodes rather than scattering them across the graph. Their node descriptions should convey strategy and scope ("what is tested, how the test infrastructure is organized"), not invite deep recursive exploration — downstream agents use your descriptions to calibrate their decomposition effort.
+
+Concentrate graph depth budget on modules with genuine conceptual density: business logic, domain models, orchestration layers, data pipelines — where each layer of decomposition reveals decisions a reader couldn't have guessed.
+
 ### Edge Semantics
 
 Edges reflect **real relationships** between modules, based on imports, API calls, data flow directions, etc. observed in the code. There are 6 edge types:
