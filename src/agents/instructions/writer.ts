@@ -111,14 +111,7 @@ Your prompt may include a trailing "# Repository Domain Knowledge" section conta
 
 3. **Trace call chains**: Understand key process data flow through import and function call relationships
 
-4. **Organize documentation**: Adapt emphasis to the code's nature (flexibly adjust; not all chapters are mandatory):
-   - **Overview & Purpose**: What this module does and its role in the system
-   - **Usage & Integration** *(emphasize for consumer-facing code)*: How to use this module — calling conventions, integration patterns, common scenarios
-   - **Key Process Walkthrough** *(emphasize for implementation code)*: Core execution paths, state transitions, data flow — the reader needs to understand how this code works to maintain or extend it
-   - **Public API Reference**: Exported functions/classes/interfaces, parameter semantics, return values, error behaviors
-   - **Design Internals**: Core mechanisms, algorithms, design patterns — focus on design intent and constraints behind choices, not line-by-line narration
-   - **Configuration & Defaults**: Configurable parameters, environment variables, default behaviors
-   - **Constraints & Caveats**: Behaviors requiring special attention, failure modes, ordering requirements, known limitations
+4. **Organize documentation**: Structure the document to match the code's nature and the reader's needs. Open with what the module is and why it matters, then develop the body around either usage patterns (for consumer-facing code) or internal process walkthrough (for implementation code). Cover public APIs, design decisions, configuration, and constraints where relevant. Let the specific structure emerge from the code — don't force a fixed template.
 
 5. **Output result**
 
@@ -126,57 +119,38 @@ Your prompt may include a trailing "# Repository Domain Knowledge" section conta
 
 Your output is automatically extracted via structured output — the framework will parse your response into \`{ content: string }\` format. You only need to fill in the Markdown text directly in the content field. **Do not manually construct JSON yourself.**
 
-Below is a complete example of the Markdown content in the content field:
+Below is a brief example illustrating consumer-facing documentation style (for an auth middleware consumed by route handlers). This is not a rigid template — adapt the structure to the code:
 
 \`\`\`markdown
 # Auth Middleware
 
-## Overview & Purpose
+## Overview
 
 The auth middleware is the security gate for all protected API routes. When building any feature that requires authenticated access, this is the module you integrate with — it handles JWT verification, user resolution, and role-based permission checks before your handler executes.
 
-## Usage & Integration
+## Usage
 
-### Protecting a Route
+Apply \\\`authenticate\\\` as Express middleware on any route requiring a logged-in user:
+\\\`router.get('/profile', authenticate, profileController.get)\\\`
 
-Apply \\\`authenticate\\\` as Express middleware on any route that requires a logged-in user. The middleware extracts the Bearer token from the \\\`Authorization\\\` header, verifies it, and populates \\\`req.user\\\` with the resolved user object — your handler can then access \\\`req.user\\\` directly without additional lookup.
+The middleware extracts the Bearer token from the \\\`Authorization\\\` header, verifies it, and populates \\\`req.user\\\`. For role-based access, declare \\\`@RequireRole('admin')\\\` on the route — the middleware returns 403 when insufficient.
 
-> Example: \\\`router.get('/profile', authenticate, profileController.get)\\\`
+## API
 
-### Enforcing Role-Based Access
-
-Declare required roles via the \\\`@RequireRole\\\` decorator on route metadata. The middleware compares \\\`req.user.role\\\` against the declared role and returns 403 when insufficient.
-
-> Example: \\\`@RequireRole('admin')\\\` on a route definition
-
-## Public API
-
-### \\\`authenticate(req: Request, res: Response, next: NextFunction): void\\\`
-
-Main middleware function. Attach it to any route definition that needs auth.
-
-- **Success**: populates \\\`req.user\\\` with the full user object, calls \\\`next()\\\`
-- **Missing or invalid token**: returns 401 — frontend uses this status code to trigger the token refresh flow
-- **Insufficient permissions**: returns 403
-
-> Source: \\\`src/middleware/auth.ts:15-42\\\`
+### \\\`authenticate(req, res, next): void\\\`
+- **Success**: populates \\\`req.user\\\`, calls \\\`next()\\\`
+- **Invalid token**: returns 401 (frontend triggers refresh on this)
+- **Insufficient role**: returns 403
 
 ### \\\`AuthConfig\\\`
-
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| secret | string | — | JWT signing secret (via \\\`AUTH_SECRET\\\` env var) |
-| expiresIn | number | 3600 | Token validity period in seconds |
-| refreshEnabled | boolean | true | Whether token refresh is supported |
+| secret | string | — | JWT signing secret (\\\`AUTH_SECRET\\\` env) |
+| expiresIn | number | 3600 | Token validity (seconds) |
 
-## Design Internals
-
-Token verification delegates to \\\`verifyJWT()\\\` (\\\`src/auth/jwt.ts:23-45\\\`), which validates signature and expiration, then resolves the user via \\\`UserRepository.findById()\\\`. This is one synchronous signature check + one DB query per request — no caching layer, so high-throughput routes should consider session-based auth instead.
-
-## Constraints & Caveats
-
-- Returns 401 (not 403) on token expiration — this distinction is intentional; the frontend relies on 401 to trigger the refresh flow
-- In dev mode (\\\`NODE_ENV=development\\\`), missing tokens produce a mock user instead of 401 — do not rely on auth rejection behavior in dev
-- \\\`req.user\\\` is \\\`undefined\\\` on routes without this middleware — guard accordingly if sharing handlers across authenticated and public routes
+## Caveats
+- 401 vs 403 on expiry is intentional — frontend refresh flow depends on it
+- Dev mode (\\\`NODE_ENV=development\\\`) uses mock user instead of rejecting
+- \\\`req.user\\\` is \\\`undefined\\\` on unauthenticated routes
 \`\`\`
 `.trim();
