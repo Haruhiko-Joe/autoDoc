@@ -1,10 +1,7 @@
 <p align="center">
   <h1 align="center">autoDoc</h1>
   <p align="center">
-    粘一条 git URL，自动产出可交互、可增量更新、可被 Agent 直接读写消费的自索引文档站 目前主要在 acceed分支推进，相关的更新会在论文发表后合入main且项目会被重命名为 ACCEED doc
-  </p>
-  <p align="center">
-    5 + 1 个 AI Agent 协作 · 迭代验证 · git diff 增量更新 · HTTP MCP 接口 · 交互式架构图 · 崩溃恢复 · 渐进式披露
+    以产物为状态的理念，通过状态机产出可交互、可增量更新、可被 Agent 直接读写消费的自索引文档站 目前主要在 acceed 分支推进，相关的更新会在论文发表后合入main且项目会被重命名为 ACCEED doc；本项目已被某中厂（AI洗稿，白嫖实习生成果的行径属实过于屑）社区科学线/电商架构组采用为代码知识化基建的技术方案用于开发提效
   </p>
   <p align="center">
     <strong>中文</strong> | <a href="README.en.md">English</a> | <a href="README.ja.md">日本語</a>
