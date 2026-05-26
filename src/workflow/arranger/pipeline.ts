@@ -383,8 +383,8 @@ export class Pipeline {
 
     const { result } = await writer.run(promptBuilder.writerPrompt(node, ancestorContext, nodeKnowledge), repoPath);
     console.log(`[Arranger] Page generated: ${node.name}`);
-    await appendRunLog(store.projectName, `writer return node=${node.name} len=${result.content.length}`);
-    return result.content;
+    await appendRunLog(store.projectName, `writer return node=${node.name} len=${result.length}`);
+    return result;
   }
 
   private mcpUrl(): string {

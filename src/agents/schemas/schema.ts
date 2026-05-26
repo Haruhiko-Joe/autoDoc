@@ -100,12 +100,6 @@ export const Graph = z.object({
   pageTasks: z.record(z.string(), PageTask).optional(),
 })
 
-// --- Writer ---
-
-export const WriterOutput = z.object({
-  content: z.string(),
-})
-
 // --- FlowAnalyzer ---
 
 export const FlowParticipant = z.object({
@@ -225,8 +219,8 @@ export interface IDecomposer {
 export interface IWriter {
   getSessionId(): string | undefined
   restore(sessionId: string, workpath: string): void
-  run(prompt: string, workpath: string): Promise<AgentResult<WriterOutput>>
-  continue(prompt: string): Promise<AgentResult<WriterOutput>>
+  run(prompt: string, workpath: string): Promise<AgentResult<string>>
+  continue(prompt: string): Promise<AgentResult<string>>
 }
 
 export interface IFlowAnalyzer {
@@ -269,7 +263,6 @@ export type CheckerIssueType = z.infer<typeof CheckerIssueType>
 export type CheckerSeverity = z.infer<typeof CheckerSeverity>
 export type CheckerIssue = z.infer<typeof CheckerIssue>
 export type CheckerOutput = z.infer<typeof CheckerOutput>
-export type WriterOutput = z.infer<typeof WriterOutput>
 export type AncestorSibling = z.infer<typeof AncestorSibling>
 export type AncestorEdge = z.infer<typeof AncestorEdge>
 export type AncestorLayer = z.infer<typeof AncestorLayer>
