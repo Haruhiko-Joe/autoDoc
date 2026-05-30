@@ -18,8 +18,8 @@
 ## 2. 安装与启动
 
 ```bash
-git clone https://github.com/Haruhiko-Joe/ACCEED.git
-cd ACCEED
+git clone https://github.com/Haruhiko-Joe/autoDoc.git
+cd autoDoc
 pnpm install
 cd web && pnpm install && cd ..
 
@@ -152,8 +152,8 @@ cd web && npx vue-tsc --noEmit   # 前端
 ### 2. Install & Run
 
 ```bash
-git clone https://github.com/Haruhiko-Joe/ACCEED.git
-cd ACCEED
+git clone https://github.com/Haruhiko-Joe/autoDoc.git
+cd autoDoc
 pnpm install
 cd web && pnpm install && cd ..
 pnpm start
@@ -275,8 +275,8 @@ cd web && npx vue-tsc --noEmit    # type-check frontend
 ### 2. インストール & 起動
 
 ```bash
-git clone https://github.com/Haruhiko-Joe/ACCEED.git
-cd ACCEED
+git clone https://github.com/Haruhiko-Joe/autoDoc.git
+cd autoDoc
 pnpm install
 cd web && pnpm install && cd ..
 pnpm start

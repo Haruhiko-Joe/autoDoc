@@ -17,7 +17,7 @@
   <img src="https://img.shields.io/badge/Node.js-%3E%3D18-339933?logo=nodedotjs&logoColor=white" alt="Node.js">
   <img src="https://img.shields.io/badge/pnpm-%3E%3D10-F69220?logo=pnpm&logoColor=white" alt="pnpm">
   <img src="https://img.shields.io/badge/MCP-Streamable_HTTP-512BD4" alt="MCP">
-  <a href="https://github.com/Haruhiko-Joe/ACCEED/stargazers"><img src="https://img.shields.io/github/stars/Haruhiko-Joe/ACCEED?style=social" alt="Stars"></a>
+  <a href="https://github.com/Haruhiko-Joe/autoDoc/stargazers"><img src="https://img.shields.io/github/stars/Haruhiko-Joe/autoDoc?style=social" alt="Stars"></a>
 </p>
 
 <p align="center">
@@ -56,8 +56,8 @@
 ## 快速开始
 
 ```bash
-git clone https://github.com/Haruhiko-Joe/ACCEED.git
-cd ACCEED
+git clone https://github.com/Haruhiko-Joe/autoDoc.git
+cd autoDoc
 pnpm install && cd web && pnpm install && cd ..
 pnpm start
 ```

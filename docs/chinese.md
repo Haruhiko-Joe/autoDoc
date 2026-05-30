@@ -2,7 +2,7 @@
 
 ## Abstract
 
-仓库级自主编程Agent需要对代码知识进行结构化导航与跨模块推理，然而现有文档形态——扁平文本、逐文件注释、RAG 检索片段——既缺乏层次化组织，也无法表达模块间的类型化依赖关系，无法为Agent提供可持续遍历、查询与维护的知识底座。本文将面向Agent的仓库文档形式化为一个中间表示（IR）问题，并在此基础上做出两方面贡献。其一，我们定义 Agent-Oriented Documentation Intermediate Representation（AD-IR）：一种递归图模式，以类型化模块间边、源码作用域映射、叶节点文档页和跨模块交互流编码仓库知识，并通过标准化查询-修改接口使Agent可从架构概览逐层下钻至实现细节。其二，我们提出 ACCEED（Artifact-Centric Code Exploration, Evolution & Drill-down）：一个基于产物即状态（artifact-as-state）原则的多Agent管线，每个中间工件同时充当自动机控制状态与最终知识产物，从结构上保证渐进披露与一致性；由于生成与更新共享同一查询-修改接口，AD-IR 天然支持 pull request 驱动的增量更新，无需全量重新生成。在 ACCEED-Bench——一个以仓库级 QA 任务衡量文档实用性的基准——上，ACCEED 在正确性、覆盖率、可导航性和跨文档一致性上均显著优于现有方法，多项核心指标接近满分。ACCEED 已在一家大型互联网企业的多个生产仓库中部署，验证了其在真实工业场景下的实用性。代码已开源：https://github.com/Haruhiko-Joe/ACCEED 。
+仓库级自主编程Agent需要对代码知识进行结构化导航与跨模块推理，然而现有文档形态——扁平文本、逐文件注释、RAG 检索片段——既缺乏层次化组织，也无法表达模块间的类型化依赖关系，无法为Agent提供可持续遍历、查询与维护的知识底座。本文将面向Agent的仓库文档形式化为一个中间表示（IR）问题，并在此基础上做出两方面贡献。其一，我们定义 Agent-Oriented Documentation Intermediate Representation（AD-IR）：一种递归图模式，以类型化模块间边、源码作用域映射、叶节点文档页和跨模块交互流编码仓库知识，并通过标准化查询-修改接口使Agent可从架构概览逐层下钻至实现细节。其二，我们提出 ACCEED（Artifact-Centric Code Exploration, Evolution & Drill-down）：一个基于产物即状态（artifact-as-state）原则的多Agent管线，每个中间工件同时充当自动机控制状态与最终知识产物，从结构上保证渐进披露与一致性；由于生成与更新共享同一查询-修改接口，AD-IR 天然支持 pull request 驱动的增量更新，无需全量重新生成。在 ACCEED-Bench——一个以仓库级 QA 任务衡量文档实用性的基准——上，ACCEED 在正确性、覆盖率、可导航性和跨文档一致性上均显著优于现有方法，多项核心指标接近满分。ACCEED 已在一家大型互联网企业的多个生产仓库中部署，验证了其在真实工业场景下的实用性。代码已开源：https://github.com/Haruhiko-Joe/autoDoc 。
 
 ## Introduction
 
