@@ -1,6 +1,6 @@
 # Commercial License / 商业许可
 
-autoDoc is dual-licensed:
+ACCEED is dual-licensed:
 
 1. **Open-source license** — [GNU AGPL-3.0-only](../LICENSE). Free to use, modify and
    (re)distribute, provided that **any modified or derivative version, including
@@ -10,8 +10,8 @@ autoDoc is dual-licensed:
 
 2. **Commercial license** — a separate, paid agreement that grants the rights
    AGPL-3.0 does not, including but not limited to:
-   - Integrating autoDoc into **closed-source** products.
-   - Operating autoDoc (or any derivative) as a **hosted / SaaS service**
+   - Integrating ACCEED into **closed-source** products.
+   - Operating ACCEED (or any derivative) as a **hosted / SaaS service**
      without disclosing your modifications.
    - Removing the AGPL-3.0 copyleft obligations on your own codebase.
    - Receiving a written warranty, indemnification, and priority support / SLA.
@@ -22,8 +22,8 @@ autoDoc is dual-licensed:
 
 You almost certainly need one if **any** of the following is true:
 
-- You want to bundle autoDoc inside a proprietary product you ship to customers.
-- You want to offer autoDoc's functionality as a paid or internal service to
+- You want to bundle ACCEED inside a proprietary product you ship to customers.
+- You want to offer ACCEED's functionality as a paid or internal service to
   users outside your own legal entity, without open-sourcing your full stack.
 - Your organization's policy forbids using AGPL-licensed code.
 - You need written legal assurances (warranty, indemnity, SLA) that AGPL-3.0's
@@ -31,9 +31,9 @@ You almost certainly need one if **any** of the following is true:
 
 You do **not** need a commercial license if you are:
 
-- An individual developer using, modifying, or self-hosting autoDoc for personal
+- An individual developer using, modifying, or self-hosting ACCEED for personal
   learning or non-service use.
-- A team running autoDoc **purely internally**, without exposing it as a service
+- A team running ACCEED **purely internally**, without exposing it as a service
   to third parties, and willing to release any modifications under AGPL-3.0 if
   later distributed.
 - An open-source project that is itself AGPL-3.0 compatible.
@@ -47,7 +47,7 @@ If you are unsure, just ask.
 Contact the author:
 
 - **Contact:** joeyanbo608@gmail.com
-- **Subject line:** `[autoDoc Commercial License] <your company>`
+- **Subject line:** `[ACCEED Commercial License] <your company>`
 
 Please include in your first message:
 

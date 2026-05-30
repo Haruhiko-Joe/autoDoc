@@ -41,6 +41,7 @@ import { createUpdateRoutes } from "./http/updateRoutes.js";
 import { createDocGitRoutes } from "./http/docGitRoutes.js";
 import { createDocRoutes } from "./http/docRoutes.js";
 import { createDecompositionReviewRoutes } from "./http/decompositionReviewRoutes.js";
+import { createSubgraphPauseRoutes } from "./http/subgraphPauseRoutes.js";
 
 const PORT = Number(process.env.PORT ?? 3100);
 
@@ -602,6 +603,18 @@ const routeHandlers: RouteHandler[] = [
   }),
   createDocGitRoutes(docGit, docStore),
   createDocRoutes({ docStore, getProjectDocDir, getCurrentDocDir, handleDocFile }),
+  createSubgraphPauseRoutes({
+    pauseSubgraph: async (_project, nodeId) => {
+      if (state.phase !== "running" || !state.arranger) throw new Error("Not running");
+      await state.arranger.pauseSubgraph(nodeId);
+      broadcastStatus();
+    },
+    resumeSubgraph: async (_project, nodeId) => {
+      if (state.phase !== "running" || !state.arranger) throw new Error("Not running");
+      await state.arranger.resumeSubgraph(nodeId);
+      broadcastStatus();
+    },
+  }),
 ];
 
 async function dispatchRequest(ctx: HttpContext): Promise<void> {

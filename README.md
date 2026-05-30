@@ -1,5 +1,5 @@
 <p align="center">
-  <h1 align="center">autoDoc</h1>
+  <h1 align="center">ACCEED Doc</h1>
   <p align="center">
     以产物为状态的理念，通过状态机产出可交互、可增量更新、可被 Agent 直接读写消费的自索引文档站 目前主要在 acceed 分支推进，相关的更新会在论文发表后合入main且项目会被重命名为 ACCEED doc；本项目已被某中厂（AI洗稿，白嫖实习生成果的行径属实过于屑）社区科学线/电商架构组采用为代码知识化基建的技术方案用于开发提效
   </p>
@@ -21,11 +21,11 @@
   <a href="https://github.com/Haruhiko-Joe/skills/tree/main/doc-drill">📘 伴侣 Skill: doc-drill</a> · 通过同进程 <code>/mcp</code> 端点对接任意 Code Agent
 </p>
 
-## 为什么选择 autoDoc？
+## WHY ACCEED？
 
-与 DeepWiki、Google Code Wiki 等竞品不同，autoDoc 不只是"单次生成一堆文档"——它是一个**带质量闭环的多 Agent 文档工厂 + 可被 Agent 直接读写的 MCP 知识底座**。它既是**人类阅读体验最舒适的文档站**，也是**天然适配 Code Agent 的知识源**，在可读性、交互性、Agent 可消费性、增量维护能力等各个维度均达到 SOTA。
+> 代码文档的三大规范是可读性、可交互性和可维护性。其中，可读性是满足人类与代理理解代码的最基本需求，在软件工程领域中，被视为一切开发活动的优先前提。通过阅读文档，开发者能够获得对代码库的整体认知，而如果文档本身还能提供结构化的层次导航与类型化的模块关系，则这种认知将会得到质的升华。在当今世界，确实存在着对这种极致文档体验倾注全部热情的开发者与 Agent——而能够承载这种执念的文档体系，我们称之为**知识底座**。ACCEED，则专门为那些已经厌倦了世间常见文档站的开发者与 Agent，提供与其素质相匹配的知识消费源。
 
-| | autoDoc | DeepWiki | Google Code Wiki |
+| | ACCEED | DeepWiki | Google Code Wiki |
 |---|:---:|:---:|:---:|
 | 多 Agent 迭代验证 | **✅ 5 Agent + Checker 循环** | ❌ 单次生成 | ❌ 单次生成 |
 | 增量更新（git diff 驱动） | **✅ 专用 Updater Agent 局部改写** | ❌ 全量重生成 | ❌ 全量重生成 |
@@ -67,31 +67,31 @@ Codex 后端按 Agent 角色使用 [profiles](https://developers.openai.com/code
 
 ```toml
 [profiles.scaffold]
-model = "gpt-5.4"
+model = "gpt-5.5"
 model_reasoning_effort = "high"
 
 [profiles.decomposer]
-model = "gpt-5.4"
+model = "gpt-5.5"
 model_reasoning_effort = "high"
 
 [profiles.writer]
-model = "gpt-5.4"
+model = "gpt-5.5"
 model_reasoning_effort = "medium"
 
 [profiles.checker]
-model = "gpt-5.4"
+model = "gpt-5.5"
 model_reasoning_effort = "high"
 
 [profiles.flowanalyzer]
-model = "gpt-5.4"
+model = "gpt-5.5"
 model_reasoning_effort = "medium"
 
 [profiles.prupdater]
-model = "gpt-5.4"
+model = "gpt-5.5"
 model_reasoning_effort = "high"
 
 [profiles.knowledge]
-model = "gpt-5.4"
+model = "gpt-5.5"
 model_reasoning_effort = "medium"
 ```
 
@@ -196,7 +196,7 @@ gitUrl ──► git clone ──► src/souko/repo/{name}
 
 ## HTTP MCP 接口
 
-后端在 `http://localhost:3100/mcp` 上以 stateless Streamable HTTP transport 暴露一个 MCP server，名为 `autodoc`。所有工具操作的对象都是 `src/souko/doc/{project}/` 下的真实文件。
+后端在 `http://localhost:3100/mcp` 上以 stateless Streamable HTTP transport 暴露一个 MCP server，名为 `acceed`。所有工具操作的对象都是 `src/souko/doc/{project}/` 下的真实文件。
 
 ### 在 Claude Code / Codex 里接入
 
@@ -205,7 +205,7 @@ gitUrl ──► git clone ──► src/souko/repo/{name}
 ```json
 {
   "mcpServers": {
-    "autodoc": {
+    "acceed": {
       "type": "http",
       "url": "http://localhost:3100/mcp"
     }
@@ -213,15 +213,15 @@ gitUrl ──► git clone ──► src/souko/repo/{name}
 }
 ```
 
-Codex 使用项目级 `.codex/config.toml`，autoDoc 会在装配 skill 时写入同等配置：
+Codex 使用项目级 `.codex/config.toml`，ACCEED 会在装配 skill 时写入同等配置：
 
 ```toml
-[mcp_servers.autodoc]
+[mcp_servers.acceed]
 url = "http://localhost:3100/mcp"
 enabled_tools = ["list_projects", "get_top", "get_flows", "get_graph", "get_page", "search_nodes", "list_source_files", "read_source_files", "list_docs", "read_docs", "patch_page", "update_page", "update_node", "update_graph_meta", "create_node", "delete_node", "update_top"]
 ```
 
-配套的 [doc-drill skill](src/skill-template/SKILL.md) 是一份**只讲怎么调 MCP 工具**的说明书，随 autoDoc 一起分发到目标仓库。
+配套的 [doc-drill skill](src/skill-template/SKILL.md) 是一份**只讲怎么调 MCP 工具**的说明书，随 ACCEED 一起分发到目标仓库。
 
 ### 工具一览
 
@@ -286,13 +286,13 @@ src/souko/
 
 ## doc-drill: Code Agent 原生集成
 
-autoDoc 会在初步文档内容完成后，把瘦版 [doc-drill](src/skill-template/SKILL.md) skill 安装到目标仓库的 `.codex/skills/doc-drill/SKILL.md`，同时写入 Claude Code 的 `.mcp.json` 和 Codex 的 `.codex/config.toml`，指向本地 HTTP MCP server。此时 `get_flows` 已注册；在 Flow Analyzer 写入 `flows.json` 前它会提示 flow 尚未生成，写入后同一个工具即可查询端到端流程。任何 Code Agent 都能通过它：
+ACCEED 会在初步文档内容完成后，把瘦版 [doc-drill](src/skill-template/SKILL.md) skill 安装到目标仓库的 `.codex/skills/doc-drill/SKILL.md`，同时写入 Claude Code 的 `.mcp.json` 和 Codex 的 `.codex/config.toml`，指向本地 HTTP MCP server。此时 `get_flows` 已注册；在 Flow Analyzer 写入 `flows.json` 前它会提示 flow 尚未生成，写入后同一个工具即可查询端到端流程。任何 Code Agent 都能通过它：
 
 - **渐进式浏览** — `list_projects` → `get_top` → `get_graph` → `get_page`，lazy load，节省上下文
 - **关系追踪** — 沿 6 种语义边追踪模块间调用链和数据流
 - **关键词搜索** — `search_nodes` 跨所有文档层级搜索
 - **业务流程导航** — 通过 `get_flows` / `flows.json` 理解端到端交互场景
-- **直接维护** — 用 mutate 工具就地增删改文档，最后由用户在 autoDoc 前端 Git 面板手动提交
+- **直接维护** — 用 mutate 工具就地增删改文档，最后由用户在 ACCEED 前端 Git 面板手动提交
 
 > 这是 DeepWiki（仅网页 Chat）和 Google Code Wiki（仅网页浏览）不具备的 Agent-native 集成能力。
 
@@ -309,7 +309,7 @@ autoDoc 会在初步文档内容完成后，把瘦版 [doc-drill](src/skill-temp
 ## 项目结构
 
 ```
-autoDoc/
+ACCEED/
 ├── src/
 │   ├── server.ts                 # HTTP API + /mcp（同端口，stateless transport）
 │   ├── git/
@@ -356,14 +356,14 @@ autoDoc/
 
 **所有 Issue 必须使用中文提交**。非中文 Issue 将被直接关闭，不作回复。
 
-欢迎提交 Issue 和 Pull Request！如果 autoDoc 对你有帮助，请给一个 Star 支持。
+欢迎提交 Issue 和 Pull Request！如果 ACCEED 对你有帮助，请给一个 Star 支持。
 
 ## License & 商业许可
 
-autoDoc 在法律层面采用双许可模式：
+ACCEED 在法律层面采用双许可模式：
 
 - **开源许可**：[GNU AGPL-3.0-only](LICENSE)。免费使用、修改、再分发，但**任何修改版本或衍生作品——包括以网络服务形式对外提供的部署——都必须以 AGPL-3.0 向其用户完整公开对应的源代码**（AGPL-3.0 §13）。
-- **商业许可**：若你无法或不愿履行 AGPL-3.0 的开源义务（例如将 autoDoc 集成进闭源产品、或作为 SaaS 对外提供而不公开衍生源码），则必须事先获得作者的书面商业许可。详见 [COMMERCIAL-LICENSE.md](docs/COMMERCIAL-LICENSE.md)。
+- **商业许可**：若你无法或不愿履行 AGPL-3.0 的开源义务（例如将 ACCEED 集成进闭源产品、或作为 SaaS 对外提供而不公开衍生源码），则必须事先获得作者的书面商业许可。详见 [COMMERCIAL-LICENSE.md](docs/COMMERCIAL-LICENSE.md)。
 
 ### 商业许可的获取方式
 
@@ -384,6 +384,6 @@ autoDoc 在法律层面采用双许可模式：
 ### 联系方式
 
 - **商业许可**：`joeyanbo608@gmail.com`
-- **主题行建议**：`[autoDoc Commercial License] <贵司名称>` 或 `[autoDoc Offer] <贵司名称>`
+- **主题行建议**：`[ACCEED Commercial License] <贵司名称>` 或 `[ACCEED Offer] <贵司名称>`
 
 请在首次联系时提供公司名称、规模、使用场景和预期部署范围，以便评估所属档位并安排后续流程。

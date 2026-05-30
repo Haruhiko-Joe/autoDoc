@@ -44,6 +44,7 @@ export interface SubGraph {
   codeScope: string[]
   nodes: GraphNode[]
   knowledge?: string
+  paused?: boolean
 }
 
 // ─── Flow ───

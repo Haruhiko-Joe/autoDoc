@@ -1,5 +1,5 @@
 <p align="center">
-  <h1 align="center">autoDoc</h1>
+  <h1 align="center">ACCEED</h1>
   <p align="center">
     <strong>git URL を貼るだけで、インタラクティブ・増分更新・Agent 読み書き可能なドキュメントサイトを自動生成</strong>
   </p>
@@ -24,11 +24,11 @@
   <a href="https://github.com/Haruhiko-Joe/skills/tree/main/doc-drill">📘 コンパニオン Skill: doc-drill</a> · 同一プロセスの <code>/mcp</code> エンドポイント経由で任意の Code Agent と接続
 </p>
 
-## なぜ autoDoc なのか？
+## なぜ ACCEED なのか？
 
-DeepWiki や Google Code Wiki と違い、autoDoc は単なる「一括生成ツール」ではありません。**品質フィードバックループを備えたマルチ Agent ドキュメントファクトリ + Agent が直接読み書きできる MCP ネイティブな知識基盤**です。**人間にとって最も読みやすいドキュメントサイト**であると同時に、**Code Agent にネイティブ対応した知識源**でもあり、可読性・インタラクティブ性・Agent 消費性・増分保守性のすべてで SOTA を実現します。
+> ドキュメントサイトの三大規範は、可読性、対話性、保守性。その中でも可読性は、人間とエージェントがコードを理解するための最も基本的な要件であり、ソフトウェアエンジニアリングの領域においては、あらゆる開発活動に優先する前提条件とされております。ドキュメントを読むことにより、開発者はコードベースの全体像を把握でき、さらに、そのドキュメントが構造化された階層ナビゲーションと型付きモジュール関係を提供する場合、その理解は質的な飛躍を遂げます。また、この究極のドキュメント体験の追求に全情熱を傾ける開発者とエージェントが存在します——そしてこの執念を受け止めるドキュメント体系を、一般的に**知識基盤**と呼びます。ACCEED は、世の中にありふれたフラットテキスト、ファイルごとのコメント、浅い RAG 検索断片に飽きてしまわれた開発者とエージェントの方々に、その素質にふさわしい知識基盤を提供しております。
 
-| | autoDoc | DeepWiki | Google Code Wiki |
+| | ACCEED | DeepWiki | Google Code Wiki |
 |---|:---:|:---:|:---:|
 | マルチ Agent 反復検証 | **✅ 5 Agent + Checker ループ** | ❌ 単発生成 | ❌ 単発生成 |
 | git URL 直接接続 | **✅ バックエンドが自動 clone & commit 追跡** | ✅ | ✅ |
@@ -200,7 +200,7 @@ gitUrl ──► git clone ──► src/souko/repo/{name}
 
 ## HTTP MCP インターフェース
 
-バックエンドは `http://localhost:3100/mcp` にステートレス Streamable HTTP transport で `autodoc` という MCP サーバーを公開します。すべてのツールは `src/souko/doc/{project}/` 以下の実ファイルを操作します。
+バックエンドは `http://localhost:3100/mcp` にステートレス Streamable HTTP transport で `acceed` という MCP サーバーを公開します。すべてのツールは `src/souko/doc/{project}/` 以下の実ファイルを操作します。
 
 ### Claude Code / Codex への接続
 
@@ -209,7 +209,7 @@ gitUrl ──► git clone ──► src/souko/repo/{name}
 ```json
 {
   "mcpServers": {
-    "autodoc": {
+    "acceed": {
       "type": "http",
       "url": "http://localhost:3100/mcp"
     }
@@ -217,15 +217,15 @@ gitUrl ──► git clone ──► src/souko/repo/{name}
 }
 ```
 
-Codex は project-scoped `.codex/config.toml` を使います。autoDoc は skill assemble 時に同等の設定を書き込みます:
+Codex は project-scoped `.codex/config.toml` を使います。ACCEED は skill assemble 時に同等の設定を書き込みます:
 
 ```toml
-[mcp_servers.autodoc]
+[mcp_servers.acceed]
 url = "http://localhost:3100/mcp"
 enabled_tools = ["list_projects", "get_top", "get_flows", "get_graph", "get_page", "search_nodes", "list_source_files", "read_source_files", "list_docs", "read_docs", "patch_page", "update_page", "update_node", "update_graph_meta", "create_node", "delete_node", "update_top"]
 ```
 
-対応する [doc-drill skill](src/skill-template/SKILL.md) は **MCP ツールの呼び出し方だけ**を記述した薄い説明書で、autoDoc と一緒に配布されます。
+対応する [doc-drill skill](src/skill-template/SKILL.md) は **MCP ツールの呼び出し方だけ**を記述した薄い説明書で、ACCEED と一緒に配布されます。
 
 ### ツール一覧
 
@@ -290,13 +290,13 @@ src/souko/
 
 ## doc-drill: Code Agent ネイティブ統合
 
-初期ドキュメント内容が完成した時点で、autoDoc はスリム版 [doc-drill](src/skill-template/SKILL.md) skill をターゲットリポジトリの `.codex/skills/doc-drill/SKILL.md` に自動インストールし、Claude Code 用の `.mcp.json` と Codex 用の `.codex/config.toml` にローカル HTTP MCP サーバーへの参照を書き込みます。この時点で `get_flows` は登録済みですが、Flow Analyzer が `flows.json` を書き込むまでは flow 未生成を通知し、書き込み後は同じツールでエンドツーエンド flow を取得できます。任意の Code Agent がこれを通じて:
+初期ドキュメント内容が完成した時点で、ACCEED はスリム版 [doc-drill](src/skill-template/SKILL.md) skill をターゲットリポジトリの `.codex/skills/doc-drill/SKILL.md` に自動インストールし、Claude Code 用の `.mcp.json` と Codex 用の `.codex/config.toml` にローカル HTTP MCP サーバーへの参照を書き込みます。この時点で `get_flows` は登録済みですが、Flow Analyzer が `flows.json` を書き込むまでは flow 未生成を通知し、書き込み後は同じツールでエンドツーエンド flow を取得できます。任意の Code Agent がこれを通じて:
 
 - **段階的ブラウジング** — `list_projects` → `get_top` → `get_graph` → `get_page`、lazy load でコンテキスト節約
 - **関係追跡** — 6 種のセマンティックエッジに沿ってモジュール間のコールチェーンとデータフローを追跡
 - **キーワード検索** — `search_nodes` で全ドキュメント階層を横断検索
 - **ビジネスフローナビ** — `get_flows` / `flows.json` を通じてエンドツーエンドのインタラクションシナリオを理解
-- **直接メンテナンス** — mutate ツールでドキュメントをその場で追加削除変更し、最後に autoDoc frontend の Git panel で手動 commit
+- **直接メンテナンス** — mutate ツールでドキュメントをその場で追加削除変更し、最後に ACCEED frontend の Git panel で手動 commit
 
 > これは DeepWiki（Web チャットのみ）や Google Code Wiki（Web ブラウジングのみ）にはない、Agent ネイティブな統合能力です。
 
@@ -313,7 +313,7 @@ src/souko/
 ## プロジェクト構成
 
 ```
-autoDoc/
+ACCEED/
 ├── src/
 │   ├── server.ts                 # HTTP API + /mcp（同一ポート、stateless transport）
 │   ├── git/
@@ -360,14 +360,14 @@ autoDoc/
 
 **すべての Issue は中国語で提出してください**。中国語以外の言語で提出された Issue は、返信することなくクローズされます。
 
-Issue や Pull Request を歓迎します！autoDoc が役に立ったら、ぜひ Star をお願いします。
+Issue や Pull Request を歓迎します！ACCEED が役に立ったら、ぜひ Star をお願いします。
 
 ## License & 商用ライセンス
 
-autoDoc は法的にデュアルライセンスモデルを採用しています：
+ACCEED は法的にデュアルライセンスモデルを採用しています：
 
 - **オープンソースライセンス**：[GNU AGPL-3.0-only](LICENSE)。無償で使用・改変・再配布が可能ですが、**改変版または派生物（ネットワーク経由でサービスとして提供されるデプロイを含む）は、対応する完全なソースコードを AGPL-3.0 の下でそのサービスのすべてのユーザーに公開しなければなりません**（AGPL-3.0 §13）。
-- **商用ライセンス**：AGPL-3.0 のコピーレフト義務を履行できない／履行したくない場合（例：autoDoc をクローズドソース製品に組み込む、派生ソースを公開せずに SaaS として外部提供するなど）、事前に作者の書面による商用ライセンスを取得する必要があります。詳細は [COMMERCIAL-LICENSE.md](docs/COMMERCIAL-LICENSE.md) を参照。
+- **商用ライセンス**：AGPL-3.0 のコピーレフト義務を履行できない／履行したくない場合（例：ACCEED をクローズドソース製品に組み込む、派生ソースを公開せずに SaaS として外部提供するなど）、事前に作者の書面による商用ライセンスを取得する必要があります。詳細は [COMMERCIAL-LICENSE.md](docs/COMMERCIAL-LICENSE.md) を参照。
 
 ### 商用ライセンスの取得方法
 
@@ -388,6 +388,6 @@ autoDoc は法的にデュアルライセンスモデルを採用しています
 ### お問い合わせ
 
 - **商用ライセンス・オファー**：`joeyanbo608@gmail.com`
-- **推奨件名**：`[autoDoc Commercial License] <貴社名>` または `[autoDoc Offer] <貴社名>`
+- **推奨件名**：`[ACCEED Commercial License] <貴社名>` または `[ACCEED Offer] <貴社名>`
 
 初回連絡時には、会社名・規模・想定用途・予定デプロイ範囲を明記してください。該当階層の判定および後続フローの案内に使用します。

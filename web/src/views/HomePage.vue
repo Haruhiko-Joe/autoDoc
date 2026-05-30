@@ -395,7 +395,7 @@ async function handleRetryErrors() {
   <div class="page-layout">
     <aside class="sidebar">
       <div class="sidebar-header">
-        <h2>autoDoc</h2>
+        <h2>ACCEED</h2>
         <button class="theme-btn" @click="toggleTheme" :title="isDark ? 'Light mode' : 'Dark mode'">
           <svg v-if="isDark" width="16" height="16" viewBox="0 0 24 24" fill="none">
             <circle cx="12" cy="12" r="5" stroke="currentColor" stroke-width="2"/>

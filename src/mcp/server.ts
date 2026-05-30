@@ -5,7 +5,7 @@ import { registerMutateTools } from "./tools/mutate.js"
 
 export function buildMcpServer(store: DocStore): McpServer {
   const mcp = new McpServer({
-    name: "autodoc",
+    name: "acceed",
     version: "0.1.0",
   })
   registerQueryTools(mcp, store)

@@ -100,7 +100,7 @@ function usage(): string {
     "Options:",
     "  --input <path>                 qa.generated.json path (default: latest for project)",
     "  --project <name>               Project name (default: git)",
-    "  --doc-root <path>              autoDoc docs root (default: src/souko/doc)",
+    "  --doc-root <path>              ACCEED docs root (default: src/souko/doc)",
     "  --out-dir <path>               Output root (default: benchmarks/qa)",
     "  --answer-providers <list>      Comma-separated providers (default: codex,claude)",
     "  --limit <number>               Limit questions for smoke tests",

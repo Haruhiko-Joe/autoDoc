@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { fetchTopGraph, fetchSubGraph, fetchPage, createNode, updateNode, deleteNode, updatePage, updateGraphKnowledge, fetchDocBlame, type DocBlameLine } from '../services/doc'
+import { fetchTopGraph, fetchSubGraph, fetchPage, createNode, updateNode, deleteNode, updatePage, updateGraphKnowledge, pauseSubgraph, resumeSubgraph, fetchDocBlame, type DocBlameLine } from '../services/doc'
 import GraphView from '../components/GraphView.vue'
 import GraphToolbar from '../components/GraphToolbar.vue'
 import NodeFormDialog from '../components/NodeFormDialog.vue'
@@ -47,6 +47,9 @@ const gitRefreshToken = ref(0)
 const showKnowledgePopover = ref(false)
 const knowledgeDraft = ref('')
 const knowledgeSaving = ref(false)
+
+const isPaused = ref(false)
+const pauseToggling = ref(false)
 
 function getPath(): string {
   return routePathParam(route.params.path)
@@ -358,6 +361,27 @@ async function saveKnowledge() {
     knowledgeSaving.value = false
   }
 }
+
+async function togglePause() {
+  pauseToggling.value = true
+  try {
+    if (isPaused.value) {
+      await resumeSubgraph(getProject(), getPath())
+      isPaused.value = false
+    } else {
+      await pauseSubgraph(getProject(), getPath())
+      isPaused.value = true
+    }
+  } catch (e) {
+    alert(e instanceof Error ? e.message : 'Pause/resume failed')
+  } finally {
+    pauseToggling.value = false
+  }
+}
+
+watch(subGraph, (sg) => {
+  isPaused.value = !!sg?.paused
+})
 </script>
 
 <template>
@@ -396,6 +420,14 @@ async function saveKnowledge() {
               @click="editMode = !editMode; selectedNodeId = null"
             >
               {{ editMode ? 'Done' : 'Edit' }}
+            </button>
+            <button
+              class="git-toggle"
+              :class="{ active: isPaused }"
+              :disabled="pauseToggling"
+              @click="togglePause"
+            >
+              {{ isPaused ? '▶ Resume' : '⏸ Pause' }}
             </button>
             <button class="git-toggle" @click="showGitPanel = !showGitPanel">Git</button>
             <div class="knowledge-wrapper">

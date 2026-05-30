@@ -3,26 +3,26 @@ import { resolveInstruction } from "../schemas/schema.js";
 import type { AgentResult, IPrUpdater, Language, PrUpdaterDelta } from "../schemas/schema.js";
 import { prUpdaterInstruction } from "../instructions/prupdater.js";
 
-const MCP_URL = process.env.AUTODOC_MCP_URL ?? `http://localhost:${process.env.PORT ?? 3100}/mcp`;
+const MCP_URL = process.env.ACCEED_MCP_URL ?? `http://localhost:${process.env.PORT ?? 3100}/mcp`;
 
-const AUTODOC_TOOLS = [
-  "mcp__autodoc__list_projects",
-  "mcp__autodoc__get_top",
-  "mcp__autodoc__get_flows",
-  "mcp__autodoc__get_graph",
-  "mcp__autodoc__get_page",
-  "mcp__autodoc__search_nodes",
-  "mcp__autodoc__list_source_files",
-  "mcp__autodoc__read_source_files",
-  "mcp__autodoc__list_docs",
-  "mcp__autodoc__read_docs",
-  "mcp__autodoc__patch_page",
-  "mcp__autodoc__update_page",
-  "mcp__autodoc__update_node",
-  "mcp__autodoc__update_graph_meta",
-  "mcp__autodoc__create_node",
-  "mcp__autodoc__delete_node",
-  "mcp__autodoc__update_top",
+const ACCEED_TOOLS = [
+  "mcp__acceed__list_projects",
+  "mcp__acceed__get_top",
+  "mcp__acceed__get_flows",
+  "mcp__acceed__get_graph",
+  "mcp__acceed__get_page",
+  "mcp__acceed__search_nodes",
+  "mcp__acceed__list_source_files",
+  "mcp__acceed__read_source_files",
+  "mcp__acceed__list_docs",
+  "mcp__acceed__read_docs",
+  "mcp__acceed__patch_page",
+  "mcp__acceed__update_page",
+  "mcp__acceed__update_node",
+  "mcp__acceed__update_graph_meta",
+  "mcp__acceed__create_node",
+  "mcp__acceed__delete_node",
+  "mcp__acceed__update_top",
 ];
 
 export class claudePrUpdater implements IPrUpdater {
@@ -72,9 +72,9 @@ export class claudePrUpdater implements IPrUpdater {
         permissionMode: "bypassPermissions",
         allowDangerouslySkipPermissions: true,
         tools: { type: "preset", preset: "claude_code" },
-        allowedTools: ["Read", "Glob", "Grep", ...AUTODOC_TOOLS],
+        allowedTools: ["Read", "Glob", "Grep", ...ACCEED_TOOLS],
         mcpServers: {
-          autodoc: { type: "http", url: MCP_URL },
+          acceed: { type: "http", url: MCP_URL },
         },
         cwd: this.cwd,
         systemPrompt: {

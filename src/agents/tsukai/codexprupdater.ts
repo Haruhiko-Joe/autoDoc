@@ -4,9 +4,9 @@ import { resolveInstruction } from "../schemas/schema.js";
 import type { AgentResult, IPrUpdater, Language, PrUpdaterDelta } from "../schemas/schema.js";
 import { prUpdaterInstruction } from "../instructions/prupdater.js";
 
-const MCP_URL = process.env.AUTODOC_MCP_URL ?? `http://localhost:${process.env.PORT ?? 3100}/mcp`;
+const MCP_URL = process.env.ACCEED_MCP_URL ?? `http://localhost:${process.env.PORT ?? 3100}/mcp`;
 
-const AUTODOC_TOOLS = [
+const ACCEED_TOOLS = [
   "list_projects",
   "get_top",
   "get_flows",
@@ -27,7 +27,7 @@ const AUTODOC_TOOLS = [
 ];
 
 const MCP_SERVERS_CONFIG = {
-  autodoc: { url: MCP_URL, enabled_tools: AUTODOC_TOOLS },
+  acceed: { url: MCP_URL, enabled_tools: ACCEED_TOOLS },
 };
 
 export class codexPrUpdater implements IPrUpdater {

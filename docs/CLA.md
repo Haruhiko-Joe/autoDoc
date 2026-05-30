@@ -1,7 +1,7 @@
 # Contributor License Agreement (CLA)
 
 > **Plain-language summary (not part of the legal text):**
-> autoDoc is offered under a dual-licensing model: the open-source AGPL-3.0
+> ACCEED is offered under a dual-licensing model: the open-source AGPL-3.0
 > license for the community, and a separate commercial license for companies
 > that cannot comply with AGPL. For this to work legally, the project's sole
 > copyright holder ("Licensor") needs permission from every contributor to
@@ -9,7 +9,7 @@
 > commercial terms. **You keep the copyright to your contribution.** You are
 > only granting a broad license, not giving ownership away.
 >
-> 中文说明（非法律条款）：autoDoc 采用"AGPL-3.0 开源 + 商业许可双轨"模式。
+> 中文说明（非法律条款）：ACCEED 采用"AGPL-3.0 开源 + 商业许可双轨"模式。
 > 为了保证作者（即 Licensor）未来能向付费客户发放商业许可，每一位贡献者都
 > 需要通过本 CLA 授权作者在未来以其他条款（包括商业条款）再许可该贡献。
 > **您仍然保留您贡献的版权**，本协议只是授予一份宽泛的许可，而不是转让
@@ -17,9 +17,9 @@
 
 ---
 
-## autoDoc Individual Contributor License Agreement ("Agreement") v1.0
+## ACCEED Individual Contributor License Agreement ("Agreement") v1.0
 
-Thank you for your interest in contributing to autoDoc (the "Project"),
+Thank you for your interest in contributing to ACCEED (the "Project"),
 maintained by the project's copyright holder ("Licensor", reachable at
 `joeyanbo608@gmail.com`). This Agreement documents the rights
 granted by contributors to the Licensor. This is a legally binding document,

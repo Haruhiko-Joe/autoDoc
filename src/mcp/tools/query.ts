@@ -13,7 +13,7 @@ export function registerQueryTools(mcp: McpServer, store: DocStore): void {
     "list_projects",
     {
       description:
-        "List all autoDoc projects available on this MCP server. Call this first to discover what's documented.",
+        "List all ACCEED projects available on this MCP server. Call this first to discover what's documented.",
       inputSchema: {},
     },
     async () => json({ projects: await store.listProjects() }),
