@@ -70,6 +70,32 @@ pnpm exec tsx bench/scripts/generate-qa.ts --project git --count 10 --providers 
 
 基于生成的 QA 对，让模型仅通过文档工具（doc-drill）回答问题，再用 judge 对比 gold answer 和采分点打分。
 
+## 生成消融文档
+
+为结构消融实验生成文档变体（完整、去边、扁平 MD）：
+
+```bash
+# 从项目根目录执行
+pnpm exec tsx bench/scripts/generate-ablation-docs.ts [options]
+```
+
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `--project` | `git` | 项目名（对应 `src/souko/doc/{project}`） |
+| `--doc-root` | `src/souko/doc` | ACCEED 文档根目录 |
+| `--out-root` | `bench/data/ablation-docs` | 输出目录 |
+| `--variants` | `full,no-edges,flat-md` | 逗号分隔的变体列表 |
+| `--overwrite` | 关闭 | 覆盖已有输出 |
+
+输出结构示例：
+
+```
+bench/data/ablation-docs/
+├── full/{project}/ ...
+├── no-edges/{project}/ ...
+└── flat-md/{project}/ ...
+```
+
 ## 目录结构
 
 ```
@@ -79,7 +105,8 @@ bench/
 ├── vite.config.ts
 ├── index.html
 ├── scripts/
-│   └── generate-qa.ts          # QA 生成脚本
+│   ├── generate-qa.ts          # QA 生成脚本
+│   └── generate-ablation-docs.ts  # 生成消融文档变体
 ├── src/
 │   ├── main.ts
 │   ├── App.vue
