@@ -42,6 +42,7 @@ import { createDocGitRoutes } from "./http/docGitRoutes.js";
 import { createDocRoutes } from "./http/docRoutes.js";
 import { createDecompositionReviewRoutes } from "./http/decompositionReviewRoutes.js";
 import { createSubgraphPauseRoutes } from "./http/subgraphPauseRoutes.js";
+import { createBenchRoutes } from "./http/benchRoutes.js";
 
 const PORT = Number(process.env.PORT ?? 3100);
 
@@ -603,6 +604,7 @@ const routeHandlers: RouteHandler[] = [
   }),
   createDocGitRoutes(docGit, docStore),
   createDocRoutes({ docStore, getProjectDocDir, getCurrentDocDir, handleDocFile }),
+  createBenchRoutes(),
   createSubgraphPauseRoutes({
     pauseSubgraph: async (_project, nodeId) => {
       if (state.phase !== "running" || !state.arranger) throw new Error("Not running");
