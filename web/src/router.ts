@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import HomePage from './views/HomePage.vue'
 import GraphPage from './views/GraphPage.vue'
 import FlowsPage from './views/FlowsPage.vue'
+import InsightsPage from './views/InsightsPage.vue'
 import KnowledgePage from './views/KnowledgePage.vue'
 
 const router = createRouter({
@@ -11,6 +12,7 @@ const router = createRouter({
     { path: '/knowledge', name: 'knowledge', component: KnowledgePage },
     { path: '/:project', name: 'project', component: HomePage },
     { path: '/:project/flows', name: 'flows', component: FlowsPage },
+    { path: '/:project/insights', name: 'insights', component: InsightsPage },
     { path: '/:project/doc/:path(.*)', name: 'doc', component: GraphPage },
   ],
 })

@@ -10,6 +10,7 @@ export interface RunBody {
   language?: Language;
   decompositionReview?: DecompositionReviewMode;
   checkerEnabled?: boolean;
+  insightEnabled?: boolean;
 }
 
 interface RunRouteDeps {

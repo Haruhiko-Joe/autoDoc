@@ -6,9 +6,8 @@
 
 ```bash
 # 1. 启动后端（项目根目录）
-pnpm dev
-
 # 2. 启动 benchmark 前端（端口 8009）
+pnpm dev
 cd bench && pnpm dev
 ```
 

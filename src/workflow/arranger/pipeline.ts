@@ -16,6 +16,7 @@ import type {
 } from "../../agents/schemas/schema.js";
 import type { AgentFactory } from "./agentFactory.js";
 import type { GraphStore } from "./graphStore.js";
+import type { InsightCollector } from "./insightCollector.js";
 import type { PromptBuilder } from "./promptBuilder.js";
 import { type Semaphore, withRetry, withSemaphore, withTimeout } from "./runtime.js";
 import type { DecompositionReviewMode } from "./types.js";
@@ -50,6 +51,7 @@ interface PipelineOptions {
   semaphore: Semaphore
   decompositionReview: DecompositionReviewMode
   checkerEnabled: boolean
+  insightCollector?: InsightCollector
 }
 
 export class Pipeline {
@@ -110,10 +112,20 @@ export class Pipeline {
     console.log(`[Arranger] Decomposed: ${nodeId} → ${rawGraph.nodes.length} child nodes`);
     await appendRunLog(store.projectName, `graph task done node=${nodeId} children=${rawGraph.nodes.length}`);
     if (this.options.decompositionReview === "all") {
+      // Defer insight collection until the review is approved (see Arranger.approveDecompositionReview),
+      // so it never mutates a session that a reject/redo still needs.
       await store.markGraphAwaitingReview(nodeId, rawGraph, decomposerSessionId);
       await appendRunLog(store.projectName, `graph awaiting-review node=${nodeId} children=${rawGraph.nodes.length}`);
     } else {
       await store.markGraphDecomposed(nodeId, rawGraph, decomposerSessionId);
+      this.options.insightCollector?.enqueue({
+        scope: "decomposer",
+        nodeId,
+        codeScope: graph.codeScope,
+        sessionId: decomposerSessionId,
+        backend: this.options.agentFactory.getBackend("decomposer"),
+        profile: "decomposer",
+      });
     }
   }
 
@@ -168,8 +180,11 @@ export class Pipeline {
     await appendRunLog(store.projectName, `page task start node=${nodeId} ref=${ref}`);
 
     let content: string;
+    let writerSessionId: string;
     try {
-      content = await withRetry(() => withTimeout(() => this.writePage(pageNode, ancestorContext, nodeKnowledge), 10 * 60_000, `writer ${pageNode.name}`));
+      const written = await withRetry(() => withTimeout(() => this.writePage(pageNode, ancestorContext, nodeKnowledge), 10 * 60_000, `writer ${pageNode.name}`));
+      content = written.content;
+      writerSessionId = written.sessionId;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error(`[Arranger] Write failed for ${nodeId}/${ref}:`, e);
@@ -182,6 +197,17 @@ export class Pipeline {
 
     await store.markPageDone(nodeId, ref);
     await appendRunLog(store.projectName, `page task done node=${nodeId} ref=${ref}`);
+
+    this.options.insightCollector?.enqueue({
+      scope: "writer",
+      nodeId,
+      ref,
+      codeScope: pageNode.codeScope,
+      sessionId: writerSessionId,
+      backend: this.options.agentFactory.getBackend("writer"),
+      profile: "writer",
+    });
+
     await store.finishNodeIfReady(nodeId);
   }
 
@@ -363,7 +389,7 @@ export class Pipeline {
     pageNode: GraphNodeType,
     ancestorContext: AncestorContextType | null,
     nodeKnowledge?: string,
-  ): Promise<string> {
+  ): Promise<{ content: string; sessionId: string }> {
     const writer = this.options.agentFactory.makeWriter();
     return withSemaphore(this.options.semaphore, () =>
       this.generatePageContent(writer, pageNode, ancestorContext, nodeKnowledge),
@@ -375,16 +401,16 @@ export class Pipeline {
     node: GraphNodeType,
     ancestorContext: AncestorContextType | null,
     nodeKnowledge?: string,
-  ): Promise<string> {
+  ): Promise<{ content: string; sessionId: string }> {
     const { agentFactory, promptBuilder, repoPath, store } = this.options;
 
     console.log(`[Arranger] Generating page: ${node.name}`);
     await appendRunLog(store.projectName, `writer invoke node=${node.name} backend=${agentFactory.getBackend("writer")}`);
 
-    const { result } = await writer.run(promptBuilder.writerPrompt(node, ancestorContext, nodeKnowledge), repoPath);
+    const { result, sessionId } = await writer.run(promptBuilder.writerPrompt(node, ancestorContext, nodeKnowledge), repoPath);
     console.log(`[Arranger] Page generated: ${node.name}`);
     await appendRunLog(store.projectName, `writer return node=${node.name} len=${result.length}`);
-    return result;
+    return { content: result, sessionId };
   }
 
   private mcpUrl(): string {

@@ -37,6 +37,7 @@ import {
   type KnowledgeStartBody,
 } from "./http/knowledgeRoutes.js";
 import { createSearchRoutes } from "./http/searchRoutes.js";
+import { createInsightRoutes } from "./http/insightRoutes.js";
 import { createUpdateRoutes } from "./http/updateRoutes.js";
 import { createDocGitRoutes } from "./http/docGitRoutes.js";
 import { createDocRoutes } from "./http/docRoutes.js";
@@ -285,6 +286,7 @@ async function handleRunContinue(): Promise<{ ok: boolean }> {
     language: config.language,
     decompositionReview: config.decompositionReview ?? "off",
     checkerEnabled: config.checkerEnabled ?? true,
+    insightEnabled: config.insightEnabled ?? false,
   });
   state = { phase: "running", gitUrl, project, repoDir, docDir, arranger };
   arranger.onProgress(debouncedBroadcast);
@@ -358,6 +360,7 @@ interface RunConfig {
   language: Language;
   decompositionReview: "off" | "all";
   checkerEnabled: boolean;
+  insightEnabled: boolean;
 }
 
 interface StatusResponse {
@@ -595,6 +598,7 @@ const routeHandlers: RouteHandler[] = [
     handleKnowledgeDiscard,
   }),
   createSearchRoutes({ searchModules }),
+  createInsightRoutes(),
   createUpdateRoutes(),
   createDecompositionReviewRoutes({
     listReviews: listDecompositionReviews,

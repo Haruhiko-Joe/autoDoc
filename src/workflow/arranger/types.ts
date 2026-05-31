@@ -28,6 +28,8 @@ export interface ArrangerOptions {
   language?: Language
   decompositionReview?: DecompositionReviewMode
   checkerEnabled?: boolean
+  insightEnabled?: boolean
+  insightConcurrency?: number
 }
 
 export interface ArrangerConfig {
@@ -36,4 +38,5 @@ export interface ArrangerConfig {
   language: Language
   decompositionReview: DecompositionReviewMode
   checkerEnabled: boolean
+  insightEnabled: boolean
 }
