@@ -1,3 +1,4 @@
+import { insightInstruction } from "../../agents/instructions/insight.js";
 import type {
   AncestorContext,
   CheckerIssue,
@@ -151,6 +152,22 @@ export class PromptBuilder {
 
   flowPrompt(): string {
     return `Analyze the documented codebase and produce 3-7 typical business interaction flows.\nRepository root: ${this.repoPath}`;
+  }
+
+  insightPrompt(scope: "decomposer" | "writer", nodeName: string, codeScope: string[]): string {
+    const verb = scope === "decomposer" ? "decomposing" : "documenting";
+    const lang = this.language === "en" ? "English" : "Chinese";
+    return [
+      `You have just finished ${verb} the module "${nodeName}" in this same conversation, and you have already read its source code.`,
+      `Code scope you analyzed: ${codeScope.join(", ")}`,
+      `Repository root: ${this.repoPath}`,
+      ``,
+      `Now switch roles to a **pragmatic senior engineer** doing a high-signal code review. Your findings will be displayed in a developer-facing review dashboard — only surface issues worth their attention. This is NOT a nitpicking exercise; reviewer "thoroughness" is measured by signal, not by count.`,
+      ``,
+      insightInstruction,
+      ``,
+      `Write the title, problem, and plan fields in ${lang}; keep code identifiers as-is.`,
+    ].join("\n");
   }
 
   private appendKnowledge(prompt: string, nodeKnowledge?: string, topLevel = true): string {
