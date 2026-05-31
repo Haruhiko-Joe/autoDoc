@@ -93,6 +93,7 @@ export interface RunConfig {
   language: 'zh' | 'en'
   decompositionReview: DecompositionReviewMode
   checkerEnabled: boolean
+  insightEnabled: boolean
 }
 
 export type RunPhase = 'idle' | 'cloning' | 'awaiting-knowledge' | 'running' | 'done' | 'error'
@@ -134,8 +135,9 @@ export async function startRun(
   language?: 'zh' | 'en',
   decompositionReview?: DecompositionReviewMode,
   checkerEnabled?: boolean,
+  insightEnabled?: boolean,
 ): Promise<{ ok: boolean; project: string }> {
-  const body = { gitUrl, maxConcurrency, agentBackends, language, decompositionReview, checkerEnabled }
+  const body = { gitUrl, maxConcurrency, agentBackends, language, decompositionReview, checkerEnabled, insightEnabled }
   return postJson(`${API}/run`, body, 'Failed to start')
 }
 
@@ -381,6 +383,39 @@ export function subscribeUpdateStream(
     }
   }
   return () => es.close()
+}
+
+// ─── Insights ───
+
+export type InsightSeverity = 'critical' | 'high' | 'medium' | 'low'
+export type InsightCategory = 'correctness' | 'security' | 'performance' | 'maintainability' | 'reliability' | 'other'
+
+export interface InsightItem {
+  title: string
+  severity: InsightSeverity
+  category: InsightCategory
+  locations: string[]
+  problem: string
+  plan: string
+  confidence: 'high' | 'medium' | 'low'
+}
+
+export interface InsightRecord {
+  ts: string
+  scope: 'decomposer' | 'writer'
+  nodeId: string
+  ref?: string
+  codeScope: string[]
+  insights: InsightItem[]
+}
+
+export async function fetchInsights(project: string): Promise<InsightRecord[]> {
+  const data = await requestJson<{ insights?: InsightRecord[] }>(
+    apiUrl('/insights', { project }),
+    undefined,
+    'Failed to load insights',
+  )
+  return data.insights ?? []
 }
 
 // ─── Search ───

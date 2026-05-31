@@ -190,6 +190,34 @@ export const CheckerOutput = z.object({
   issues: z.array(CheckerIssue),
 })
 
+// --- Insight (code review findings extracted from a finished worker session) ---
+
+export const InsightSeverity = z.enum(["critical", "high", "medium", "low"])
+
+export const InsightCategory = z.enum([
+  "correctness",
+  "security",
+  "performance",
+  "maintainability",
+  "reliability",
+  "other",
+])
+
+export const InsightItem = z.object({
+  title: z.string(),
+  severity: InsightSeverity,
+  category: InsightCategory,
+  locations: z.array(z.string()),
+  problem: z.string(),
+  plan: z.string(),
+  confidence: z.enum(["high", "medium", "low"]),
+})
+
+export const InsightOutput = z.object({
+  hasFindings: z.boolean(),
+  insights: z.array(InsightItem),
+})
+
 export interface AgentResult<T = string> {
   sessionId: string
   result: T
@@ -263,6 +291,10 @@ export type CheckerIssueType = z.infer<typeof CheckerIssueType>
 export type CheckerSeverity = z.infer<typeof CheckerSeverity>
 export type CheckerIssue = z.infer<typeof CheckerIssue>
 export type CheckerOutput = z.infer<typeof CheckerOutput>
+export type InsightSeverity = z.infer<typeof InsightSeverity>
+export type InsightCategory = z.infer<typeof InsightCategory>
+export type InsightItem = z.infer<typeof InsightItem>
+export type InsightOutput = z.infer<typeof InsightOutput>
 export type AncestorSibling = z.infer<typeof AncestorSibling>
 export type AncestorEdge = z.infer<typeof AncestorEdge>
 export type AncestorLayer = z.infer<typeof AncestorLayer>

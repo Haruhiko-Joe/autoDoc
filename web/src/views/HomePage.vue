@@ -32,6 +32,7 @@ const agentBackends = reactive<AgentBackends>({
 const language = ref<'zh' | 'en'>('zh')
 const decompositionReview = ref<DecompositionReviewMode>('off')
 const checkerEnabled = ref(true)
+const insightEnabled = ref(false)
 const reviewEnabled = computed({
   get: () => decompositionReview.value === 'all',
   set: (enabled: boolean) => {
@@ -121,6 +122,7 @@ onMounted(async () => {
     language.value = s.config.language
     decompositionReview.value = s.config.decompositionReview ?? 'off'
     checkerEnabled.value = s.config.checkerEnabled ?? true
+    insightEnabled.value = s.config.insightEnabled ?? false
   }
 
   const routeProject = getRouteProject()
@@ -163,7 +165,7 @@ async function handleRun() {
   if (!url) return
   errorMsg.value = ''
   try {
-    const { project } = await startRun(url, maxConcurrency.value, { ...agentBackends }, language.value, decompositionReview.value, checkerEnabled.value)
+    const { project } = await startRun(url, maxConcurrency.value, { ...agentBackends }, language.value, decompositionReview.value, checkerEnabled.value, insightEnabled.value)
     mergeProjectEntries([
       ...projectEntries.value,
       { name: project, hasDoc: false, sourceUrl: url, branch: '', head: '', lastUpdated: '' },
@@ -492,6 +494,13 @@ async function handleRetryErrors() {
                   <small>Run the LLM Checker after Scaffold and Decomposer outputs.</small>
                 </span>
               </label>
+              <label class="review-toggle">
+                <input v-model="insightEnabled" type="checkbox" />
+                <span>
+                  <strong>Collect code insights</strong>
+                  <small>After each module, mine the agent's session for real bugs / improvements (background, off by default).</small>
+                </span>
+              </label>
               <div class="dialog-section-title">Agent Backends</div>
               <div class="agent-grid">
                 <template v-for="field in agentBackendFields" :key="field.key">
@@ -601,6 +610,7 @@ async function handleRetryErrors() {
           <span class="project-chip">{{ selectedProject }}</span>
           <span v-if="viewingRunningProject" class="live-badge">LIVE</span>
           <a class="flows-link" @click="router.push(`/${selectedProject}/flows`)">Interaction Flows &rarr;</a>
+          <a class="flows-link" @click="router.push(`/${selectedProject}/insights`)">Code Insights &rarr;</a>
           <button class="update-btn" @click="showUpdatePanel = !showUpdatePanel">Update</button>
           <button class="update-btn" @click="showGitPanel = !showGitPanel">Git</button>
         </div>

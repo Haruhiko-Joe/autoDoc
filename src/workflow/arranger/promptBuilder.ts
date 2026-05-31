@@ -153,6 +153,43 @@ export class PromptBuilder {
     return `Analyze the documented codebase and produce 3-7 typical business interaction flows.\nRepository root: ${this.repoPath}`;
   }
 
+  insightPrompt(scope: "decomposer" | "writer", nodeName: string, codeScope: string[]): string {
+    const verb = scope === "decomposer" ? "decomposing" : "documenting";
+    const lang = this.language === "en" ? "English" : "Chinese";
+    return [
+      `You have just finished ${verb} the module "${nodeName}" in this same conversation, and you have already read its source code.`,
+      `Code scope you analyzed: ${codeScope.join(", ")}`,
+      `Repository root: ${this.repoPath}`,
+      ``,
+      `Now switch roles to a **pragmatic senior engineer** doing a high-signal review. Your goal is to surface genuine **bugs, latent hazards, and meaningfully better implementations** — the kind of finding you would actually open an issue or PR for. This is NOT a nitpicking exercise, and reviewer "thoroughness" is measured by signal, not by the number of items.`,
+      ``,
+      `Before reporting anything, VERIFY your suspicion — do not trust a first impression. Your initial read covered a limited scope, and a design that looks wrong locally is very often correct once you see its full context. You may freely read more of the repository to confirm or refute a hunch, and you should:`,
+      `- Read the callers and callees of the suspect code, plus its tests, configs, and adjacent modules.`,
+      `- Check whether an apparent "missing check" / "unhandled case" / "bug" is already guaranteed elsewhere — by an upstream invariant, the caller, validation, the type system, or framework behavior.`,
+      `- Keep a finding ONLY if it survives this wider investigation. If the broader context makes it a non-issue, drop it silently.`,
+      ``,
+      `Report (high value only):`,
+      `- Real bugs / correctness hazards: wrong logic, edge cases that genuinely occur, races, resource leaks, error paths that truly mishandle failure.`,
+      `- Security issues with a real, reachable exploit path.`,
+      `- Performance problems that actually bite at realistic input sizes.`,
+      `- Concretely better implementations: a simpler, safer, or more correct approach with a clear tangible benefit (not a matter of taste).`,
+      ``,
+      `Do NOT report (this is the nitpicking to avoid):`,
+      `- Style, naming, formatting, or personal preference.`,
+      `- "Could add tests / docs / comments" without a specific, important gap.`,
+      `- Defensive checks for inputs that cannot actually occur given how the code is called.`,
+      `- Theoretical concerns you could not confirm against the wider codebase.`,
+      `- Anything reported just to have something to say.`,
+      ``,
+      `Output rules:`,
+      `- Quality over quantity. Finding nothing is a perfectly good, even expected, outcome for sound code: set hasFindings=false and leave insights empty. Do NOT pad to look diligent.`,
+      `- Only if you have genuinely high-value findings, set hasFindings=true. Each item must point at specific real code ("path/to/file.ext:START-END"), explain the concrete real-world impact, and give an actionable plan.`,
+      `- Do not invent files, functions, or behaviors. Do NOT modify any code or documentation — output findings only, in the required structured format.`,
+      ``,
+      `Write the title, problem, and plan fields in ${lang}; keep code identifiers (function/type/variable names, paths) as-is.`,
+    ].join("\n");
+  }
+
   private appendKnowledge(prompt: string, nodeKnowledge?: string, topLevel = true): string {
     const parts = [prompt];
     if (topLevel && this.knowledge) {

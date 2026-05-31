@@ -1,0 +1,1103 @@
+diff --git a/src/agents/schemas/schema.ts b/src/agents/schemas/schema.ts
+index cb370ee..da22e9c 100644
+--- a/src/agents/schemas/schema.ts
++++ b/src/agents/schemas/schema.ts
+@@ -190,6 +190,34 @@ export const CheckerOutput = z.object({
+   issues: z.array(CheckerIssue),
+ })
+ 
++// --- Insight (code review findings extracted from a finished worker session) ---
++
++export const InsightSeverity = z.enum(["critical", "high", "medium", "low"])
++
++export const InsightCategory = z.enum([
++  "correctness",
++  "security",
++  "performance",
++  "maintainability",
++  "reliability",
++  "other",
++])
++
++export const InsightItem = z.object({
++  title: z.string(),
++  severity: InsightSeverity,
++  category: InsightCategory,
++  locations: z.array(z.string()),
++  problem: z.string(),
++  plan: z.string(),
++  confidence: z.enum(["high", "medium", "low"]),
++})
++
++export const InsightOutput = z.object({
++  hasFindings: z.boolean(),
++  insights: z.array(InsightItem),
++})
++
+ export interface AgentResult<T = string> {
+   sessionId: string
+   result: T
+@@ -263,6 +291,10 @@ export type CheckerIssueType = z.infer<typeof CheckerIssueType>
+ export type CheckerSeverity = z.infer<typeof CheckerSeverity>
+ export type CheckerIssue = z.infer<typeof CheckerIssue>
+ export type CheckerOutput = z.infer<typeof CheckerOutput>
++export type InsightSeverity = z.infer<typeof InsightSeverity>
++export type InsightCategory = z.infer<typeof InsightCategory>
++export type InsightItem = z.infer<typeof InsightItem>
++export type InsightOutput = z.infer<typeof InsightOutput>
+ export type AncestorSibling = z.infer<typeof AncestorSibling>
+ export type AncestorEdge = z.infer<typeof AncestorEdge>
+ export type AncestorLayer = z.infer<typeof AncestorLayer>
+diff --git a/src/http/insightRoutes.ts b/src/http/insightRoutes.ts
+new file mode 100644
+index 0000000..7c9e453
+--- /dev/null
++++ b/src/http/insightRoutes.ts
+@@ -0,0 +1,15 @@
++import { readInsights } from "../souko/insightLog.js";
++import { sendJson, type RouteHandler } from "./types.js";
++
++export function createInsightRoutes(): RouteHandler {
++  return async ({ req, res, url }) => {
++    if (req.method !== "GET" || url.pathname !== "/api/insights") return false;
++    const project = url.searchParams.get("project");
++    if (!project) {
++      sendJson(res, { error: "Missing project" }, 400);
++      return true;
++    }
++    sendJson(res, { insights: await readInsights(project) });
++    return true;
++  };
++}
+diff --git a/src/http/runRoutes.ts b/src/http/runRoutes.ts
+index b3245c8..07739c3 100644
+--- a/src/http/runRoutes.ts
++++ b/src/http/runRoutes.ts
+@@ -10,6 +10,7 @@ export interface RunBody {
+   language?: Language;
+   decompositionReview?: DecompositionReviewMode;
+   checkerEnabled?: boolean;
++  insightEnabled?: boolean;
+ }
+ 
+ interface RunRouteDeps {
+diff --git a/src/server.ts b/src/server.ts
+index d590cf8..a8eace7 100644
+--- a/src/server.ts
++++ b/src/server.ts
+@@ -37,6 +37,7 @@ import {
+   type KnowledgeStartBody,
+ } from "./http/knowledgeRoutes.js";
+ import { createSearchRoutes } from "./http/searchRoutes.js";
++import { createInsightRoutes } from "./http/insightRoutes.js";
+ import { createUpdateRoutes } from "./http/updateRoutes.js";
+ import { createDocGitRoutes } from "./http/docGitRoutes.js";
+ import { createDocRoutes } from "./http/docRoutes.js";
+@@ -284,6 +285,7 @@ async function handleRunContinue(): Promise<{ ok: boolean }> {
+     language: config.language,
+     decompositionReview: config.decompositionReview ?? "off",
+     checkerEnabled: config.checkerEnabled ?? true,
++    insightEnabled: config.insightEnabled ?? false,
+   });
+   state = { phase: "running", gitUrl, project, repoDir, docDir, arranger };
+   arranger.onProgress(debouncedBroadcast);
+@@ -357,6 +359,7 @@ interface RunConfig {
+   language: Language;
+   decompositionReview: "off" | "all";
+   checkerEnabled: boolean;
++  insightEnabled: boolean;
+ }
+ 
+ interface StatusResponse {
+@@ -594,6 +597,7 @@ const routeHandlers: RouteHandler[] = [
+     handleKnowledgeDiscard,
+   }),
+   createSearchRoutes({ searchModules }),
++  createInsightRoutes(),
+   createUpdateRoutes(),
+   createDecompositionReviewRoutes({
+     listReviews: listDecompositionReviews,
+diff --git a/src/souko/insightLog.ts b/src/souko/insightLog.ts
+new file mode 100644
+index 0000000..5cced6e
+--- /dev/null
++++ b/src/souko/insightLog.ts
+@@ -0,0 +1,32 @@
++import { readFile, writeFile, mkdir } from "node:fs/promises";
++import path from "node:path";
++import type { InsightItem } from "../agents/schemas/schema.js";
++import { DOC_ROOT } from "./registry.js";
++
++export interface InsightRecord {
++  ts: string;
++  scope: "decomposer" | "writer";
++  nodeId: string;
++  ref?: string;
++  codeScope: string[];
++  insights: InsightItem[];
++}
++
++function logPath(project: string): string {
++  return path.join(DOC_ROOT, project, "insights.jsonl");
++}
++
++export async function appendInsight(project: string, record: InsightRecord): Promise<void> {
++  const p = logPath(project);
++  await mkdir(path.dirname(p), { recursive: true });
++  await writeFile(p, JSON.stringify(record) + "\n", { flag: "a" });
++}
++
++export async function readInsights(project: string): Promise<InsightRecord[]> {
++  try {
++    const raw = await readFile(logPath(project), "utf-8");
++    return raw.trim().split("\n").filter(Boolean).map((line) => JSON.parse(line) as InsightRecord);
++  } catch {
++    return [];
++  }
++}
+diff --git a/src/workflow/arranger.ts b/src/workflow/arranger.ts
+index ad4f1e2..d3cb5b7 100644
+--- a/src/workflow/arranger.ts
++++ b/src/workflow/arranger.ts
+@@ -6,6 +6,7 @@ import { DOC_ROOT, knowledgePathOf } from "../souko/registry.js";
+ import { appendRunLog } from "../souko/runLog.js";
+ import { AgentFactory, resolveAgentBackends } from "./arranger/agentFactory.js";
+ import { GraphStore } from "./arranger/graphStore.js";
++import { InsightCollector, type InsightTask } from "./arranger/insightCollector.js";
+ import { Pipeline } from "./arranger/pipeline.js";
+ import { PromptBuilder } from "./arranger/promptBuilder.js";
+ import { Semaphore } from "./arranger/runtime.js";
+@@ -35,9 +36,12 @@ export class Arranger {
+   private readonly language: Language;
+   private readonly decompositionReview: DecompositionReviewMode;
+   private readonly checkerEnabled: boolean;
++  private readonly insightEnabled: boolean;
++  private readonly insightConcurrency: number;
+   private readonly sem: Semaphore;
+   private readonly docGit = new DocGit(DOC_ROOT);
+   private readonly agentFactory: AgentFactory;
++  private insightCollector: InsightCollector | null = null;
+   private _paused = false;
+   private _resumeResolve: (() => void) | null = null;
+   private _resumePromise: Promise<void> | null = null;
+@@ -58,6 +62,8 @@ export class Arranger {
+     this.language = options?.language ?? "zh";
+     this.decompositionReview = options?.decompositionReview ?? "off";
+     this.checkerEnabled = options?.checkerEnabled ?? true;
++    this.insightEnabled = options?.insightEnabled ?? false;
++    this.insightConcurrency = options?.insightConcurrency ?? 2;
+     this.sem = new Semaphore(this.maxConcurrency);
+     this.agentFactory = new AgentFactory(this.agentBackends, this.language);
+   }
+@@ -112,6 +118,7 @@ export class Arranger {
+       language: this.language,
+       decompositionReview: this.decompositionReview,
+       checkerEnabled: this.checkerEnabled,
++      insightEnabled: this.insightEnabled,
+     };
+   }
+ 
+@@ -123,7 +130,7 @@ export class Arranger {
+   async run(repoPath: string, docDir = path.resolve("src/souko/doc", path.basename(path.resolve(repoPath)))): Promise<void> {
+     const { pipeline, store } = await this.prepareRun(repoPath, docDir);
+ 
+-    await appendRunLog(store.projectName, `arranger run repo=${repoPath} backends=${JSON.stringify(this.agentBackends)} language=${this.language} concurrency=${this.maxConcurrency === 0 ? 'unlimited' : this.maxConcurrency} review=${this.decompositionReview} checker=${this.checkerEnabled ? "on" : "off"}`);
++    await appendRunLog(store.projectName, `arranger run repo=${repoPath} backends=${JSON.stringify(this.agentBackends)} language=${this.language} concurrency=${this.maxConcurrency === 0 ? 'unlimited' : this.maxConcurrency} review=${this.decompositionReview} checker=${this.checkerEnabled ? "on" : "off"} insight=${this.insightEnabled ? "on" : "off"}`);
+ 
+     if (!(await store.hasTopGraph())) {
+       console.log("[Arranger] Running scaffold...");
+@@ -212,7 +219,26 @@ export class Arranger {
+ 
+   async approveDecompositionReview(id: string): Promise<void> {
+     const { store } = this.activeRuntime();
++    let insightTask: InsightTask | null = null;
++    if (id.startsWith("graph:")) {
++      const nodeId = id.slice("graph:".length);
++      try {
++        const graph = await store.getGraphReview(nodeId);
++        const sessionId = graph.decomposerSessionId ?? graph.sessionId;
++        if (sessionId) {
++          insightTask = {
++            scope: "decomposer",
++            nodeId,
++            codeScope: graph.codeScope,
++            sessionId,
++            backend: this.agentFactory.getBackend("decomposer"),
++            profile: "decomposer",
++          };
++        }
++      } catch { /* insight is best-effort; ignore */ }
++    }
+     await store.approveDecompositionReview(id);
++    if (insightTask) this.insightCollector?.enqueue(insightTask);
+     this.wakeReviewWaiters();
+   }
+ 
+@@ -240,6 +266,15 @@ export class Arranger {
+       this.wakeReviewWaiters();
+     });
+     const promptBuilder = new PromptBuilder(repoPath, this.language, this.knowledge);
++    const insightCollector = this.insightEnabled
++      ? new InsightCollector({
++          repoPath,
++          store,
++          promptBuilder,
++          language: this.language,
++          concurrency: this.insightConcurrency,
++        })
++      : null;
+     const pipeline = new Pipeline({
+       repoPath,
+       store,
+@@ -248,10 +283,12 @@ export class Arranger {
+       semaphore: this.sem,
+       decompositionReview: this.decompositionReview,
+       checkerEnabled: this.checkerEnabled,
++      insightCollector: insightCollector ?? undefined,
+     });
+ 
+     this.graphStore = store;
+     this.pipeline = pipeline;
++    this.insightCollector = insightCollector;
+ 
+     await store.ensureRoot();
+     await this.docGit.ensureRepo(store.projectName);
+diff --git a/src/workflow/arranger/insightCollector.ts b/src/workflow/arranger/insightCollector.ts
+new file mode 100644
+index 0000000..1d0a20a
+--- /dev/null
++++ b/src/workflow/arranger/insightCollector.ts
+@@ -0,0 +1,88 @@
++import { decomposerInstruction } from "../../agents/instructions/decomposer.js";
++import { writerInstruction } from "../../agents/instructions/writer.js";
++import type { Language } from "../../agents/schemas/schema.js";
++import { InsightOutput } from "../../agents/schemas/schema.js";
++import { ClaudeAgent } from "../../agents/tsukai/claudeBase.js";
++import { CodexAgent } from "../../agents/tsukai/codexBase.js";
++import { appendInsight } from "../../souko/insightLog.js";
++import { appendRunLog } from "../../souko/runLog.js";
++import type { GraphStore } from "./graphStore.js";
++import type { PromptBuilder } from "./promptBuilder.js";
++import { Semaphore, withSemaphore, withTimeout } from "./runtime.js";
++import type { AgentBackend } from "./types.js";
++
++export interface InsightTask {
++  scope: "decomposer" | "writer";
++  nodeId: string;
++  ref?: string;
++  codeScope: string[];
++  sessionId: string;
++  backend: AgentBackend;
++  profile: "decomposer" | "writer";
++}
++
++interface InsightCollectorOptions {
++  repoPath: string;
++  store: GraphStore;
++  promptBuilder: PromptBuilder;
++  language: Language;
++  concurrency?: number;
++}
++
++export class InsightCollector {
++  private readonly sem: Semaphore;
++  private readonly seen = new Set<string>();
++
++  constructor(private readonly options: InsightCollectorOptions) {
++    this.sem = new Semaphore(options.concurrency ?? 2);
++  }
++
++  // Fire-and-forget side channel: never blocks or affects the main pipeline.
++  enqueue(task: InsightTask): void {
++    if (!task.sessionId) return;
++    const key = `${task.scope}:${task.nodeId}:${task.ref ?? ""}`;
++    if (this.seen.has(key)) return;
++    this.seen.add(key);
++
++    void withSemaphore(this.sem, () => this.extract(task)).catch(async (e) => {
++      const msg = e instanceof Error ? e.message : String(e);
++      await appendRunLog(this.options.store.projectName, `insight error scope=${task.scope} node=${task.nodeId}${task.ref ? ` ref=${task.ref}` : ""} error=${msg.slice(0, 200)}`);
++    });
++  }
++
++  private async extract(task: InsightTask): Promise<void> {
++    const { promptBuilder, repoPath, store, language } = this.options;
++    await appendRunLog(store.projectName, `insight invoke scope=${task.scope} node=${task.nodeId}${task.ref ? ` ref=${task.ref}` : ""} backend=${task.backend}`);
++
++    // Reuse the worker's read-the-code session as-is: keep the worker's own system
++    // prompt (decomposer/writer instruction) and backend/profile, only swap the
++    // output schema to InsightOutput. The review guidance lives in the user prompt.
++    const instruction = task.scope === "decomposer" ? decomposerInstruction : writerInstruction;
++    const ex = task.backend === "claude"
++      ? new ClaudeAgent(language, { instruction, outputSchema: InsightOutput, errorPrefix: "insight" })
++      : new CodexAgent(language, { profile: task.profile, instruction, outputSchema: InsightOutput, errorPrefix: "insight" });
++    ex.restore(task.sessionId, repoPath);
++
++    const nodeName = task.ref ?? task.nodeId.split("/").pop() ?? task.nodeId;
++    const { result } = await withTimeout(
++      () => ex.continue(promptBuilder.insightPrompt(task.scope, nodeName, task.codeScope)),
++      10 * 60_000,
++      `insight ${task.scope} ${task.nodeId}`,
++    );
++
++    if (!result.hasFindings || result.insights.length === 0) {
++      await appendRunLog(store.projectName, `insight done scope=${task.scope} node=${task.nodeId}${task.ref ? ` ref=${task.ref}` : ""} count=0`);
++      return;
++    }
++
++    await appendInsight(store.projectName, {
++      ts: new Date().toISOString(),
++      scope: task.scope,
++      nodeId: task.nodeId,
++      ...(task.ref ? { ref: task.ref } : {}),
++      codeScope: task.codeScope,
++      insights: result.insights,
++    });
++    await appendRunLog(store.projectName, `insight done scope=${task.scope} node=${task.nodeId}${task.ref ? ` ref=${task.ref}` : ""} count=${result.insights.length}`);
++  }
++}
+diff --git a/src/workflow/arranger/pipeline.ts b/src/workflow/arranger/pipeline.ts
+index eeebd81..0178cd2 100644
+--- a/src/workflow/arranger/pipeline.ts
++++ b/src/workflow/arranger/pipeline.ts
+@@ -16,6 +16,7 @@ import type {
+ } from "../../agents/schemas/schema.js";
+ import type { AgentFactory } from "./agentFactory.js";
+ import type { GraphStore } from "./graphStore.js";
++import type { InsightCollector } from "./insightCollector.js";
+ import type { PromptBuilder } from "./promptBuilder.js";
+ import { type Semaphore, withRetry, withSemaphore, withTimeout } from "./runtime.js";
+ import type { DecompositionReviewMode } from "./types.js";
+@@ -50,6 +51,7 @@ interface PipelineOptions {
+   semaphore: Semaphore
+   decompositionReview: DecompositionReviewMode
+   checkerEnabled: boolean
++  insightCollector?: InsightCollector
+ }
+ 
+ export class Pipeline {
+@@ -110,10 +112,20 @@ export class Pipeline {
+     console.log(`[Arranger] Decomposed: ${nodeId} → ${rawGraph.nodes.length} child nodes`);
+     await appendRunLog(store.projectName, `graph task done node=${nodeId} children=${rawGraph.nodes.length}`);
+     if (this.options.decompositionReview === "all") {
++      // Defer insight collection until the review is approved (see Arranger.approveDecompositionReview),
++      // so it never mutates a session that a reject/redo still needs.
+       await store.markGraphAwaitingReview(nodeId, rawGraph, decomposerSessionId);
+       await appendRunLog(store.projectName, `graph awaiting-review node=${nodeId} children=${rawGraph.nodes.length}`);
+     } else {
+       await store.markGraphDecomposed(nodeId, rawGraph, decomposerSessionId);
++      this.options.insightCollector?.enqueue({
++        scope: "decomposer",
++        nodeId,
++        codeScope: graph.codeScope,
++        sessionId: decomposerSessionId,
++        backend: this.options.agentFactory.getBackend("decomposer"),
++        profile: "decomposer",
++      });
+     }
+   }
+ 
+@@ -168,8 +180,11 @@ export class Pipeline {
+     await appendRunLog(store.projectName, `page task start node=${nodeId} ref=${ref}`);
+ 
+     let content: string;
++    let writerSessionId: string;
+     try {
+-      content = await withRetry(() => withTimeout(() => this.writePage(pageNode, ancestorContext, nodeKnowledge), 10 * 60_000, `writer ${pageNode.name}`));
++      const written = await withRetry(() => withTimeout(() => this.writePage(pageNode, ancestorContext, nodeKnowledge), 10 * 60_000, `writer ${pageNode.name}`));
++      content = written.content;
++      writerSessionId = written.sessionId;
+     } catch (e) {
+       const msg = e instanceof Error ? e.message : String(e);
+       console.error(`[Arranger] Write failed for ${nodeId}/${ref}:`, e);
+@@ -182,6 +197,17 @@ export class Pipeline {
+ 
+     await store.markPageDone(nodeId, ref);
+     await appendRunLog(store.projectName, `page task done node=${nodeId} ref=${ref}`);
++
++    this.options.insightCollector?.enqueue({
++      scope: "writer",
++      nodeId,
++      ref,
++      codeScope: pageNode.codeScope,
++      sessionId: writerSessionId,
++      backend: this.options.agentFactory.getBackend("writer"),
++      profile: "writer",
++    });
++
+     await store.finishNodeIfReady(nodeId);
+   }
+ 
+@@ -363,7 +389,7 @@ export class Pipeline {
+     pageNode: GraphNodeType,
+     ancestorContext: AncestorContextType | null,
+     nodeKnowledge?: string,
+-  ): Promise<string> {
++  ): Promise<{ content: string; sessionId: string }> {
+     const writer = this.options.agentFactory.makeWriter();
+     return withSemaphore(this.options.semaphore, () =>
+       this.generatePageContent(writer, pageNode, ancestorContext, nodeKnowledge),
+@@ -375,16 +401,16 @@ export class Pipeline {
+     node: GraphNodeType,
+     ancestorContext: AncestorContextType | null,
+     nodeKnowledge?: string,
+-  ): Promise<string> {
++  ): Promise<{ content: string; sessionId: string }> {
+     const { agentFactory, promptBuilder, repoPath, store } = this.options;
+ 
+     console.log(`[Arranger] Generating page: ${node.name}`);
+     await appendRunLog(store.projectName, `writer invoke node=${node.name} backend=${agentFactory.getBackend("writer")}`);
+ 
+-    const { result } = await writer.run(promptBuilder.writerPrompt(node, ancestorContext, nodeKnowledge), repoPath);
++    const { result, sessionId } = await writer.run(promptBuilder.writerPrompt(node, ancestorContext, nodeKnowledge), repoPath);
+     console.log(`[Arranger] Page generated: ${node.name}`);
+     await appendRunLog(store.projectName, `writer return node=${node.name} len=${result.length}`);
+-    return result;
++    return { content: result, sessionId };
+   }
+ 
+   private mcpUrl(): string {
+diff --git a/src/workflow/arranger/promptBuilder.ts b/src/workflow/arranger/promptBuilder.ts
+index 1505c31..b79c646 100644
+--- a/src/workflow/arranger/promptBuilder.ts
++++ b/src/workflow/arranger/promptBuilder.ts
+@@ -153,6 +153,43 @@ export class PromptBuilder {
+     return `Analyze the documented codebase and produce 3-7 typical business interaction flows.\nRepository root: ${this.repoPath}`;
+   }
+ 
++  insightPrompt(scope: "decomposer" | "writer", nodeName: string, codeScope: string[]): string {
++    const verb = scope === "decomposer" ? "decomposing" : "documenting";
++    const lang = this.language === "en" ? "English" : "Chinese";
++    return [
++      `You have just finished ${verb} the module "${nodeName}" in this same conversation, and you have already read its source code.`,
++      `Code scope you analyzed: ${codeScope.join(", ")}`,
++      `Repository root: ${this.repoPath}`,
++      ``,
++      `Now switch roles to a **pragmatic senior engineer** doing a high-signal review. Your goal is to surface genuine **bugs, latent hazards, and meaningfully better implementations** — the kind of finding you would actually open an issue or PR for. This is NOT a nitpicking exercise, and reviewer "thoroughness" is measured by signal, not by the number of items.`,
++      ``,
++      `Before reporting anything, VERIFY your suspicion — do not trust a first impression. Your initial read covered a limited scope, and a design that looks wrong locally is very often correct once you see its full context. You may freely read more of the repository to confirm or refute a hunch, and you should:`,
++      `- Read the callers and callees of the suspect code, plus its tests, configs, and adjacent modules.`,
++      `- Check whether an apparent "missing check" / "unhandled case" / "bug" is already guaranteed elsewhere — by an upstream invariant, the caller, validation, the type system, or framework behavior.`,
++      `- Keep a finding ONLY if it survives this wider investigation. If the broader context makes it a non-issue, drop it silently.`,
++      ``,
++      `Report (high value only):`,
++      `- Real bugs / correctness hazards: wrong logic, edge cases that genuinely occur, races, resource leaks, error paths that truly mishandle failure.`,
++      `- Security issues with a real, reachable exploit path.`,
++      `- Performance problems that actually bite at realistic input sizes.`,
++      `- Concretely better implementations: a simpler, safer, or more correct approach with a clear tangible benefit (not a matter of taste).`,
++      ``,
++      `Do NOT report (this is the nitpicking to avoid):`,
++      `- Style, naming, formatting, or personal preference.`,
++      `- "Could add tests / docs / comments" without a specific, important gap.`,
++      `- Defensive checks for inputs that cannot actually occur given how the code is called.`,
++      `- Theoretical concerns you could not confirm against the wider codebase.`,
++      `- Anything reported just to have something to say.`,
++      ``,
++      `Output rules:`,
++      `- Quality over quantity. Finding nothing is a perfectly good, even expected, outcome for sound code: set hasFindings=false and leave insights empty. Do NOT pad to look diligent.`,
++      `- Only if you have genuinely high-value findings, set hasFindings=true. Each item must point at specific real code ("path/to/file.ext:START-END"), explain the concrete real-world impact, and give an actionable plan.`,
++      `- Do not invent files, functions, or behaviors. Do NOT modify any code or documentation — output findings only, in the required structured format.`,
++      ``,
++      `Write the title, problem, and plan fields in ${lang}; keep code identifiers (function/type/variable names, paths) as-is.`,
++    ].join("\n");
++  }
++
+   private appendKnowledge(prompt: string, nodeKnowledge?: string, topLevel = true): string {
+     const parts = [prompt];
+     if (topLevel && this.knowledge) {
+diff --git a/src/workflow/arranger/types.ts b/src/workflow/arranger/types.ts
+index 9a553ba..1f2d25a 100644
+--- a/src/workflow/arranger/types.ts
++++ b/src/workflow/arranger/types.ts
+@@ -28,6 +28,8 @@ export interface ArrangerOptions {
+   language?: Language
+   decompositionReview?: DecompositionReviewMode
+   checkerEnabled?: boolean
++  insightEnabled?: boolean
++  insightConcurrency?: number
+ }
+ 
+ export interface ArrangerConfig {
+@@ -36,4 +38,5 @@ export interface ArrangerConfig {
+   language: Language
+   decompositionReview: DecompositionReviewMode
+   checkerEnabled: boolean
++  insightEnabled: boolean
+ }
+diff --git a/web/src/router.ts b/web/src/router.ts
+index f0c260c..c67f822 100644
+--- a/web/src/router.ts
++++ b/web/src/router.ts
+@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
+ import HomePage from './views/HomePage.vue'
+ import GraphPage from './views/GraphPage.vue'
+ import FlowsPage from './views/FlowsPage.vue'
++import InsightsPage from './views/InsightsPage.vue'
+ import KnowledgePage from './views/KnowledgePage.vue'
+ 
+ const router = createRouter({
+@@ -11,6 +12,7 @@ const router = createRouter({
+     { path: '/knowledge', name: 'knowledge', component: KnowledgePage },
+     { path: '/:project', name: 'project', component: HomePage },
+     { path: '/:project/flows', name: 'flows', component: FlowsPage },
++    { path: '/:project/insights', name: 'insights', component: InsightsPage },
+     { path: '/:project/doc/:path(.*)', name: 'doc', component: GraphPage },
+   ],
+ })
+diff --git a/web/src/services/doc.ts b/web/src/services/doc.ts
+index 3dc8cd1..5bdde5a 100644
+--- a/web/src/services/doc.ts
++++ b/web/src/services/doc.ts
+@@ -93,6 +93,7 @@ export interface RunConfig {
+   language: 'zh' | 'en'
+   decompositionReview: DecompositionReviewMode
+   checkerEnabled: boolean
++  insightEnabled: boolean
+ }
+ 
+ export type RunPhase = 'idle' | 'cloning' | 'awaiting-knowledge' | 'running' | 'done' | 'error'
+@@ -134,8 +135,9 @@ export async function startRun(
+   language?: 'zh' | 'en',
+   decompositionReview?: DecompositionReviewMode,
+   checkerEnabled?: boolean,
++  insightEnabled?: boolean,
+ ): Promise<{ ok: boolean; project: string }> {
+-  const body = { gitUrl, maxConcurrency, agentBackends, language, decompositionReview, checkerEnabled }
++  const body = { gitUrl, maxConcurrency, agentBackends, language, decompositionReview, checkerEnabled, insightEnabled }
+   return postJson(`${API}/run`, body, 'Failed to start')
+ }
+ 
+@@ -383,6 +385,39 @@ export function subscribeUpdateStream(
+   return () => es.close()
+ }
+ 
++// ─── Insights ───
++
++export type InsightSeverity = 'critical' | 'high' | 'medium' | 'low'
++export type InsightCategory = 'correctness' | 'security' | 'performance' | 'maintainability' | 'reliability' | 'other'
++
++export interface InsightItem {
++  title: string
++  severity: InsightSeverity
++  category: InsightCategory
++  locations: string[]
++  problem: string
++  plan: string
++  confidence: 'high' | 'medium' | 'low'
++}
++
++export interface InsightRecord {
++  ts: string
++  scope: 'decomposer' | 'writer'
++  nodeId: string
++  ref?: string
++  codeScope: string[]
++  insights: InsightItem[]
++}
++
++export async function fetchInsights(project: string): Promise<InsightRecord[]> {
++  const data = await requestJson<{ insights?: InsightRecord[] }>(
++    apiUrl('/insights', { project }),
++    undefined,
++    'Failed to load insights',
++  )
++  return data.insights ?? []
++}
++
+ // ─── Search ───
+ 
+ export interface SearchResult {
+diff --git a/web/src/views/HomePage.vue b/web/src/views/HomePage.vue
+index 2dabb24..d88bf54 100644
+--- a/web/src/views/HomePage.vue
++++ b/web/src/views/HomePage.vue
+@@ -32,6 +32,7 @@ const agentBackends = reactive<AgentBackends>({
+ const language = ref<'zh' | 'en'>('zh')
+ const decompositionReview = ref<DecompositionReviewMode>('off')
+ const checkerEnabled = ref(true)
++const insightEnabled = ref(false)
+ const reviewEnabled = computed({
+   get: () => decompositionReview.value === 'all',
+   set: (enabled: boolean) => {
+@@ -121,6 +122,7 @@ onMounted(async () => {
+     language.value = s.config.language
+     decompositionReview.value = s.config.decompositionReview ?? 'off'
+     checkerEnabled.value = s.config.checkerEnabled ?? true
++    insightEnabled.value = s.config.insightEnabled ?? false
+   }
+ 
+   const routeProject = getRouteProject()
+@@ -163,7 +165,7 @@ async function handleRun() {
+   if (!url) return
+   errorMsg.value = ''
+   try {
+-    const { project } = await startRun(url, maxConcurrency.value, { ...agentBackends }, language.value, decompositionReview.value, checkerEnabled.value)
++    const { project } = await startRun(url, maxConcurrency.value, { ...agentBackends }, language.value, decompositionReview.value, checkerEnabled.value, insightEnabled.value)
+     mergeProjectEntries([
+       ...projectEntries.value,
+       { name: project, hasDoc: false, sourceUrl: url, branch: '', head: '', lastUpdated: '' },
+@@ -492,6 +494,13 @@ async function handleRetryErrors() {
+                   <small>Run the LLM Checker after Scaffold and Decomposer outputs.</small>
+                 </span>
+               </label>
++              <label class="review-toggle">
++                <input v-model="insightEnabled" type="checkbox" />
++                <span>
++                  <strong>Collect code insights</strong>
++                  <small>After each module, mine the agent's session for real bugs / improvements (background, off by default).</small>
++                </span>
++              </label>
+               <div class="dialog-section-title">Agent Backends</div>
+               <div class="agent-grid">
+                 <template v-for="field in agentBackendFields" :key="field.key">
+@@ -601,6 +610,7 @@ async function handleRetryErrors() {
+           <span class="project-chip">{{ selectedProject }}</span>
+           <span v-if="viewingRunningProject" class="live-badge">LIVE</span>
+           <a class="flows-link" @click="router.push(`/${selectedProject}/flows`)">Interaction Flows &rarr;</a>
++          <a class="flows-link" @click="router.push(`/${selectedProject}/insights`)">Code Insights &rarr;</a>
+           <button class="update-btn" @click="showUpdatePanel = !showUpdatePanel">Update</button>
+           <button class="update-btn" @click="showGitPanel = !showGitPanel">Git</button>
+         </div>
+diff --git a/web/src/views/InsightsPage.vue b/web/src/views/InsightsPage.vue
+new file mode 100644
+index 0000000..4fc135c
+--- /dev/null
++++ b/web/src/views/InsightsPage.vue
+@@ -0,0 +1,437 @@
++<script setup lang="ts">
++import { ref, computed, onMounted } from 'vue'
++import { useRoute, useRouter } from 'vue-router'
++import { fetchInsights } from '../services/doc'
++import { firstRouteParam } from '../utils/routeParams'
++import type { InsightRecord, InsightItem, InsightSeverity } from '../services/doc'
++
++interface FlatInsight extends InsightItem {
++  scope: 'decomposer' | 'writer'
++  nodeId: string
++  ref?: string
++}
++
++const route = useRoute()
++const router = useRouter()
++const records = ref<InsightRecord[]>([])
++const loading = ref(true)
++const error = ref('')
++
++const severityFilter = ref<InsightSeverity | 'all'>('all')
++const scopeFilter = ref<'decomposer' | 'writer' | 'all'>('all')
++
++const SEVERITY_ORDER: InsightSeverity[] = ['critical', 'high', 'medium', 'low']
++const SEVERITY_RANK: Record<InsightSeverity, number> = { critical: 0, high: 1, medium: 2, low: 3 }
++
++function getProject(): string {
++  return firstRouteParam(route.params.project)
++}
++
++async function load() {
++  loading.value = true
++  error.value = ''
++  const project = getProject()
++  if (!project) { error.value = 'Missing project.'; loading.value = false; return }
++  try {
++    records.value = await fetchInsights(project)
++  } catch {
++    error.value = 'Failed to load insights.'
++  } finally {
++    loading.value = false
++  }
++}
++
++onMounted(load)
++
++const flat = computed<FlatInsight[]>(() =>
++  records.value.flatMap((r) =>
++    r.insights.map((i) => ({ ...i, scope: r.scope, nodeId: r.nodeId, ref: r.ref })),
++  ),
++)
++
++const severityCounts = computed<Record<InsightSeverity, number>>(() => {
++  const counts: Record<InsightSeverity, number> = { critical: 0, high: 0, medium: 0, low: 0 }
++  for (const i of flat.value) counts[i.severity]++
++  return counts
++})
++
++const filtered = computed<FlatInsight[]>(() => {
++  const list = flat.value.filter((i) =>
++    (severityFilter.value === 'all' || i.severity === severityFilter.value) &&
++    (scopeFilter.value === 'all' || i.scope === scopeFilter.value),
++  )
++  return [...list].sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity])
++})
++
++function goToDoc(item: FlatInsight) {
++  const path = item.ref ?? item.nodeId
++  if (path) router.push(`/${getProject()}/doc/${path}`)
++}
++</script>
++
++<template>
++  <div class="insights-page">
++    <header class="page-header">
++      <nav class="breadcrumb">
++        <a @click="router.push({ name: 'project', params: { project: getProject() } })">Home</a>
++        <span class="bc-sep">/</span>
++        <span class="bc-current">Code Insights</span>
++      </nav>
++
++      <div class="header-row">
++        <h1>Code Insights</h1>
++        <span class="total-chip">{{ flat.length }} findings</span>
++      </div>
++      <p class="subtitle">
++        Issues and improvement opportunities the agents observed while reading the code. Read-only — review and act through your own dev workflow.
++      </p>
++
++      <div class="filters" v-if="flat.length">
++        <div class="filter-group">
++          <button class="chip" :class="{ active: severityFilter === 'all' }" @click="severityFilter = 'all'">All</button>
++          <button
++            v-for="s in SEVERITY_ORDER" :key="s"
++            class="chip sev" :class="[`sev-${s}`, { active: severityFilter === s }]"
++            @click="severityFilter = s"
++          >
++            <span class="dot" :class="`bg-${s}`"></span>{{ s }}
++            <span class="chip-count">{{ severityCounts[s] }}</span>
++          </button>
++        </div>
++        <div class="filter-group">
++          <button class="chip" :class="{ active: scopeFilter === 'all' }" @click="scopeFilter = 'all'">All sources</button>
++          <button class="chip" :class="{ active: scopeFilter === 'decomposer' }" @click="scopeFilter = 'decomposer'">decomposer</button>
++          <button class="chip" :class="{ active: scopeFilter === 'writer' }" @click="scopeFilter = 'writer'">writer</button>
++        </div>
++      </div>
++    </header>
++
++    <main class="list-area">
++      <div v-if="loading" class="status-msg">Loading&hellip;</div>
++      <div v-else-if="error" class="status-msg is-error">{{ error }}</div>
++      <div v-else-if="!flat.length" class="status-msg">
++        No insights recorded yet. They are collected in the background after each module is documented.
++      </div>
++      <div v-else-if="!filtered.length" class="status-msg">No insights match the current filters.</div>
++
++      <div v-else class="cards">
++        <article v-for="(item, i) in filtered" :key="i" class="card" :class="`accent-${item.severity}`">
++          <div class="card-top">
++            <span class="badge" :class="`bg-${item.severity}`">{{ item.severity }}</span>
++            <span class="category">{{ item.category }}</span>
++            <span class="confidence">confidence: {{ item.confidence }}</span>
++          </div>
++
++          <h3 class="card-title">{{ item.title }}</h3>
++
++          <div class="locations" v-if="item.locations.length">
++            <code v-for="(loc, li) in item.locations" :key="li" class="loc">{{ loc }}</code>
++          </div>
++
++          <p class="problem">{{ item.problem }}</p>
++
++          <div class="plan">
++            <span class="plan-label">Plan</span>
++            <p class="plan-text">{{ item.plan }}</p>
++          </div>
++
++          <footer class="card-foot">
++            <span class="scope-tag">{{ item.scope }}</span>
++            <a class="source" @click="goToDoc(item)">{{ item.ref ?? item.nodeId }} &rarr;</a>
++          </footer>
++        </article>
++      </div>
++    </main>
++  </div>
++</template>
++
++<style scoped>
++.insights-page {
++  display: flex;
++  flex-direction: column;
++  height: 100vh;
++  overflow: hidden;
++  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;
++  background: var(--flows-bg, var(--bg-base));
++  color: var(--text-primary);
++}
++
++/* ─── Header ─── */
++
++.page-header {
++  flex-shrink: 0;
++  padding: 20px 28px 16px;
++  border-bottom: 1px solid var(--border);
++  background: var(--bg-sidebar);
++}
++
++.breadcrumb {
++  font-size: 13px;
++  margin-bottom: 14px;
++  display: flex;
++  align-items: center;
++  gap: 2px;
++}
++
++.breadcrumb a {
++  color: var(--accent);
++  cursor: pointer;
++  text-decoration: none;
++}
++
++.breadcrumb a:hover { text-decoration: underline; }
++
++.bc-sep { margin: 0 6px; color: var(--text-muted); }
++.bc-current { color: var(--text-primary); font-weight: 600; }
++
++.header-row {
++  display: flex;
++  align-items: center;
++  gap: 12px;
++  margin-bottom: 6px;
++}
++
++.header-row h1 {
++  margin: 0;
++  font-size: 22px;
++  font-weight: 650;
++  letter-spacing: -0.02em;
++}
++
++.total-chip {
++  font-family: 'SFMono-Regular', Consolas, monospace;
++  font-size: 12px;
++  padding: 3px 10px;
++  border-radius: 999px;
++  background: var(--bg-surface);
++  border: 1px solid var(--border);
++  color: var(--text-muted);
++}
++
++.subtitle {
++  margin: 0 0 14px;
++  font-size: 13px;
++  color: var(--text-muted);
++  line-height: 1.55;
++  max-width: 720px;
++}
++
++.filters {
++  display: flex;
++  flex-wrap: wrap;
++  gap: 16px;
++}
++
++.filter-group {
++  display: flex;
++  gap: 6px;
++  flex-wrap: wrap;
++}
++
++.chip {
++  display: inline-flex;
++  align-items: center;
++  gap: 6px;
++  padding: 5px 12px;
++  border: 1px solid var(--border-strong);
++  border-radius: 999px;
++  background: var(--bg-surface);
++  font-size: 12px;
++  font-weight: 500;
++  color: var(--text-secondary);
++  cursor: pointer;
++  transition: all 0.15s ease;
++  font-family: inherit;
++  text-transform: capitalize;
++}
++
++.chip:hover { border-color: var(--accent); color: var(--accent); }
++
++.chip.active {
++  background: var(--accent);
++  border-color: var(--accent);
++  color: #fff;
++}
++
++.chip-count {
++  font-family: 'SFMono-Regular', Consolas, monospace;
++  font-size: 11px;
++  opacity: 0.7;
++}
++
++.dot {
++  width: 7px;
++  height: 7px;
++  border-radius: 50%;
++}
++
++/* ─── Severity colors ─── */
++
++.bg-critical { background: #ef4444; }
++.bg-high { background: #f97316; }
++.bg-medium { background: #eab308; }
++.bg-low { background: #64748b; }
++
++/* ─── List ─── */
++
++.list-area {
++  flex: 1;
++  overflow-y: auto;
++  padding: 24px 28px 48px;
++}
++
++.status-msg {
++  display: flex;
++  align-items: center;
++  justify-content: center;
++  height: 60%;
++  font-size: 14px;
++  color: var(--text-muted);
++  text-align: center;
++  max-width: 460px;
++  margin: 0 auto;
++  line-height: 1.6;
++}
++
++.status-msg.is-error { color: var(--color-red, #ef4444); }
++
++.cards {
++  display: flex;
++  flex-direction: column;
++  gap: 14px;
++  max-width: 860px;
++  margin: 0 auto;
++}
++
++.card {
++  position: relative;
++  background: var(--bg-surface);
++  border: 1px solid var(--border);
++  border-left-width: 3px;
++  border-radius: var(--radius-card, 10px);
++  padding: 16px 18px;
++  box-shadow: var(--shadow-soft);
++}
++
++.accent-critical { border-left-color: #ef4444; }
++.accent-high { border-left-color: #f97316; }
++.accent-medium { border-left-color: #eab308; }
++.accent-low { border-left-color: #64748b; }
++
++.card-top {
++  display: flex;
++  align-items: center;
++  gap: 8px;
++  margin-bottom: 8px;
++}
++
++.badge {
++  font-size: 10px;
++  font-weight: 700;
++  letter-spacing: 0.04em;
++  text-transform: uppercase;
++  color: #fff;
++  padding: 2px 8px;
++  border-radius: var(--radius-control, 6px);
++}
++
++.category {
++  font-size: 11px;
++  font-weight: 500;
++  color: var(--text-secondary);
++  background: var(--bg-base);
++  border: 1px solid var(--border);
++  padding: 2px 8px;
++  border-radius: var(--radius-control, 6px);
++  text-transform: capitalize;
++}
++
++.confidence {
++  margin-left: auto;
++  font-size: 11px;
++  color: var(--text-muted);
++}
++
++.card-title {
++  margin: 0 0 10px;
++  font-size: 15px;
++  font-weight: 600;
++  line-height: 1.4;
++  letter-spacing: -0.01em;
++}
++
++.locations {
++  display: flex;
++  flex-wrap: wrap;
++  gap: 6px;
++  margin-bottom: 10px;
++}
++
++.loc {
++  font-family: 'SFMono-Regular', Consolas, monospace;
++  font-size: 11px;
++  background: var(--bg-base);
++  color: var(--text-secondary);
++  padding: 3px 8px;
++  border-radius: var(--radius-control, 6px);
++  border: 1px solid var(--border);
++}
++
++.problem {
++  margin: 0 0 12px;
++  font-size: 13px;
++  color: var(--text-secondary);
++  line-height: 1.6;
++}
++
++.plan {
++  background: var(--bg-base);
++  border: 1px solid var(--border-light, var(--border));
++  border-radius: var(--radius-control, 6px);
++  padding: 10px 12px;
++  margin-bottom: 12px;
++}
++
++.plan-label {
++  display: inline-block;
++  font-size: 10px;
++  font-weight: 700;
++  letter-spacing: 0.05em;
++  text-transform: uppercase;
++  color: var(--accent);
++  margin-bottom: 5px;
++}
++
++.plan-text {
++  margin: 0;
++  font-size: 13px;
++  color: var(--text-primary);
++  line-height: 1.6;
++}
++
++.card-foot {
++  display: flex;
++  align-items: center;
++  gap: 10px;
++  font-size: 12px;
++}
++
++.scope-tag {
++  font-family: 'SFMono-Regular', Consolas, monospace;
++  font-size: 11px;
++  color: var(--text-muted);
++  background: var(--bg-base);
++  border: 1px solid var(--border);
++  padding: 2px 8px;
++  border-radius: 999px;
++}
++
++.source {
++  font-family: 'SFMono-Regular', Consolas, monospace;
++  color: var(--accent);
++  cursor: pointer;
++  text-decoration: none;
++}
++
++.source:hover { text-decoration: underline; }
++</style>

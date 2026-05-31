@@ -6,6 +6,7 @@ import { DOC_ROOT, knowledgePathOf } from "../souko/registry.js";
 import { appendRunLog } from "../souko/runLog.js";
 import { AgentFactory, resolveAgentBackends } from "./arranger/agentFactory.js";
 import { GraphStore } from "./arranger/graphStore.js";
+import { InsightCollector, type InsightTask } from "./arranger/insightCollector.js";
 import { Pipeline } from "./arranger/pipeline.js";
 import { PromptBuilder } from "./arranger/promptBuilder.js";
 import { Semaphore } from "./arranger/runtime.js";
@@ -35,9 +36,12 @@ export class Arranger {
   private readonly language: Language;
   private readonly decompositionReview: DecompositionReviewMode;
   private readonly checkerEnabled: boolean;
+  private readonly insightEnabled: boolean;
+  private readonly insightConcurrency: number;
   private readonly sem: Semaphore;
   private readonly docGit = new DocGit(DOC_ROOT);
   private readonly agentFactory: AgentFactory;
+  private insightCollector: InsightCollector | null = null;
   private _paused = false;
   private _resumeResolve: (() => void) | null = null;
   private _resumePromise: Promise<void> | null = null;
@@ -58,6 +62,8 @@ export class Arranger {
     this.language = options?.language ?? "zh";
     this.decompositionReview = options?.decompositionReview ?? "off";
     this.checkerEnabled = options?.checkerEnabled ?? true;
+    this.insightEnabled = options?.insightEnabled ?? false;
+    this.insightConcurrency = options?.insightConcurrency ?? 2;
     this.sem = new Semaphore(this.maxConcurrency);
     this.agentFactory = new AgentFactory(this.agentBackends, this.language);
   }
@@ -112,6 +118,7 @@ export class Arranger {
       language: this.language,
       decompositionReview: this.decompositionReview,
       checkerEnabled: this.checkerEnabled,
+      insightEnabled: this.insightEnabled,
     };
   }
 
@@ -123,7 +130,7 @@ export class Arranger {
   async run(repoPath: string, docDir = path.resolve("src/souko/doc", path.basename(path.resolve(repoPath)))): Promise<void> {
     const { pipeline, store } = await this.prepareRun(repoPath, docDir);
 
-    await appendRunLog(store.projectName, `arranger run repo=${repoPath} backends=${JSON.stringify(this.agentBackends)} language=${this.language} concurrency=${this.maxConcurrency === 0 ? 'unlimited' : this.maxConcurrency} review=${this.decompositionReview} checker=${this.checkerEnabled ? "on" : "off"}`);
+    await appendRunLog(store.projectName, `arranger run repo=${repoPath} backends=${JSON.stringify(this.agentBackends)} language=${this.language} concurrency=${this.maxConcurrency === 0 ? 'unlimited' : this.maxConcurrency} review=${this.decompositionReview} checker=${this.checkerEnabled ? "on" : "off"} insight=${this.insightEnabled ? "on" : "off"}`);
 
     if (!(await store.hasTopGraph())) {
       console.log("[Arranger] Running scaffold...");
@@ -212,7 +219,26 @@ export class Arranger {
 
   async approveDecompositionReview(id: string): Promise<void> {
     const { store } = this.activeRuntime();
+    let insightTask: InsightTask | null = null;
+    if (id.startsWith("graph:")) {
+      const nodeId = id.slice("graph:".length);
+      try {
+        const graph = await store.getGraphReview(nodeId);
+        const sessionId = graph.decomposerSessionId ?? graph.sessionId;
+        if (sessionId) {
+          insightTask = {
+            scope: "decomposer",
+            nodeId,
+            codeScope: graph.codeScope,
+            sessionId,
+            backend: this.agentFactory.getBackend("decomposer"),
+            profile: "decomposer",
+          };
+        }
+      } catch { /* insight is best-effort; ignore */ }
+    }
     await store.approveDecompositionReview(id);
+    if (insightTask) this.insightCollector?.enqueue(insightTask);
     this.wakeReviewWaiters();
   }
 
@@ -240,6 +266,15 @@ export class Arranger {
       this.wakeReviewWaiters();
     });
     const promptBuilder = new PromptBuilder(repoPath, this.language, this.knowledge);
+    const insightCollector = this.insightEnabled
+      ? new InsightCollector({
+          repoPath,
+          store,
+          promptBuilder,
+          language: this.language,
+          concurrency: this.insightConcurrency,
+        })
+      : null;
     const pipeline = new Pipeline({
       repoPath,
       store,
@@ -248,10 +283,12 @@ export class Arranger {
       semaphore: this.sem,
       decompositionReview: this.decompositionReview,
       checkerEnabled: this.checkerEnabled,
+      insightCollector: insightCollector ?? undefined,
     });
 
     this.graphStore = store;
     this.pipeline = pipeline;
+    this.insightCollector = insightCollector;
 
     await store.ensureRoot();
     await this.docGit.ensureRepo(store.projectName);
