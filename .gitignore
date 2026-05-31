@@ -149,3 +149,4 @@ vite.config.ts.timestamp-*
 # Runtime logs (keep the dir itself tracked via .gitkeep)
 log/*
 !log/.gitkeep
+bench/data/

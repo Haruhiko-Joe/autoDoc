@@ -1,0 +1,23 @@
+{
+  "name": "acceed-bench",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc -b && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "vue": "^3.5.34",
+    "vue-router": "^5.0.7"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "@vitejs/plugin-vue": "^6.0.7",
+    "@vue/tsconfig": "^0.9.1",
+    "typescript": "~6.0.3",
+    "vite": "^8.0.14",
+    "vue-tsc": "^3.3.1"
+  }
+}

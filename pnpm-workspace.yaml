@@ -1,6 +1,7 @@
 packages:
   - "."
   - "web"
+  - "bench"
 allowBuilds:
   esbuild: true
 minimumReleaseAgeExclude:
