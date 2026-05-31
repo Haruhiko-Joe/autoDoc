@@ -3,15 +3,57 @@ import "dotenv/config";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { OutputFormat } from "@anthropic-ai/claude-agent-sdk";
 import { Codex } from "@openai/codex-sdk";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
-import { toOutputSchema } from "../src/agents/schemas/schema.js";
-import { assertDirectory, assertFile, makeRunId, optionalString, parseFlagMap, positiveInt, splitList } from "./lib/cli-utils.js";
+import { toOutputSchema } from "../../src/agents/schemas/schema.js";
+
+function parseFlagMap(argv: string[]): Map<string, string> {
+  const values = new Map<string, string>();
+  let index = 0;
+  while (index < argv.length) {
+    const token = argv[index];
+    if (token === undefined) break;
+    if (!token.startsWith("--")) throw new Error(`Unexpected argument: ${token}`);
+    const key = token.slice(2);
+    const next = argv[index + 1];
+    if (next === undefined || next.startsWith("--")) {
+      values.set(key, "true");
+      index += 1;
+    } else {
+      values.set(key, next);
+      index += 2;
+    }
+  }
+  return values;
+}
+
+function splitList(value: string): string[] {
+  return value.split(",").map((p) => p.trim()).filter((p) => p.length > 0);
+}
+
+function positiveInt(value: string, name: string): number {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isInteger(parsed) || parsed < 1) throw new Error(`--${name} must be a positive integer`);
+  return parsed;
+}
+
+function optionalString(value: string | undefined): string | undefined {
+  if (value === undefined || value.trim() === "") return undefined;
+  return value;
+}
+
+async function assertDirectory(dir: string, label: string): Promise<void> {
+  const info = await stat(dir).catch(() => undefined);
+  if (!info?.isDirectory()) throw new Error(`${label} is not a directory: ${dir}`);
+}
+
+function makeRunId(): string {
+  return new Date().toISOString().replaceAll(":", "").replaceAll(".", "-");
+}
 
 const Provider = z.enum(["codex", "claude"]);
 const Language = z.enum(["zh", "en"]);
-const Difficulty = z.enum(["medium", "hard", "expert"]);
 const Category = z.enum([
   "architecture",
   "data-flow",
@@ -29,19 +71,18 @@ const SourceEvidence = z.object({
   summary: z.string(),
 });
 
-const DocNavigationHint = z.object({
-  modulePath: z.string(),
-  reason: z.string(),
+const ScoringPoint = z.object({
+  point: z.string(),
+  weight: z.number().int().min(1),
 });
 
 const QaItem = z.object({
   question: z.string(),
   goldAnswer: z.string(),
+  scoringPoints: z.array(ScoringPoint).min(2),
   category: Category,
-  difficulty: Difficulty,
   requiredConcepts: z.array(z.string()).min(2),
   sourceEvidence: z.array(SourceEvidence).min(1),
-  docNavigationHints: z.array(DocNavigationHint).min(1),
 });
 
 const QaBatchOutput = z.object({
@@ -61,7 +102,6 @@ const GeneratedQaFile = z.object({
   runId: z.string(),
   project: z.string(),
   repoPath: z.string(),
-  docRoot: z.string(),
   language: Language,
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -86,7 +126,6 @@ type GeneratedQaFile = z.infer<typeof GeneratedQaFile>;
 type GenerateOptions = {
   project: string;
   repoPath: string;
-  docRoot: string;
   outDir: string;
   language: Language;
   count: number;
@@ -104,17 +143,16 @@ function usage(): string {
     "Generates code-grounded QA pairs for a documented repository.",
     "",
     "Options:",
-    "  --project <name>          Project name in doc root (default: git)",
+    "  --project <name>          Project name (default: git)",
     "  --repo <path>             Target source repo (default: src/souko/repo/git)",
-    "  --doc-root <path>         ACCEED docs root (default: src/souko/doc)",
     "  --out-dir <path>          Output root (default: benchmarks/qa)",
     "  --language <zh|en>        QA language (default: zh)",
     "  --count <number>          QA count per provider (default: 20)",
-    "  --batch-size <number>     QA count per structured turn (default: 2)",
+    "  --batch-size <number>     QA count per structured turn (default: 1)",
     "  --providers <list>        Comma-separated providers (default: codex,claude)",
     "  --run-id <id>             Override output run id",
     "  --codex-model <model>     Optional Codex model override",
-    "  --claude-model <model>    Claude model (default: claude-opus-4-7[1m])",
+    "  --claude-model <model>    Claude model (default: claude-opus-4-6[1m])",
     "  --help                    Show this help",
   ].join("\n");
 }
@@ -129,7 +167,7 @@ function parseArgs(argv: string[]): GenerateOptions {
   const language = Language.parse(values.get("language") ?? "zh");
   const providers = Provider.array().min(1).parse(splitList(values.get("providers") ?? "codex,claude"));
   const count = positiveInt(values.get("count") ?? "20", "count");
-  const batchSize = positiveInt(values.get("batch-size") ?? "2", "batch-size");
+  const batchSize = positiveInt(values.get("batch-size") ?? "1", "batch-size");
   const runId = values.get("run-id") ?? makeRunId();
   const codexModel = optionalString(values.get("codex-model"));
   const claudeModel = optionalString(values.get("claude-model"));
@@ -137,8 +175,7 @@ function parseArgs(argv: string[]): GenerateOptions {
   return {
     project: values.get("project") ?? "git",
     repoPath: path.resolve(values.get("repo") ?? "src/souko/repo/git"),
-    docRoot: path.resolve(values.get("doc-root") ?? "src/souko/doc"),
-    outDir: path.resolve(values.get("out-dir") ?? "benchmarks/qa"),
+    outDir: path.resolve(values.get("out-dir") ?? "bench/data"),
     language,
     count,
     batchSize,
@@ -155,56 +192,60 @@ function generationInstruction(provider: Provider, language: Language): string {
 # SYSTEM PROMPT for QA Benchmark Generator (${provider})
 
 ## ROLE DEFINITION
-You create rigorous QA pairs for evaluating whether documentation can support deep repository understanding.
+You create rigorous, source-code-grounded QA pairs for evaluating documentation quality.
 You are operating with high tool permissions, but your role is analysis only. Do not edit files, run formatters, or change repository state.
 
-## TASK BACKGROUND
-The target repository has an ACCEED documentation tree. Use that documentation to choose relevant areas and navigation paths, but treat the source code as the source of truth for the question and gold answer.
-
 ## ABOUT THE TASK
-Produce practical, challenging QA pairs in ${outputLanguage}. Each question should require reasoning about real code behavior rather than recall of a single symbol.
-Good questions connect modules, lifecycle steps, data movement, configuration effects, error paths, state transitions, or API contracts where that interaction exists in the code.
+Produce practical, complex QA pairs in ${outputLanguage} based exclusively on the source code of the target repository.
+Each question should simulate a real developer scenario: debugging a cross-module issue, tracing a data flow through multiple layers, understanding the consequence of a configuration change, reasoning about error propagation, or predicting behavior under edge conditions.
+
+The purpose of these QA pairs is to evaluate whether generated documentation can support answering deep questions WITHOUT source code access. Keep this in mind when writing gold answers and scoring points.
+
+Quality bar:
+- Questions must require reasoning across at least 2 modules or subsystems — single-file lookup questions are not acceptable.
+- Questions should reflect situations a real developer would encounter: "what happens when X fails during Y", "how does data flow from A to B through C", "what are the side effects of changing config Z".
+- Gold answers must explain the mechanism, data flow, causal chain, or behavioral consequence — the kind of understanding that good documentation should convey. Do NOT fill answers with specific line numbers or raw code snippets. Mention module names, function/class names, and architectural relationships instead.
+- Scoring points (scoringPoints) must be facts verifiable from documentation — architectural decisions, module responsibilities, data flow steps, behavioral outcomes, error handling strategies, configuration effects. Each point has a short statement and an integer weight (higher = more important). Do NOT use line numbers, code syntax, or implementation details that only source code access can produce as scoring criteria.
+- Avoid trivia, naming questions, or questions that are hard only because they are obscure.
 
 ## CONSTRAINTS
-- Stay within the local paths explicitly supplied by the user prompt: the target repository path and documentation root.
-- Do not inspect unrelated local files, home-directory data, credentials, network resources, or paths outside those supplied paths.
-- Do not invent behavior. Every gold answer must be grounded in source files.
-- Do not create trivia questions, naming questions, or questions that are hard only because they are obscure.
-- Do not mention benchmark construction, documentation acceleration, or development workflows inside the questions.
-- Avoid duplicate questions across the whole session.
-- Prefer questions answerable from a focused documentation traversal, but whose gold answer is verified against code.
+- Stay within the repository path supplied by the user prompt.
+- Do not inspect unrelated local files, home-directory data, credentials, network resources, or paths outside the repository.
+- Do not invent behavior. Every gold answer must be grounded in source files you have actually read.
+- Do not mention benchmark construction, documentation, or development workflows inside the questions.
+- Avoid duplicate or closely paraphrased questions across the entire session.
 - Use the structured output schema exactly.
 
 ## SOP
-1. Start from the documentation tree to identify candidate modules and cross-module relationships.
-2. Read the relevant source files for each candidate before writing the question.
-3. Write the question so it describes a realistic situation and asks for the mechanism, data path, or consequence.
-4. Write a concise gold answer that cites concrete files and explains the reasoning.
-5. Fill sourceEvidence with the specific files and line/function hints used.
-6. Fill docNavigationHints with module paths that should help a docs-only answerer find the answer.
+1. Explore the repository structure freely — use ls, find, grep, or read files to understand the codebase layout.
+2. Identify cross-module relationships, data flows, error paths, lifecycle transitions, or configuration effects.
+3. For each candidate question, read all relevant source files to verify the behavior.
+4. Write the question as a realistic scenario that asks for the mechanism, data path, consequence, or side effect.
+5. Write a gold answer that explains the mechanism at the architectural level — module names, function/class names, data flow, causal reasoning. No line numbers, no code blocks.
+6. Decompose the gold answer into scoring points — each an atomic, documentation-verifiable fact with an importance weight. Ask yourself: "could someone answer this from well-written docs?" If not, rephrase the point.
+7. Fill sourceEvidence with the specific files and line/function hints you used to verify the answer (this is metadata for validation, not part of the scored answer).
 `.trim();
 }
 
-function generationPrompt(options: GenerateOptions, provider: Provider, batchIndex: number, batchCount: number): string {
+function generationPrompt(options: GenerateOptions, _provider: Provider, batchIndex: number, batchCount: number): string {
   if (batchIndex > 0) {
     return `
-Continue in the same session. Generate exactly ${batchCount} additional QA items for provider ${provider}.
+Continue in the same session. Generate exactly ${batchCount} additional QA items.
 
 Do not repeat or closely paraphrase any QA pair you already produced in this session.
-Use the same project, repository path, documentation root, language, quality bar, and structured output schema as before.
+Explore different areas of the codebase than previous batches — target modules, layers, or interaction patterns you have not yet covered.
+Use the same repository path, language, quality bar, and structured output schema as before.
 `.trim();
   }
 
   return `
-Generate batch ${batchIndex + 1} for provider ${provider}.
+Generate QA pairs for project "${options.project}".
 
-Project: ${options.project}
 Repository path: ${options.repoPath}
-Documentation root: ${options.docRoot}
-Required item count for this batch: ${batchCount}
+Required item count: ${batchCount}
 Language: ${options.language === "zh" ? "Chinese" : "English"}
 
-Return exactly ${batchCount} new QA items.
+Start by exploring the repository structure, then produce exactly ${batchCount} QA items.
 `.trim();
 }
 
@@ -269,7 +310,7 @@ async function runClaudeBatch(
   for await (const message of query({
     prompt: generationPrompt(options, provider, batchIndex, batchCount),
     options: {
-      model: options.claudeModel ?? "claude-opus-4-7[1m]",
+      model: options.claudeModel ?? "claude-opus-4-6[1m]",
       betas: ["context-1m-2025-08-07"],
       permissionMode: "bypassPermissions",
       allowDangerouslySkipPermissions: true,
@@ -322,8 +363,6 @@ async function writeGeneratedFile(filePath: string, data: GeneratedQaFile): Prom
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   await assertDirectory(options.repoPath, "Repository path");
-  await assertDirectory(options.docRoot, "Documentation root");
-  await assertFile(path.join(options.docRoot, options.project, "top.json"), "Project top.json");
 
   const now = new Date().toISOString();
   const data: GeneratedQaFile = {
@@ -331,7 +370,6 @@ async function main(): Promise<void> {
     runId: options.runId,
     project: options.project,
     repoPath: options.repoPath,
-    docRoot: options.docRoot,
     language: options.language,
     createdAt: now,
     updatedAt: now,

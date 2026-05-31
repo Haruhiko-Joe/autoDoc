@@ -46,6 +46,34 @@ importers:
         specifier: ^6.0.3
         version: 6.0.3
 
+  bench:
+    dependencies:
+      vue:
+        specifier: ^3.5.34
+        version: 3.5.34(typescript@6.0.3)
+      vue-router:
+        specifier: ^5.0.7
+        version: 5.0.7(@vue/compiler-sfc@3.5.34)(vue@3.5.34(typescript@6.0.3))
+    devDependencies:
+      '@types/node':
+        specifier: ^25.9.1
+        version: 25.9.1
+      '@vitejs/plugin-vue':
+        specifier: ^6.0.7
+        version: 6.0.7(vite@8.0.14(@types/node@25.9.1)(esbuild@0.28.0)(tsx@4.22.3)(yaml@2.9.0))(vue@3.5.34(typescript@6.0.3))
+      '@vue/tsconfig':
+        specifier: ^0.9.1
+        version: 0.9.1(typescript@6.0.3)(vue@3.5.34(typescript@6.0.3))
+      typescript:
+        specifier: ~6.0.3
+        version: 6.0.3
+      vite:
+        specifier: ^8.0.14
+        version: 8.0.14(@types/node@25.9.1)(esbuild@0.28.0)(tsx@4.22.3)(yaml@2.9.0)
+      vue-tsc:
+        specifier: ^3.3.1
+        version: 3.3.1(typescript@6.0.3)
+
   web:
     dependencies:
       '@antv/g6':
