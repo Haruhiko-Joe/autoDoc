@@ -1,8 +1,8 @@
-import { Codex } from "@openai/codex-sdk";
-import type { Thread } from "@openai/codex-sdk";
+import type { Codex, Thread } from "@openai/codex-sdk";
 import { resolveInstruction } from "../schemas/schema.js";
 import type { AgentResult, IWriter, Language } from "../schemas/schema.js";
 import { writerInstruction } from "../instructions/writer.js";
+import { createCodexClient } from "./codexProfile.js";
 
 export class codexWriter implements IWriter {
   private codex: Codex | null = null;
@@ -27,11 +27,8 @@ export class codexWriter implements IWriter {
       throw new Error("Session already active. Use continue() or create a new codexWriter instance.");
     }
     this.cwd = workpath;
-    this.codex = new Codex({
-      config: {
-        profile: "writer",
-        developer_instructions: resolveInstruction(writerInstruction, this.language),
-      },
+    this.codex = await createCodexClient("writer", {
+      developer_instructions: resolveInstruction(writerInstruction, this.language),
     });
     this.thread = this.codex.startThread({
       workingDirectory: workpath,
@@ -45,11 +42,8 @@ export class codexWriter implements IWriter {
       throw new Error("No active session. Call run() first.");
     }
     if (!this.codex) {
-      this.codex = new Codex({
-        config: {
-          profile: "writer",
-          developer_instructions: resolveInstruction(writerInstruction, this.language),
-        },
+      this.codex = await createCodexClient("writer", {
+        developer_instructions: resolveInstruction(writerInstruction, this.language),
       });
     }
     if (!this.thread) {

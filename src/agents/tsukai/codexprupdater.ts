@@ -1,8 +1,8 @@
-import { Codex } from "@openai/codex-sdk";
-import type { Thread } from "@openai/codex-sdk";
+import type { Codex, Thread } from "@openai/codex-sdk";
 import { resolveInstruction } from "../schemas/schema.js";
 import type { AgentResult, IPrUpdater, Language, PrUpdaterDelta } from "../schemas/schema.js";
 import { prUpdaterInstruction } from "../instructions/prupdater.js";
+import { createCodexClient } from "./codexProfile.js";
 
 const MCP_URL = process.env.ACCEED_MCP_URL ?? `http://localhost:${process.env.PORT ?? 3100}/mcp`;
 
@@ -54,12 +54,9 @@ export class codexPrUpdater implements IPrUpdater {
     }
     this.cwd = workpath;
     const instruction = resolveInstruction(prUpdaterInstruction, this.language);
-    this.codex = new Codex({
-      config: {
-        profile: "prupdater",
-        developer_instructions: instruction,
-        mcp_servers: MCP_SERVERS_CONFIG,
-      },
+    this.codex = await createCodexClient("prupdater", {
+      developer_instructions: instruction,
+      mcp_servers: MCP_SERVERS_CONFIG,
     });
     this.thread = this.codex.startThread({
       workingDirectory: workpath,
@@ -74,12 +71,9 @@ export class codexPrUpdater implements IPrUpdater {
     }
     if (!this.codex) {
       const instruction = resolveInstruction(prUpdaterInstruction, this.language);
-      this.codex = new Codex({
-        config: {
-          profile: "prupdater",
-          developer_instructions: instruction,
-          mcp_servers: MCP_SERVERS_CONFIG,
-        },
+      this.codex = await createCodexClient("prupdater", {
+        developer_instructions: instruction,
+        mcp_servers: MCP_SERVERS_CONFIG,
       });
     }
     if (!this.thread) {

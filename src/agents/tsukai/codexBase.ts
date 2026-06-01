@@ -1,11 +1,12 @@
-import { Codex } from "@openai/codex-sdk";
-import type { Thread } from "@openai/codex-sdk";
+import type { Codex, Thread } from "@openai/codex-sdk";
 import { toOutputSchema, resolveInstruction } from "../schemas/schema.js";
 import type { AgentResult, Language } from "../schemas/schema.js";
 import type { z } from "zod";
+import { createCodexClient } from "./codexProfile.js";
+import type { CodexProfileName } from "./codexProfile.js";
 
 export interface CodexAgentConfig<T extends z.ZodType> {
-  profile: string;
+  profile: CodexProfileName;
   instruction: string;
   outputSchema: T;
   errorPrefix: string;
@@ -37,11 +38,8 @@ export class CodexAgent<S extends z.ZodType, T = z.infer<S>> {
       throw new Error("Session already active. Use continue() or create a new instance.");
     }
     this.cwd = workpath;
-    this.codex = new Codex({
-      config: {
-        profile: this.config.profile,
-        developer_instructions: this.getInstruction(),
-      },
+    this.codex = await createCodexClient(this.config.profile, {
+      developer_instructions: this.getInstruction(),
     });
     this.thread = this.codex.startThread({
       workingDirectory: workpath,
@@ -55,11 +53,8 @@ export class CodexAgent<S extends z.ZodType, T = z.infer<S>> {
       throw new Error("No active session. Call run() first.");
     }
     if (!this.codex) {
-      this.codex = new Codex({
-        config: {
-          profile: this.config.profile,
-          developer_instructions: this.getInstruction(),
-        },
+      this.codex = await createCodexClient(this.config.profile, {
+        developer_instructions: this.getInstruction(),
       });
     }
     if (!this.thread) {

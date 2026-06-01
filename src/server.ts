@@ -44,6 +44,7 @@ import { createDocRoutes } from "./http/docRoutes.js";
 import { createDecompositionReviewRoutes } from "./http/decompositionReviewRoutes.js";
 import { createSubgraphPauseRoutes } from "./http/subgraphPauseRoutes.js";
 import { createBenchRoutes } from "./http/benchRoutes.js";
+import { ensureCodexProfileFiles } from "./agents/tsukai/codexProfile.js";
 
 const PORT = Number(process.env.PORT ?? 3100);
 
@@ -654,8 +655,17 @@ const server = createServer((req, res) => {
   void handleRequest(req, res);
 });
 
-server.listen(PORT, () => {
-  console.log(`[Server] HTTP + MCP on http://localhost:${PORT}`);
-  console.log(`[Server] DOC_ROOT=${DOC_ROOT}`);
-  console.log(`[Server] REPO_ROOT=${REPO_ROOT}`);
+ensureCodexProfileFiles().then(({ codexHome, created }) => {
+  const status = created.length > 0
+    ? `created ${created.length} missing profile file(s)`
+    : "all profile files already exist";
+  console.log(`[Server] Codex profiles ready in ${codexHome} (${status})`);
+  server.listen(PORT, () => {
+    console.log(`[Server] HTTP + MCP on http://localhost:${PORT}`);
+    console.log(`[Server] DOC_ROOT=${DOC_ROOT}`);
+    console.log(`[Server] REPO_ROOT=${REPO_ROOT}`);
+  });
+}).catch((error) => {
+  console.error("[Server] Failed to prepare Codex profile files:", error);
+  process.exit(1);
 });
