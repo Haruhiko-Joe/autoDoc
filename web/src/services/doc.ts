@@ -328,6 +328,21 @@ export interface UpdateTaskItem {
   sessionId?: string
 }
 
+export interface UpdateRunState {
+  runId: string
+  project: string
+  branch: string
+  mode: 'auto' | 'manual'
+  backend: 'claude' | 'codex'
+  language: 'zh' | 'en'
+  tasks: UpdateTaskItem[]
+  currentIndex: number
+  running: boolean
+  awaitingConfirm: boolean
+  awaitingReview: boolean
+  cancelled?: boolean
+}
+
 export interface UpdateEvent {
   type: 'queue' | 'task-start' | 'task-text-delta' | 'task-awaiting-review' | 'task-done' | 'task-error' | 'task-skipped' | 'awaiting-confirm' | 'cancelled' | 'finished'
   taskId?: string
@@ -343,6 +358,10 @@ export async function startUpdateRun(
 ): Promise<{ ok: boolean; tasks: UpdateTaskItem[] }> {
   const body = { project, mode }
   return postJson(`${API}/update/start`, body, 'Failed to start update')
+}
+
+export async function fetchUpdateStatus(project: string): Promise<{ state: UpdateRunState | null }> {
+  return requestJson(apiUrl('/update/status', { project }), undefined, 'Failed to load update status')
 }
 
 export async function continueUpdateRun(project: string, extraInstructions?: string): Promise<void> {

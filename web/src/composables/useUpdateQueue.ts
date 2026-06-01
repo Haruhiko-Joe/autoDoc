@@ -2,8 +2,8 @@ import { ref, type Ref } from 'vue'
 import {
   startUpdateRun, continueUpdateRun, skipUpdateTask, cancelUpdateRun,
   acceptUpdateTask, chatOnUpdateTask,
-  subscribeUpdateStream,
-  type UpdateTaskItem, type UpdateEvent,
+  subscribeUpdateStream, fetchUpdateStatus,
+  type UpdateTaskItem, type UpdateEvent, type UpdateRunState,
 } from '../services/doc'
 
 export function useUpdateQueue(project: Ref<string>) {
@@ -15,6 +15,38 @@ export function useUpdateQueue(project: Ref<string>) {
   const error = ref('')
 
   let unsub: (() => void) | null = null
+
+  function applyState(state: UpdateRunState | null) {
+    if (!state) {
+      tasks.value = []
+      isRunning.value = false
+      awaitingConfirmTaskId.value = null
+      awaitingReviewTaskId.value = null
+      return
+    }
+
+    tasks.value = state.tasks
+    mode.value = state.mode
+    isRunning.value = state.running
+
+    const current = state.tasks[state.currentIndex]
+    awaitingConfirmTaskId.value = state.awaitingConfirm ? current?.id ?? null : null
+    awaitingReviewTaskId.value = state.awaitingReview ? current?.id ?? null : null
+  }
+
+  async function restore() {
+    const currentProject = project.value
+    error.value = ''
+    unsub?.()
+    unsub = null
+    const result = await fetchUpdateStatus(currentProject)
+    if (project.value !== currentProject) return
+
+    applyState(result.state)
+    if (result.state?.running) {
+      unsub = subscribeUpdateStream(currentProject, handleEvent)
+    }
+  }
 
   function handleEvent(event: UpdateEvent) {
     const eventType = event.type
@@ -78,9 +110,14 @@ export function useUpdateQueue(project: Ref<string>) {
       if (tasks.value.length === 0) tasks.value = result.tasks
       isRunning.value = true
     } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to start'
       unsub?.()
       unsub = null
+      const message = e instanceof Error ? e.message : 'Failed to start'
+      if (/already running/i.test(message)) {
+        await restore().catch(() => {})
+        if (tasks.value.length > 0) return
+      }
+      error.value = message
     }
   }
 
@@ -126,6 +163,6 @@ export function useUpdateQueue(project: Ref<string>) {
     tasks, mode, isRunning,
     awaitingConfirmTaskId, awaitingReviewTaskId,
     error,
-    start, skip, continueNext, acceptTask, sendFollowUp, cancel, dispose,
+    restore, start, skip, continueNext, acceptTask, sendFollowUp, cancel, dispose,
   }
 }

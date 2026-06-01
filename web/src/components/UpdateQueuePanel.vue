@@ -19,7 +19,7 @@ const {
   tasks, mode, isRunning,
   awaitingConfirmTaskId, awaitingReviewTaskId,
   error,
-  start, skip, continueNext, acceptTask, sendFollowUp, cancel, dispose,
+  restore, start, skip, continueNext, acceptTask, sendFollowUp, cancel, dispose,
 } = useUpdateQueue(projectRef)
 
 onUnmounted(() => {
@@ -48,6 +48,8 @@ onMounted(() => {
     () => props.visible,
     async (v) => {
       if (!v) return
+      projectRef.value = props.project
+      void restore()
       await nextTick()
       if (!taskListRef.value) return
       containerHeight.value = taskListRef.value.clientHeight
@@ -64,6 +66,14 @@ onMounted(() => {
     { immediate: true },
   )
 })
+
+watch(
+  () => props.project,
+  (project) => {
+    projectRef.value = project
+    if (props.visible) void restore()
+  },
+)
 
 const activeDialogTaskId = ref<string | null>(null)
 
