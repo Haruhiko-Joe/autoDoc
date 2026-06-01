@@ -10,17 +10,15 @@
       <thead>
         <tr>
           <th>Project</th>
-          <th>Run ID</th>
           <th>Items</th>
           <th>Providers</th>
           <th>Created</th>
         </tr>
       </thead>
       <tbody>
-        <tr v-for="run in runs" :key="`${run.project}-${run.runId}`"
+        <tr v-for="run in runs" :key="run.project"
             class="run-row" @click="goToRun(run)">
           <td class="cell-project">{{ run.project }}</td>
-          <td class="cell-id">{{ run.runId }}</td>
           <td class="cell-count">{{ run.itemCount }}</td>
           <td>
             <span v-for="p in run.providers" :key="p" class="tag">{{ p }}</span>
@@ -47,7 +45,7 @@ onMounted(async () => {
 })
 
 function goToRun(run: RunSummary) {
-  router.push({ name: 'detail', params: { project: run.project, runId: run.runId } })
+  router.push({ name: 'detail', params: { project: run.project } })
 }
 
 function formatDate(iso: string): string {

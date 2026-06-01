@@ -14,7 +14,6 @@ export async function fetchProjects(): Promise<Project[]> {
 
 export interface RunSummary {
   project: string
-  runId: string
   itemCount: number
   createdAt: string
   providers: string[]
@@ -46,7 +45,6 @@ export interface QaItem {
 
 export interface RunDetail {
   schemaVersion: number
-  runId: string
   project: string
   repoPath: string
   language: string
@@ -58,12 +56,14 @@ export interface RunDetail {
   items: QaItem[]
 }
 
-export interface GenerateStatus {
-  status: 'idle' | 'running' | 'done' | 'error'
-  project?: string
-  runId?: string
+export interface TaskState {
+  status: 'running' | 'done' | 'error'
   log: string[]
   error?: string
+}
+
+export interface GenerateStatusResponse {
+  tasks: Record<string, TaskState>
 }
 
 export async function fetchRuns(project?: string): Promise<RunSummary[]> {
@@ -72,8 +72,8 @@ export async function fetchRuns(project?: string): Promise<RunSummary[]> {
   return res.json()
 }
 
-export async function fetchRunDetail(project: string, runId: string): Promise<RunDetail> {
-  const res = await fetch(`${BASE}/runs/${encodeURIComponent(project)}/${encodeURIComponent(runId)}`)
+export async function fetchRunDetail(project: string): Promise<RunDetail> {
+  const res = await fetch(`${BASE}/runs/${encodeURIComponent(project)}`)
   return res.json()
 }
 
@@ -86,7 +86,7 @@ export async function startGenerate(opts: Record<string, unknown>): Promise<{ ok
   return res.json()
 }
 
-export async function fetchGenerateStatus(): Promise<GenerateStatus> {
+export async function fetchGenerateStatus(): Promise<GenerateStatusResponse> {
   const res = await fetch(`${BASE}/generate/status`)
   return res.json()
 }

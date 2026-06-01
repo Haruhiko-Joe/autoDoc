@@ -7,14 +7,12 @@ const BENCH_DIR = path.resolve("bench/data");
 const GENERATE_SCRIPT = path.resolve("bench/scripts/generate-qa.ts");
 
 interface GenerateState {
-  status: "idle" | "running" | "done" | "error";
-  project?: string;
-  runId?: string;
+  status: "running" | "done" | "error";
   log: string[];
   error?: string;
 }
 
-let generateState: GenerateState = { status: "idle", log: [] };
+const generateTasks = new Map<string, GenerateState>();
 
 export function createBenchRoutes(): RouteHandler {
   return async (ctx: HttpContext): Promise<boolean> => {
@@ -28,10 +26,10 @@ export function createBenchRoutes(): RouteHandler {
       return true;
     }
 
-    const runMatch = p.match(/^\/api\/bench\/runs\/([^/]+)\/([^/]+)$/);
+    const runMatch = p.match(/^\/api\/bench\/runs\/([^/]+)$/);
     if (runMatch && req.method === "GET") {
-      const [, project, runId] = runMatch;
-      const data = await readRun(project!, runId!);
+      const [, project] = runMatch;
+      const data = await readRun(project!);
       if (!data) { sendJson(res, { error: "Not found" }, 404); return true; }
       sendJson(res, data);
       return true;
@@ -45,7 +43,11 @@ export function createBenchRoutes(): RouteHandler {
     }
 
     if (p === "/api/bench/generate/status" && req.method === "GET") {
-      sendJson(res, { ...generateState });
+      const tasks: Record<string, GenerateState> = {};
+      for (const [project, state] of generateTasks) {
+        tasks[project] = { ...state };
+      }
+      sendJson(res, { tasks });
       return true;
     }
 
@@ -55,7 +57,6 @@ export function createBenchRoutes(): RouteHandler {
 
 interface RunSummary {
   project: string;
-  runId: string;
   itemCount: number;
   createdAt: string;
   providers: string[];
@@ -73,43 +74,37 @@ async function listRuns(project?: string): Promise<RunSummary[]> {
 
   const runs: RunSummary[] = [];
   for (const proj of projects) {
-    const projDir = path.join(BENCH_DIR, proj);
-    const entries = await readdir(projDir, { withFileTypes: true }).catch(() => []);
-    for (const entry of entries) {
-      if (!entry.isDirectory() || entry.name.startsWith("_")) continue;
-      const file = path.join(projDir, entry.name, "qa.generated.json");
-      const info = await stat(file).catch(() => null);
-      if (!info?.isFile()) continue;
-      try {
-        const raw = JSON.parse(await readFile(file, "utf-8"));
-        runs.push({
-          project: proj,
-          runId: entry.name,
-          itemCount: raw.items?.length ?? 0,
-          createdAt: raw.createdAt ?? "",
-          providers: raw.providers ?? [],
-        });
-      } catch { /* skip corrupt files */ }
-    }
+    const file = path.join(BENCH_DIR, proj, "qa.generated.json");
+    const info = await stat(file).catch(() => null);
+    if (!info?.isFile()) continue;
+    try {
+      const raw = JSON.parse(await readFile(file, "utf-8"));
+      runs.push({
+        project: proj,
+        itemCount: raw.items?.length ?? 0,
+        createdAt: raw.createdAt ?? "",
+        providers: raw.providers ?? [],
+      });
+    } catch { /* skip corrupt files */ }
   }
   return runs.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
-async function readRun(project: string, runId: string): Promise<unknown | null> {
-  const file = path.join(BENCH_DIR, project, runId, "qa.generated.json");
+async function readRun(project: string): Promise<unknown | null> {
+  const file = path.join(BENCH_DIR, project, "qa.generated.json");
   const info = await stat(file).catch(() => null);
   if (!info?.isFile()) return null;
   return JSON.parse(await readFile(file, "utf-8"));
 }
 
 function startGenerate(body: Record<string, unknown>): { ok: boolean; error?: string } {
-  if (generateState.status === "running") {
-    return { ok: false, error: "Generation already running" };
+  const project = String(body.project ?? "git");
+  const existing = generateTasks.get(project);
+  if (existing?.status === "running") {
+    return { ok: false, error: `Generation already running for ${project}` };
   }
 
-  const project = String(body.project ?? "git");
   const repo = path.resolve("src/souko/repo", project);
-
   const args: string[] = [];
   args.push("--project", project);
   args.push("--repo", repo);
@@ -120,7 +115,8 @@ function startGenerate(body: Record<string, unknown>): { ok: boolean; error?: st
   if (body.claudeModel) args.push("--claude-model", String(body.claudeModel));
   if (body.codexModel) args.push("--codex-model", String(body.codexModel));
 
-  generateState = { status: "running", project: String(body.project ?? "git"), log: [] };
+  const state: GenerateState = { status: "running", log: [] };
+  generateTasks.set(project, state);
 
   const child = spawn("pnpm", ["exec", "tsx", GENERATE_SCRIPT, ...args], {
     cwd: path.resolve("."),
@@ -129,25 +125,21 @@ function startGenerate(body: Record<string, unknown>): { ok: boolean; error?: st
 
   child.stdout.on("data", (chunk: Buffer) => {
     const line = chunk.toString().trim();
-    if (line) generateState.log.push(line);
+    if (line) state.log.push(line);
   });
   child.stderr.on("data", (chunk: Buffer) => {
     const line = chunk.toString().trim();
-    if (line) generateState.log.push(line);
+    if (line) state.log.push(line);
   });
 
   child.on("close", (code) => {
-    if (code === 0) {
-      generateState.status = "done";
-    } else {
-      generateState.status = "error";
-      generateState.error = `Process exited with code ${code}`;
-    }
+    state.status = code === 0 ? "done" : "error";
+    if (code !== 0) state.error = `Process exited with code ${code}`;
   });
 
   child.on("error", (err) => {
-    generateState.status = "error";
-    generateState.error = err.message;
+    state.status = "error";
+    state.error = err.message;
   });
 
   return { ok: true };

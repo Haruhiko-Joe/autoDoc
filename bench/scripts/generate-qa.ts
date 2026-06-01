@@ -48,9 +48,6 @@ async function assertDirectory(dir: string, label: string): Promise<void> {
   if (!info?.isDirectory()) throw new Error(`${label} is not a directory: ${dir}`);
 }
 
-function makeRunId(): string {
-  return new Date().toISOString().replaceAll(":", "").replaceAll(".", "-");
-}
 
 const Provider = z.enum(["codex", "claude"]);
 const Language = z.enum(["zh", "en"]);
@@ -99,7 +96,6 @@ const GeneratedQaItem = QaItem.extend({
 
 const GeneratedQaFile = z.object({
   schemaVersion: z.literal(1),
-  runId: z.string(),
   project: z.string(),
   repoPath: z.string(),
   language: Language,
@@ -131,7 +127,6 @@ type GenerateOptions = {
   count: number;
   batchSize: number;
   providers: Provider[];
-  runId: string;
   codexModel?: string;
   claudeModel?: string;
 };
@@ -145,12 +140,11 @@ function usage(): string {
     "Options:",
     "  --project <name>          Project name (default: git)",
     "  --repo <path>             Target source repo (default: src/souko/repo/git)",
-    "  --out-dir <path>          Output root (default: benchmarks/qa)",
+    "  --out-dir <path>          Output root (default: bench/data)",
     "  --language <zh|en>        QA language (default: zh)",
     "  --count <number>          QA count per provider (default: 20)",
     "  --batch-size <number>     QA count per structured turn (default: 1)",
     "  --providers <list>        Comma-separated providers (default: codex,claude)",
-    "  --run-id <id>             Override output run id",
     "  --codex-model <model>     Optional Codex model override",
     "  --claude-model <model>    Claude model (default: claude-opus-4-6[1m])",
     "  --help                    Show this help",
@@ -168,7 +162,6 @@ function parseArgs(argv: string[]): GenerateOptions {
   const providers = Provider.array().min(1).parse(splitList(values.get("providers") ?? "codex,claude"));
   const count = positiveInt(values.get("count") ?? "20", "count");
   const batchSize = positiveInt(values.get("batch-size") ?? "1", "batch-size");
-  const runId = values.get("run-id") ?? makeRunId();
   const codexModel = optionalString(values.get("codex-model"));
   const claudeModel = optionalString(values.get("claude-model"));
 
@@ -180,7 +173,6 @@ function parseArgs(argv: string[]): GenerateOptions {
     count,
     batchSize,
     providers,
-    runId,
     codexModel,
     claudeModel,
   };
@@ -351,7 +343,7 @@ function exactBatch(items: QaItem[], batchCount: number, provider: Provider, bat
 }
 
 function outputPath(options: GenerateOptions): string {
-  return path.join(options.outDir, options.project, options.runId, "qa.generated.json");
+  return path.join(options.outDir, options.project, "qa.generated.json");
 }
 
 async function writeGeneratedFile(filePath: string, data: GeneratedQaFile): Promise<void> {
@@ -367,7 +359,6 @@ async function main(): Promise<void> {
   const now = new Date().toISOString();
   const data: GeneratedQaFile = {
     schemaVersion: 1,
-    runId: options.runId,
     project: options.project,
     repoPath: options.repoPath,
     language: options.language,

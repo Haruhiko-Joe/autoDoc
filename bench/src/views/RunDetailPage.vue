@@ -2,7 +2,7 @@
   <div class="page">
     <div class="header">
       <RouterLink to="/" class="back">&larr; Back</RouterLink>
-      <h1 v-if="detail">{{ detail.project }} / {{ runId }}</h1>
+      <h1 v-if="detail">{{ detail.project }}</h1>
     </div>
 
     <div v-if="loading" class="empty">Loading...</div>
@@ -67,14 +67,13 @@ import { fetchRunDetail, type RunDetail } from '../services/api'
 
 const route = useRoute()
 const project = route.params.project as string
-const runId = route.params.runId as string
 
 const detail = ref<RunDetail | null>(null)
 const loading = ref(true)
 const expandedId = ref<string | null>(null)
 
 onMounted(async () => {
-  detail.value = await fetchRunDetail(project, runId)
+  detail.value = await fetchRunDetail(project)
   loading.value = false
 })
 
