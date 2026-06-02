@@ -200,6 +200,14 @@ function broadcastStatus(): void {
 }
 
 let broadcastTimer: ReturnType<typeof setTimeout> | null = null;
+function broadcastStatusNow(): void {
+  if (broadcastTimer) {
+    clearTimeout(broadcastTimer);
+    broadcastTimer = null;
+  }
+  broadcastStatus();
+}
+
 function debouncedBroadcast(): void {
   if (broadcastTimer) return;
   broadcastTimer = setTimeout(() => {
@@ -306,11 +314,11 @@ async function handleRunContinue(): Promise<{ ok: boolean }> {
         lastUpdated: new Date().toISOString(),
       });
       state = { phase: "done", gitUrl, project, repoDir, docDir, arranger };
-      broadcastStatus();
+      broadcastStatusNow();
     },
     (err) => {
       state = { phase: "error", gitUrl, project, repoDir, docDir, message: String(err), arranger };
-      broadcastStatus();
+      broadcastStatusNow();
     },
   );
   return { ok: true };
@@ -343,11 +351,11 @@ function retryErrors(): { ok: true } {
     (count) => {
       console.log(`[RetryErrors] Reset and resumed ${count} error node(s).`);
       state = { phase: "done", gitUrl, project, repoDir, docDir, arranger };
-      broadcastStatus();
+      broadcastStatusNow();
     },
     (err) => {
       state = { phase: "error", gitUrl, project, repoDir, docDir, message: String(err), arranger };
-      broadcastStatus();
+      broadcastStatusNow();
     },
   );
   return { ok: true };

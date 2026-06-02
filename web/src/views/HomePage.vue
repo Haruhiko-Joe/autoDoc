@@ -179,25 +179,39 @@ async function handleRun() {
 function startSSE() {
   stopSSE()
   unsubscribeSSE = subscribeStatus(async (s) => {
-    status.value = s
-    if (s.phase === 'awaiting-knowledge' && s.currentProject) {
-      // Auto-navigate to knowledge page once the clone completes.
-      if (route.name !== 'knowledge') {
-        router.push({ name: 'knowledge', query: { project: s.currentProject } })
-      }
-    } else if (s.phase === 'running') {
-      if (selectedProject.value === s.currentProject) {
-        await tryLoadGraph(selectedProject.value)
-      }
-    } else if (s.phase === 'done') {
-      stopSSE()
-      await refreshProjects()
-      if (selectedProject.value) await loadGraph(selectedProject.value)
-    } else if (s.phase === 'error') {
-      stopSSE()
-      errorMsg.value = s.message ?? 'Unknown error'
-    }
+    await handleRunStatus(s)
   })
+}
+
+async function handleRunStatus(s: RunStatus) {
+  status.value = s
+  if (s.phase === 'running' && s.progress?.phase === 'idle') {
+    try {
+      const latest = await fetchStatus()
+      if (latest.phase !== 'running') {
+        await handleRunStatus(latest)
+        return
+      }
+    } catch { /* keep the current SSE status */ }
+  }
+
+  if (s.phase === 'awaiting-knowledge' && s.currentProject) {
+    // Auto-navigate to knowledge page once the clone completes.
+    if (route.name !== 'knowledge') {
+      router.push({ name: 'knowledge', query: { project: s.currentProject } })
+    }
+  } else if (s.phase === 'running') {
+    if (selectedProject.value === s.currentProject) {
+      await tryLoadGraph(selectedProject.value)
+    }
+  } else if (s.phase === 'done') {
+    stopSSE()
+    await refreshProjects()
+    if (selectedProject.value) await loadGraph(selectedProject.value)
+  } else if (s.phase === 'error') {
+    stopSSE()
+    errorMsg.value = s.message ?? 'Unknown error'
+  }
 }
 
 function stopSSE() {
