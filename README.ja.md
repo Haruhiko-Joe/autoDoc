@@ -1,14 +1,15 @@
 <p align="center">
-  <h1 align="center">ACCEED</h1>
-  <p align="center">
-    <strong>git URL を貼るだけで、インタラクティブ・増分更新・Agent 読み書き可能なドキュメントサイトを自動生成</strong>
-  </p>
-  <p align="center">
-    5 + 1 個の AI Agent 協調 · 反復検証 · git diff による増分更新 · HTTP MCP · インタラクティブ架構図 · クラッシュリカバリ · 段階的開示
-  </p>
-  <p align="center">
-    <a href="README.md">中文</a> | <a href="README.en.md">English</a> | <strong>日本語</strong>
-  </p>
+  <picture>
+    <img alt="ACCEED" src="fig/acceed.png" width="400">
+  </picture>
+</p>
+
+<h3 align="center">
+  Agent ネイティブなコード知識基盤——インタラクティブ・増分更新・Agent が直接読み書きできる自己索引ドキュメントサイト
+</h3>
+
+<p align="center">
+| <a href="docs/USAGE.md"><b>Documentation</b></a> | <a href="https://github.com/Haruhiko-Joe/skills/tree/main/doc-drill"><b>doc-drill Skill</b></a> | <a href="https://github.com/Haruhiko-Joe/autoDoc/issues"><b>Issues</b></a> | <a href="README.md"><b>中文</b></a> | <a href="README.en.md"><b>English</b></a> |
 </p>
 
 <p align="center">
@@ -18,10 +19,6 @@
   <img src="https://img.shields.io/badge/pnpm-%3E%3D10-F69220?logo=pnpm&logoColor=white" alt="pnpm">
   <img src="https://img.shields.io/badge/MCP-Streamable_HTTP-512BD4" alt="MCP">
   <a href="https://github.com/Haruhiko-Joe/autoDoc/stargazers"><img src="https://img.shields.io/github/stars/Haruhiko-Joe/autoDoc?style=social" alt="Stars"></a>
-</p>
-
-<p align="center">
-  <a href="https://github.com/Haruhiko-Joe/skills/tree/main/doc-drill">📘 コンパニオン Skill: doc-drill</a> · 同一プロセスの <code>/mcp</code> エンドポイント経由で任意の Code Agent と接続
 </p>
 
 ## なぜ ACCEED なのか？
