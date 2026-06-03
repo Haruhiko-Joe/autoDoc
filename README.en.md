@@ -1,14 +1,15 @@
 <p align="center">
-  <h1 align="center">ACCEED</h1>
-  <p align="center">
-    <strong>Paste a git URL. Get an interactive, incrementally-updatable, Agent-readable/writable documentation site.</strong>
-  </p>
-  <p align="center">
-    5 + 1 AI Agents · Iterative Validation · git-diff Incremental Updates · HTTP MCP · Interactive Architecture Graphs · Crash Recovery · Progressive Disclosure
-  </p>
-  <p align="center">
-    <a href="README.md">中文</a> | <strong>English</strong> | <a href="README.ja.md">日本語</a>
-  </p>
+  <picture>
+    <img alt="ACCEED" src="fig/acceed.png" width="400">
+  </picture>
+</p>
+
+<h3 align="center">
+  Agent-native knowledge base for code — interactive, incrementally-updatable, directly readable and writable by Agents
+</h3>
+
+<p align="center">
+| <a href="docs/USAGE.md"><b>Documentation</b></a> | <a href="https://github.com/Haruhiko-Joe/skills/tree/main/doc-drill"><b>doc-drill Skill</b></a> | <a href="https://github.com/Haruhiko-Joe/autoDoc/issues"><b>Issues</b></a> | <a href="README.md"><b>中文</b></a> | <a href="README.ja.md"><b>日本語</b></a> |
 </p>
 
 <p align="center">
@@ -18,10 +19,6 @@
   <img src="https://img.shields.io/badge/pnpm-%3E%3D10-F69220?logo=pnpm&logoColor=white" alt="pnpm">
   <img src="https://img.shields.io/badge/MCP-Streamable_HTTP-512BD4" alt="MCP">
   <a href="https://github.com/Haruhiko-Joe/autoDoc/stargazers"><img src="https://img.shields.io/github/stars/Haruhiko-Joe/autoDoc?style=social" alt="Stars"></a>
-</p>
-
-<p align="center">
-  <a href="https://github.com/Haruhiko-Joe/skills/tree/main/doc-drill">📘 Companion Skill: doc-drill</a> · Talks to any Code Agent via the same-process <code>/mcp</code> endpoint
 </p>
 
 ## Why ACCEED?

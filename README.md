@@ -1,11 +1,15 @@
 <p align="center">
-  <h1 align="center">ACCEED Doc</h1>
-  <p align="center">
-    以产物为状态的理念，通过状态机产出可交互、可增量更新、可被 Agent 直接读写消费的自索引文档站 目前主要在 acceed 分支推进，相关的更新会在论文发表后合入main且项目会被重命名为 ACCEED doc；本项目已被某中厂（AI洗稿，白嫖实习生成果的行径属实过于屑）社区科学线/电商架构组采用为代码知识化基建的技术方案用于开发提效
-  </p>
-  <p align="center">
-    <strong>中文</strong> | <a href="README.en.md">English</a> | <a href="README.ja.md">日本語</a>
-  </p>
+  <picture>
+    <img alt="ACCEED" src="fig/acceed.png" width="400">
+  </picture>
+</p>
+
+<h3 align="center">
+  Agent-native 的代码知识底座——可交互、可增量更新、可被 Agent 直接读写消费的自索引文档站
+</h3>
+
+<p align="center">
+| <a href="docs/USAGE.md"><b>厚拉一裤走</b></a> | <a href="https://github.com/Haruhiko-Joe/skills/tree/main/doc-drill"><b>doc-drill Skill</b></a> | <a href="https://github.com/Haruhiko-Joe/autoDoc/issues"><b>Issues</b></a> | <a href="README.en.md"><b>English</b></a> | <a href="README.ja.md"><b>日本語</b></a> |
 </p>
 
 <p align="center">
@@ -17,13 +21,11 @@
   <a href="https://github.com/Haruhiko-Joe/autoDoc/stargazers"><img src="https://img.shields.io/github/stars/Haruhiko-Joe/autoDoc?style=social" alt="Stars"></a>
 </p>
 
-<p align="center">
-  <a href="https://github.com/Haruhiko-Joe/skills/tree/main/doc-drill">📘 伴侣 Skill: doc-drill</a> · 通过同进程 <code>/mcp</code> 端点对接任意 Code Agent
-</p>
-
 ## WHY ACCEED？
 
 > 代码文档的三大规范是可读性、可交互性和可维护性。其中，可读性是满足人类与代理理解代码的最基本需求，在软件工程领域中，被视为一切开发活动的优先前提。通过阅读文档，开发者能够获得对代码库的整体认知，而如果文档本身还能提供结构化的层次导航与类型化的模块关系，则这种认知将会得到质的升华。在当今世界，确实存在着对这种极致文档体验倾注全部热情的开发者与 Agent——而能够承载这种执念的文档体系，我们称之为**知识底座**。ACCEED，则专门为那些已经厌倦了世间常见文档站的开发者与 Agent，提供与其素质相匹配的知识消费源。
+
+### Deepwiki所创造的的文档站，并非完美
 
 | | ACCEED | DeepWiki | Google Code Wiki |
 |---|:---:|:---:|:---:|
