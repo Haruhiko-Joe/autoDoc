@@ -110,6 +110,7 @@ function onNodeChange(name: string, event: Event) {
 
 .node-filter-panel {
   width: 240px;
+  max-width: calc(100vw - 32px);
   max-height: min(320px, calc(100vh - 180px));
   box-sizing: border-box;
   margin-top: 8px;

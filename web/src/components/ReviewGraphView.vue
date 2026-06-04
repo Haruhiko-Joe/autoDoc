@@ -384,6 +384,7 @@ watch(isDark, recreateGraph)
   position: absolute;
   z-index: 20;
   width: 280px;
+  max-width: calc(100vw - 32px);
   transform: translate(-50%, 10px);
   padding: 12px;
   border: 1px solid var(--border-card);

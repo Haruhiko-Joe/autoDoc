@@ -119,8 +119,8 @@ function renderMd(md: string): string {
   position: fixed;
   bottom: 24px;
   left: 24px;
-  width: 420px;
-  height: 540px;
+  width: min(420px, calc(100vw - 48px));
+  height: min(540px, calc(100vh - 48px));
   background: var(--bg-surface);
   border: 1px solid var(--border-card);
   border-radius: var(--radius-card);

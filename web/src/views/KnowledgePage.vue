@@ -395,6 +395,13 @@ onMounted(async () => {
   overflow: hidden;
 }
 
+@media (max-width: 900px) {
+  .k-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 1fr;
+  }
+}
+
 .k-chat {
   display: flex;
   flex-direction: column;

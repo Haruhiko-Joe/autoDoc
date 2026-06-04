@@ -112,7 +112,8 @@ watch(() => [props.visible, props.project, props.refreshToken], ([visible]) => {
 
 <style scoped>
 .git-panel {
-  width: 360px;
+  width: min(360px, 30vw);
+  min-width: 240px;
   background: var(--bg-sidebar);
   border-left: 1px solid var(--border);
   backdrop-filter: blur(18px);

@@ -250,7 +250,7 @@ function selectFlow(i: number) {
 
 .sidebar {
   width: 20%;
-  min-width: 200px;
+  min-width: 180px;
   max-width: 280px;
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border);

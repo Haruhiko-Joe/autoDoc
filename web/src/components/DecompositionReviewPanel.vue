@@ -42,7 +42,7 @@ const loading = ref(false)
 const error = ref('')
 const graphHeight = ref(460)
 const graphFullscreen = ref(false)
-const panelWidth = ref(720)
+const panelWidth = ref(Math.min(720, Math.max(440, window.innerWidth * 0.5)))
 type ReviewAction = 'saving' | 'approving' | 'rejecting'
 const reviewActions = ref<Record<string, ReviewAction>>({})
 
@@ -55,9 +55,9 @@ const edgeDialogPrefillTarget = ref('')
 let resizeStart: { y: number; height: number } | null = null
 let panelResizeStart: { x: number; width: number; maxWidth: number } | null = null
 
-const PANEL_MIN_WIDTH = 440
-const PANEL_FALLBACK_RESERVED_WIDTH = 580
-const MAIN_CANVAS_MIN_WIDTH = 360
+const PANEL_MIN_WIDTH = 380
+const PANEL_FALLBACK_RESERVED_WIDTH = 480
+const MAIN_CANVAS_MIN_WIDTH = 300
 
 const selectedReview = computed(() =>
   reviews.value.find((review) => review.id === selectedId.value) ?? null,
@@ -449,9 +449,9 @@ function handleEdgeDelete(source: string, edgeTarget: string, edgeType: EdgeType
 
 <style scoped>
 .review-panel {
-  width: 720px;
-  min-width: 440px;
-  max-width: calc(100vw - 360px);
+  width: clamp(440px, 50vw, 720px);
+  min-width: 380px;
+  max-width: calc(100vw - 300px);
   position: relative;
   box-sizing: border-box;
   background: var(--bg-sidebar);

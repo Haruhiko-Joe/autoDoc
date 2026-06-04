@@ -552,7 +552,7 @@ watch(subGraph, (sg) => {
 
 .sidebar {
   width: 20%;
-  min-width: 200px;
+  min-width: 180px;
   max-width: 280px;
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border);
@@ -607,8 +607,8 @@ watch(subGraph, (sg) => {
 }
 
 .canvas-header {
-  min-height: 72px;
-  padding: 18px 32px 14px;
+  min-height: 56px;
+  padding: 14px clamp(16px, 2vw, 32px) 10px;
 }
 
 .breadcrumb {
@@ -807,7 +807,7 @@ watch(subGraph, (sg) => {
   top: 100%;
   right: 0;
   margin-top: 6px;
-  width: 360px;
+  width: min(360px, calc(100vw - 48px));
   padding: 12px;
   background: var(--bg-surface);
   border: 1px solid var(--border);

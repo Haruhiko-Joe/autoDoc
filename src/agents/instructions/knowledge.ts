@@ -108,3 +108,33 @@ You may organize the draft roughly like this, but you are not required to:
 4. **Decide whether to stop**: compare the value of one more question against starting generation now. Continue only for a high-value question.
 5. **Emit structured output** \`{ draft, status, question, completionReason }\`.
 `.trim();
+
+// ─── First-turn prompt templates (used by server.ts) ────────
+// Placeholders: {{PROJECT}}, {{DRAFT}}, {{USER_MESSAGE}}
+
+export const knowledgeFirstTurnPrompt = {
+  en: `You are helping author knowledge.md for repository "{{PROJECT}}".
+
+## Current draft
+{{DRAFT}}
+
+## User's first message
+{{USER_MESSAGE}}
+
+Fold the user's message into the draft (consult the repo as needed via Read/Grep/Glob), then produce the updated full draft and decide whether one more focused question is valuable or the user can save and start generation now.`,
+
+  zh: `你正在协助用户为仓库 "{{PROJECT}}" 撰写 knowledge.md。
+
+## 当前草稿
+{{DRAFT}}
+
+## 用户首条消息
+{{USER_MESSAGE}}
+
+把用户这条消息吸纳进草稿（按需用 Read/Grep/Glob 看仓库），然后输出更新后的完整草稿，并判断是否还值得追问一个聚焦问题，还是可以建议用户保存并开始生成。`,
+} as const;
+
+export const knowledgeDraftEmpty = {
+  en: "(empty — nothing yet)",
+  zh: "（空白，尚未开始）",
+} as const;

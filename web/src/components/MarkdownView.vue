@@ -84,7 +84,7 @@ watch(() => [props.content, props.blameLines], () => render(props.content), { de
 .markdown-body {
   max-width: 860px;
   margin: 0 auto;
-  padding: 32px 24px;
+  padding: 32px clamp(16px, 3vw, 24px);
   font-size: 15px;
   line-height: 1.75;
   color: var(--text-primary);
@@ -164,7 +164,7 @@ watch(() => [props.content, props.blameLines], () => render(props.content), { de
 
 .blame-block {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 172px;
+  grid-template-columns: minmax(0, 1fr) min(172px, 20%);
   gap: 18px;
   align-items: start;
   border-radius: var(--radius-card);

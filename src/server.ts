@@ -22,6 +22,7 @@ import {
 } from "./souko/registry.js";
 import * as git from "./git/repoManager.js";
 import { claudeKnowledge, codexKnowledge } from "./agents/tsukai/index.js";
+import { knowledgeFirstTurnPrompt, knowledgeDraftEmpty } from "./agents/instructions/knowledge.js";
 import { DocStore } from "./mcp/docStore.js";
 import { DocGit } from "./mcp/docGit.js";
 import { buildMcpServer } from "./mcp/server.js";
@@ -77,16 +78,11 @@ function buildKnowledgeFirstPrompt(
   userMessage: string,
   language: Language,
 ): string {
-  const header = language === "en"
-    ? `You are helping author knowledge.md for repository "${project}".`
-    : `你正在协助用户为仓库 "${project}" 撰写 knowledge.md。`;
-  const draftLabel = language === "en" ? "## Current draft" : "## 当前草稿";
-  const draftBody = existingDraft.trim() ? existingDraft : (language === "en" ? "(empty — nothing yet)" : "（空白，尚未开始）");
-  const userLabel = language === "en" ? "## User's first message" : "## 用户首条消息";
-  const instruction = language === "en"
-    ? "Fold the user's message into the draft (consult the repo as needed via Read/Grep/Glob), then produce the updated full draft and decide whether one more focused question is valuable or the user can save and start generation now."
-    : "把用户这条消息吸纳进草稿（按需用 Read/Grep/Glob 看仓库），然后输出更新后的完整草稿，并判断是否还值得追问一个聚焦问题，还是可以建议用户保存并开始生成。";
-  return [header, "", draftLabel, draftBody, "", userLabel, userMessage, "", instruction].join("\n");
+  const draft = existingDraft.trim() || knowledgeDraftEmpty[language];
+  return knowledgeFirstTurnPrompt[language]
+    .replace("{{PROJECT}}", project)
+    .replace("{{DRAFT}}", draft)
+    .replace("{{USER_MESSAGE}}", userMessage);
 }
 
 async function writeDraft(project: string, content: string): Promise<void> {

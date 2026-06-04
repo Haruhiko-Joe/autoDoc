@@ -226,7 +226,8 @@ async function handleStart() {
 
 <style scoped>
 .update-panel {
-  width: 380px;
+  width: min(380px, 30vw);
+  min-width: 260px;
   background: var(--bg-sidebar);
   border-left: 1px solid var(--border);
   backdrop-filter: blur(18px);

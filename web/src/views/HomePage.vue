@@ -691,8 +691,8 @@ async function handleRetryErrors() {
 
 .sidebar {
   width: 20%;
-  min-width: 220px;
-  max-width: 300px;
+  min-width: 180px;
+  max-width: 280px;
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border);
   backdrop-filter: blur(18px);
@@ -1108,8 +1108,8 @@ async function handleRetryErrors() {
 }
 
 .canvas-header {
-  min-height: 68px;
-  padding: 18px 32px 14px;
+  min-height: 56px;
+  padding: 14px clamp(16px, 2vw, 32px) 10px;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -1122,6 +1122,10 @@ async function handleRetryErrors() {
   margin: 0;
   line-height: 1.5;
   letter-spacing: -0.01em;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .project-chip {

@@ -612,6 +612,7 @@ watch(isDark, recreateGraph)
   position: absolute;
   z-index: 100;
   width: 380px;
+  max-width: calc(100vw - 32px);
   background: var(--bg-surface);
   border: 1px solid var(--border-card);
   border-radius: var(--radius-card);
