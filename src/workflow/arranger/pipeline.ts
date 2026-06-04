@@ -52,6 +52,7 @@ interface PipelineOptions {
   decompositionReview: DecompositionReviewMode
   checkerEnabled: boolean
   insightCollector?: InsightCollector
+  shouldAbort?: () => boolean
 }
 
 export class Pipeline {
@@ -100,13 +101,13 @@ export class Pipeline {
           checkerSessionId: graph.checkerSessionId,
         } : undefined;
         return withTimeout(() => this.decomposeAndCheck(nodeId, prompt, existing, nodeKnowledge), 15 * 60_000, `decomposer ${nodeId}`);
-      });
+      }, 3, this.options.shouldAbort);
       rawGraph = result.rawGraph;
       decomposerSessionId = result.decomposerSessionId;
     } catch (e) {
       console.error(`[Arranger] Decompose+check failed for ${nodeId}:`, e);
       await store.markGraphError(nodeId);
-      return;
+      throw e;
     }
 
     console.log(`[Arranger] Decomposed: ${nodeId} → ${rawGraph.nodes.length} child nodes`);
@@ -174,7 +175,7 @@ export class Pipeline {
       console.error(`[Arranger] Missing page node for ${nodeId}/${ref}`);
       await appendRunLog(store.projectName, `page task error node=${nodeId} ref=${ref} error=missing-page-node`);
       await store.markGraphError(nodeId);
-      return;
+      throw new Error(`Missing page node for ${nodeId}/${ref}`);
     }
 
     await appendRunLog(store.projectName, `page task start node=${nodeId} ref=${ref}`);
@@ -182,7 +183,7 @@ export class Pipeline {
     let content: string;
     let writerSessionId: string;
     try {
-      const written = await withRetry(() => withTimeout(() => this.writePage(pageNode, ancestorContext, nodeKnowledge), 10 * 60_000, `writer ${pageNode.name}`));
+      const written = await withRetry(() => withTimeout(() => this.writePage(pageNode, ancestorContext, nodeKnowledge), 10 * 60_000, `writer ${pageNode.name}`), 3, this.options.shouldAbort);
       content = written.content;
       writerSessionId = written.sessionId;
     } catch (e) {
@@ -190,7 +191,7 @@ export class Pipeline {
       console.error(`[Arranger] Write failed for ${nodeId}/${ref}:`, e);
       await appendRunLog(store.projectName, `page task error node=${nodeId} ref=${ref} error=${msg.slice(0, 200)}`);
       await store.markPageError(nodeId, ref);
-      return;
+      throw e;
     }
 
     await store.writePage(nodeId, ref, content);

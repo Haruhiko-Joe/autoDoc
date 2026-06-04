@@ -43,12 +43,12 @@ export async function withTimeout<T>(fn: () => Promise<T>, ms: number, label: st
   });
 }
 
-export async function withRetry<T>(fn: (attempt: number) => Promise<T>, maxRetries = 3): Promise<T> {
+export async function withRetry<T>(fn: (attempt: number) => Promise<T>, maxRetries = 3, shouldAbort?: () => boolean): Promise<T> {
   for (let attempt = 0; ; attempt++) {
     try {
       return await fn(attempt);
     } catch (e) {
-      if (attempt >= maxRetries) throw e;
+      if (attempt >= maxRetries || shouldAbort?.()) throw e;
       const delay = Math.min(2000 * 2 ** attempt, 30_000);
       console.log(`[Arranger] Retry ${attempt + 1}/${maxRetries} after ${delay}ms: ${e}`);
       await new Promise((r) => setTimeout(r, delay));

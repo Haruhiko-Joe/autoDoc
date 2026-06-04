@@ -48,6 +48,7 @@ export class Arranger {
   private _reviewResolve: (() => void) | null = null;
   private _reviewPromise: Promise<void> | null = null;
   private _reviewSeq = 0;
+  private _haltedByError = false;
   private repoPath = "";
   private docDir = "";
   private knowledge = "";
@@ -286,6 +287,7 @@ export class Arranger {
       decompositionReview: this.decompositionReview,
       checkerEnabled: this.checkerEnabled,
       insightCollector: insightCollector ?? undefined,
+      shouldAbort: () => this._haltedByError,
     });
 
     this.graphStore = store;
@@ -307,17 +309,21 @@ export class Arranger {
 
   private async processLoop(store: GraphStore, pipeline: Pipeline): Promise<void> {
     const running = new Set<Promise<void>>();
+    this._haltedByError = false;
 
     while (true) {
       while (this.maxConcurrency === 0 || running.size < this.maxConcurrency) {
-        if (this._paused) break;
+        if (this._paused || this._haltedByError) break;
         const task = await store.claimNextTask();
         if (!task) break;
 
         let runner: Promise<void>;
         runner = this.processTask(task, pipeline)
-          .catch((error) => {
-            console.error("[Arranger] Pipeline failed:", error);
+          .catch(() => {
+            if (!this._haltedByError) {
+              this._haltedByError = true;
+              console.log("[Arranger] Task failed — halting new tasks, waiting for in-flight tasks to finish.");
+            }
           })
           .finally(() => {
             running.delete(runner);
@@ -327,6 +333,7 @@ export class Arranger {
       }
 
       if (running.size === 0) {
+        if (this._haltedByError) break;
         if (this._paused) {
           await this.waitForResume();
           continue;
