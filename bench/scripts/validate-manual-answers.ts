@@ -2,39 +2,36 @@ import "dotenv/config";
 
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { z } from "zod";
 import {
   RawJudgeOutput,
   Provider,
   QaFile,
   ValidationFile,
-  Variant,
   type Language,
   type QaItem,
   type ValidationItem,
+  type JudgeOutput,
 } from "../lib/schemas.ts";
-import { runAnswerJudge, runAnswerVerifier } from "../lib/agents.ts";
-import { buildJudgePrompt, buildVerifierPrompt } from "../lib/prompts.ts";
-import { cleanWorkdir, setupWorkdir } from "../lib/workdir.ts";
-
-// ---------------------------------------------------------------------------
-// CLI arg parsing
-// ---------------------------------------------------------------------------
+import { runAnswerJudge } from "../lib/agents.ts";
+import { buildJudgePrompt } from "../lib/prompts.ts";
 
 interface Options {
   project: string;
   runId?: string;
   dataDir: string;
-  docVariant: "full" | "no-edges" | "flat-md";
+  docVariant: string;
   language?: Language;
   limit?: number;
   itemIds?: string[];
-  answerProvider: "codex" | "claude";
+  answerProvider: string;
   judgeProvider: "codex" | "claude";
-  validationRoot: string;
-  ablationDocs: string;
-  skillTemplate: string;
-  force: boolean;
+  answersFile: string;
 }
+
+const ManualAnswersFile = z.object({
+  answers: z.record(z.string(), z.string()),
+});
 
 function parseArgs(argv: string[]): Options {
   const m = new Map<string, string>();
@@ -44,30 +41,34 @@ function parseArgs(argv: string[]): Options {
     if (!tok.startsWith("--")) throw new Error(`Unexpected: ${tok}`);
     const key = tok.slice(2);
     const next = argv[i + 1];
-    if (!next || next.startsWith("--")) { m.set(key, "true"); i += 1; }
-    else { m.set(key, next); i += 2; }
+    if (!next || next.startsWith("--")) {
+      m.set(key, "true");
+      i += 1;
+    } else {
+      m.set(key, next);
+      i += 2;
+    }
   }
+
+  const docVariant = m.get("doc-variant") ?? "chatgpt-5-5";
+  if (!isSafeVariant(docVariant)) throw new Error(`Invalid validation label: ${docVariant}`);
+
+  const answersFile = m.get("answers-file");
+  if (!answersFile) throw new Error("--answers-file is required");
 
   return {
     project: m.get("project") ?? "git",
     runId: m.get("run-id"),
     dataDir: path.resolve(m.get("data-dir") ?? "bench/data"),
-    docVariant: Variant.parse(m.get("doc-variant") ?? "full"),
+    docVariant,
     language: m.has("language") ? (m.get("language") as Language) : undefined,
     limit: m.has("limit") ? Number.parseInt(m.get("limit")!, 10) : undefined,
     itemIds: m.get("item-ids")?.split(",").map(s => s.trim()).filter(Boolean),
-    answerProvider: Provider.parse(m.get("answer-provider") ?? "codex"),
+    answerProvider: m.get("answer-provider") ?? "ChatGPT 5.5",
     judgeProvider: Provider.parse(m.get("judge-provider") ?? "claude"),
-    validationRoot: path.resolve(m.get("validation-root") ?? "bench/validation"),
-    ablationDocs: path.resolve(m.get("ablation-docs") ?? "bench/data/ablation-docs"),
-    skillTemplate: path.resolve(m.get("skill-template") ?? "src/skill-template-readonly"),
-    force: m.has("force"),
+    answersFile: path.resolve(answersFile),
   };
 }
-
-// ---------------------------------------------------------------------------
-// QA file loading
-// ---------------------------------------------------------------------------
 
 async function loadQaFile(dataDir: string, project: string, runId?: string): Promise<{ file: string; data: QaFile }> {
   const runDirFile = runId && runId !== "latest"
@@ -88,12 +89,28 @@ async function loadQaFile(dataDir: string, project: string, runId?: string): Pro
   throw new Error(`QA file not found for ${project}${runId ? `/${runId}` : ""}`);
 }
 
-// ---------------------------------------------------------------------------
-// Validation file I/O
-// ---------------------------------------------------------------------------
+async function loadAnswers(file: string): Promise<Map<string, string>> {
+  const raw = JSON.parse(await readFile(file, "utf-8"));
+  const parsed = ManualAnswersFile.parse(raw);
+  return new Map(
+    Object.entries(parsed.answers)
+      .map(([id, answer]) => [id, answer.trim()] as const)
+      .filter(([, answer]) => answer.length > 0),
+  );
+}
 
 function validationPath(qaFile: string, variant: string): string {
+  if (!isSafeVariant(variant)) throw new Error(`Invalid validation label: ${variant}`);
   return path.join(path.dirname(qaFile), `validation.${variant}.json`);
+}
+
+async function loadExistingValidation(filePath: string): Promise<ValidationFile | null> {
+  try {
+    const raw = JSON.parse(await readFile(filePath, "utf-8"));
+    return ValidationFile.parse(raw);
+  } catch {
+    return null;
+  }
 }
 
 async function writeValidation(filePath: string, data: ValidationFile): Promise<void> {
@@ -111,19 +128,21 @@ function averageScore(results: ValidationItem[]): number | null {
   return Number((sum / done.length).toFixed(4));
 }
 
-// ---------------------------------------------------------------------------
-// Judge output normalization
-// ---------------------------------------------------------------------------
-
 function normalizeJudge(
   raw: RawJudgeOutput,
   scoringPoints: Array<{ point: string; weight: number }>,
-): import("../lib/schemas.ts").JudgeOutput {
+): JudgeOutput {
   const maxScore = scoringPoints.reduce((s, p) => s + p.weight, 0);
   const scoringPointResults = scoringPoints.map((sp, i) => {
     const r = raw.results[i];
     const pts = Math.max(0, Math.min(sp.weight, r?.score ?? 0));
-    return { point: sp.point, weight: sp.weight, score: pts, covered: pts >= sp.weight, rationale: r?.rationale ?? "" };
+    return {
+      point: sp.point,
+      weight: sp.weight,
+      score: pts,
+      covered: pts >= sp.weight,
+      rationale: r?.rationale ?? "",
+    };
   });
   const score = scoringPointResults.reduce((s, p) => s + p.score, 0);
   const normalizedScore = maxScore > 0 ? Number((score / maxScore).toFixed(4)) : 0;
@@ -137,55 +156,27 @@ function verdictFor(n: number): "excellent" | "good" | "partial" | "poor" {
   return "poor";
 }
 
-// ---------------------------------------------------------------------------
-// Item selection
-// ---------------------------------------------------------------------------
-
-function selectItems(data: QaFile, opts: Options): QaItem[] {
+function selectItems(data: QaFile, opts: Options, answers: Map<string, string>): QaItem[] {
   const byId = opts.itemIds ? new Set(opts.itemIds) : null;
   let items = byId ? data.items.filter(it => byId.has(it.id)) : data.items;
   if (opts.limit) items = items.slice(0, opts.limit);
-  if (items.length === 0) throw new Error("No QA items selected");
+  items = items.filter(it => answers.has(it.id));
+  if (items.length === 0) throw new Error("No answered QA items selected");
   return items;
-}
-
-// ---------------------------------------------------------------------------
-// Main
-// ---------------------------------------------------------------------------
-
-async function loadExistingValidation(filePath: string): Promise<ValidationFile | null> {
-  try {
-    const raw = JSON.parse(await readFile(filePath, "utf-8"));
-    return ValidationFile.parse(raw);
-  } catch {
-    return null;
-  }
 }
 
 async function main(): Promise<void> {
   const opts = parseArgs(process.argv.slice(2));
   const { file: qaFile, data: qaData } = await loadQaFile(opts.dataDir, opts.project, opts.runId);
+  const answers = await loadAnswers(opts.answersFile);
   const language = opts.language ?? qaData.language;
-  const items = selectItems(qaData, opts);
+  const items = selectItems(qaData, opts, answers);
   const outFile = validationPath(qaFile, opts.docVariant);
-
-  console.log(`[setup] preparing workdir: ${opts.docVariant}/${opts.project}${opts.force ? " (force rebuild)" : ""}`);
-  const workdir = await setupWorkdir({
-    project: opts.project,
-    variant: opts.docVariant,
-    ablationDocsRoot: opts.ablationDocs,
-    validationRoot: opts.validationRoot,
-    skillTemplateDir: opts.skillTemplate,
-    force: opts.force,
-  });
-  console.log(`[setup] workdir ready: ${workdir}`);
-
   const existing = await loadExistingValidation(outFile);
-  const doneIds = new Set(
-    existing?.results.filter(r => r.status === "done").map(r => r.itemId) ?? [],
-  );
-
+  const selectedIds = new Set(items.map(item => item.id));
   const now = new Date().toISOString();
+  const workdir = path.resolve(".");
+
   const validation: ValidationFile = {
     schemaVersion: 2,
     project: opts.project,
@@ -196,32 +187,21 @@ async function main(): Promise<void> {
     judgeProvider: opts.judgeProvider,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
-    itemCount: items.length,
+    itemCount: qaData.items.length,
     completedCount: 0,
     averageScore: null,
-    results: existing?.results.filter(r => r.status === "done") ?? [],
+    results: existing?.results.filter(r => !selectedIds.has(r.itemId)) ?? [],
   };
   await writeValidation(outFile, validation);
 
-  const pending = items.filter(it => !doneIds.has(it.id));
-  console.log(`[validation] project=${opts.project} variant=${opts.docVariant} items=${items.length} done=${doneIds.size} pending=${pending.length}`);
+  console.log(`[manual-validation] project=${opts.project} run=${qaData.runId ?? opts.runId ?? "latest"} label=${opts.docVariant} answered=${items.length}`);
 
-  for (const item of pending) {
+  for (const item of items) {
+    const candidateAnswer = answers.get(item.id)!;
     const startedAt = new Date().toISOString();
-    console.log(`[answer:${opts.answerProvider}] item=${item.id}`);
+    console.log(`[judge:${opts.judgeProvider}] item=${item.id}`);
 
     try {
-      const answer = await runAnswerVerifier({
-        provider: opts.answerProvider,
-        variant: opts.docVariant,
-        language,
-        prompt: buildVerifierPrompt({ category: item.category, itemId: item.id, question: item.question }),
-        workdir,
-      });
-
-      cleanWorkdir(workdir);
-
-      console.log(`[judge:${opts.judgeProvider}] item=${item.id}`);
       const judgeResult = await runAnswerJudge({
         provider: opts.judgeProvider,
         language,
@@ -230,7 +210,7 @@ async function main(): Promise<void> {
           question: item.question,
           goldAnswer: item.goldAnswer,
           scoringPoints: item.scoringPoints,
-          candidateAnswer: answer.text,
+          candidateAnswer,
         }),
         workdir,
       });
@@ -249,9 +229,8 @@ async function main(): Promise<void> {
         completedAt: new Date().toISOString(),
         answer: {
           provider: opts.answerProvider,
-          sessionId: answer.sessionId,
-          text: answer.text,
-          metrics: answer.metrics,
+          sessionId: `manual:${opts.docVariant}:${item.id}:${startedAt}`,
+          text: candidateAnswer,
         },
         judge: {
           provider: opts.judgeProvider,
@@ -262,7 +241,7 @@ async function main(): Promise<void> {
       });
 
       await writeValidation(outFile, validation);
-      console.log(`[validation] item=${item.id} score=${judgeOutput.normalizedScore}`);
+      console.log(`[manual-validation] item=${item.id} score=${judgeOutput.normalizedScore}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       validation.results.push({
@@ -272,16 +251,23 @@ async function main(): Promise<void> {
         status: "error",
         startedAt,
         completedAt: new Date().toISOString(),
+        answer: {
+          provider: opts.answerProvider,
+          sessionId: `manual:${opts.docVariant}:${item.id}:${startedAt}`,
+          text: candidateAnswer,
+        },
         error: message,
       });
       await writeValidation(outFile, validation);
-      console.error(`[validation] item=${item.id} error=${message}`);
-
-      try { cleanWorkdir(workdir); } catch { /* best effort */ }
+      console.error(`[manual-validation] item=${item.id} error=${message}`);
     }
   }
 
-  console.log(`[validation] wrote ${outFile}`);
+  console.log(`[manual-validation] wrote ${outFile}`);
+}
+
+function isSafeVariant(value: string): boolean {
+  return /^[A-Za-z0-9_-]+$/.test(value);
 }
 
 main().catch((error: unknown) => {

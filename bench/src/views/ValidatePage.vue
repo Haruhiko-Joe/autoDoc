@@ -59,10 +59,15 @@
         </div>
       </div>
 
-      <button type="submit" class="btn-primary"
-              :disabled="!selectedRun || isSelectedRunning">
-        {{ isSelectedRunning ? `${selectedRun?.project}/${selectedRun?.runId} running...` : 'Start Validation' }}
-      </button>
+      <div class="actions">
+        <button type="submit" class="btn-primary"
+                :disabled="!selectedRun || isSelectedRunning">
+          {{ isSelectedRunning ? `${selectedRun?.project}/${selectedRun?.runId} running...` : 'Start Validation' }}
+        </button>
+        <RouterLink :to="{ name: 'manual-validate', query: selectedRun ? { project: selectedRun.project, runId: selectedRun.runId } : {} }" class="link-button">
+          Manual Answers
+        </RouterLink>
+      </div>
     </form>
 
     <div v-if="selectedValidation" class="summary-panel">
@@ -276,6 +281,20 @@ function percent(value: number | null | undefined): string {
   font-weight: 600;
   transition: background 0.15s;
   align-self: flex-start;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.link-button {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .btn-primary:hover:not(:disabled) {

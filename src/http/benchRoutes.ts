@@ -1,11 +1,13 @@
-import { readdir, readFile, stat } from "node:fs/promises";
+import { readdir, readFile, stat, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { parseBody, sendJson, type HttpContext, type RouteHandler } from "./types.js";
 
 const BENCH_DIR = path.resolve("bench/data");
 const GENERATE_SCRIPT = path.resolve("bench/scripts/generate-qa.ts");
 const VALIDATE_SCRIPT = path.resolve("bench/scripts/validate-answers.ts");
+const VALIDATE_MANUAL_SCRIPT = path.resolve("bench/scripts/validate-manual-answers.ts");
 const ABLATION_SCRIPT = path.resolve("bench/scripts/generate-ablation-docs.ts");
 
 interface TaskState {
@@ -76,6 +78,13 @@ export function createBenchRoutes(): RouteHandler {
     if (p === "/api/bench/validate" && req.method === "POST") {
       const body = await parseBody(req);
       const result = await startValidate(body);
+      sendJson(res, result);
+      return true;
+    }
+
+    if (p === "/api/bench/validate/manual" && req.method === "POST") {
+      const body = await parseBody(req);
+      const result = await startManualValidate(body);
       sendJson(res, result);
       return true;
     }
@@ -359,19 +368,21 @@ function startAblation(body: Record<string, unknown>): { ok: boolean; project: s
   return { ok: true, project, runId: "ablation" };
 }
 
-async function startValidate(body: Record<string, unknown>): Promise<{ ok: boolean; project: string; error?: string }> {
+async function startValidate(body: Record<string, unknown>): Promise<{ ok: boolean; project: string; runId: string; error?: string }> {
   const project = stringValue(body.project, "git");
+  const runId = stringValue(body.runId, "latest");
   const docVariant = docVariantValue(body.docVariant, "full");
-  if (!docVariant) return { ok: false, project, error: "Invalid documentation variant" };
+  if (!docVariant) return { ok: false, project, runId, error: "Invalid documentation variant" };
 
-  const key = `${project}/${docVariant}`;
+  const key = validationTaskKey(project, runId, docVariant);
   const existing = validateTasks.get(key);
   if (existing?.status === "running") {
-    return { ok: false, project, error: `Validation already running for ${key}` };
+    return { ok: false, project, runId, error: `Validation already running for ${key}` };
   }
 
   const args: string[] = [
     "--project", project,
+    "--run-id", runId,
     "--data-dir", BENCH_DIR,
     "--doc-variant", docVariant,
     "--validation-root", path.resolve("bench/validation"),
@@ -385,10 +396,57 @@ async function startValidate(body: Record<string, unknown>): Promise<{ ok: boole
   if (body.language) args.push("--language", String(body.language));
   if (body.force) args.push("--force");
 
-  const state: TaskState = { status: "running", log: [], project, runId: docVariant, docVariant };
+  const state: TaskState = { status: "running", log: [], project, runId, docVariant };
   validateTasks.set(key, state);
   spawnTask(state, VALIDATE_SCRIPT, args);
-  return { ok: true, project };
+  return { ok: true, project, runId };
+}
+
+async function startManualValidate(body: Record<string, unknown>): Promise<{ ok: boolean; project: string; runId: string; error?: string }> {
+  const project = stringValue(body.project, "git");
+  const runId = stringValue(body.runId, "latest");
+  const docVariant = docVariantValue(body.docVariant, "chatgpt-5-5");
+  if (!docVariant) return { ok: false, project, runId, error: "Invalid validation label" };
+
+  const answers = body.answers;
+  if (!isRecord(answers)) return { ok: false, project, runId, error: "answers must be an object keyed by item id" };
+  const normalizedAnswers = Object.fromEntries(
+    Object.entries(answers)
+      .filter(([, value]) => typeof value === "string" && value.trim())
+      .map(([key, value]) => [key, (value as string).trim()]),
+  );
+  if (Object.keys(normalizedAnswers).length === 0) {
+    return { ok: false, project, runId, error: "No pasted answers to validate" };
+  }
+
+  const key = validationTaskKey(project, runId, docVariant);
+  const existing = validateTasks.get(key);
+  if (existing?.status === "running") {
+    return { ok: false, project, runId, error: `Validation already running for ${key}` };
+  }
+
+  const inputDir = path.resolve("bench/validation/manual-inputs");
+  await mkdir(inputDir, { recursive: true });
+  const answersFile = path.join(inputDir, `${randomUUID()}.json`);
+  await writeFile(answersFile, `${JSON.stringify({ answers: normalizedAnswers }, null, 2)}\n`, "utf-8");
+
+  const args: string[] = [
+    "--project", project,
+    "--run-id", runId,
+    "--data-dir", BENCH_DIR,
+    "--doc-variant", docVariant,
+    "--answers-file", answersFile,
+    "--answer-provider", stringValue(body.answerProvider, "ChatGPT 5.5"),
+    "--judge-provider", stringValue(body.judgeProvider, "claude"),
+  ];
+  if (body.limit) args.push("--limit", String(body.limit));
+  if (body.itemIds) args.push("--item-ids", String(body.itemIds));
+  if (body.language) args.push("--language", String(body.language));
+
+  const state: TaskState = { status: "running", log: [], project, runId, docVariant };
+  validateTasks.set(key, state);
+  spawnTask(state, VALIDATE_MANUAL_SCRIPT, args);
+  return { ok: true, project, runId };
 }
 
 function spawnTask(state: TaskState, script: string, args: string[]): void {

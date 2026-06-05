@@ -117,7 +117,7 @@ export interface ValidationDetail extends ValidationSummary {
   docProject: string
   browseScript: string
   language: string
-  mode: 'doc-drill'
+  mode?: 'doc-drill' | 'manual'
   createdAt: string
   results: ValidationItem[]
 }
@@ -189,6 +189,15 @@ export async function startGenerate(opts: Record<string, unknown>): Promise<{ ok
 
 export async function startValidate(opts: Record<string, unknown>): Promise<{ ok: boolean; project: string; runId: string; error?: string }> {
   const res = await fetch(`${BASE}/validate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(opts),
+  })
+  return res.json()
+}
+
+export async function startManualValidate(opts: Record<string, unknown>): Promise<{ ok: boolean; project: string; runId: string; error?: string }> {
+  const res = await fetch(`${BASE}/validate/manual`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(opts),

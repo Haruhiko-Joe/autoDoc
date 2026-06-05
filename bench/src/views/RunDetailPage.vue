@@ -16,6 +16,9 @@
         <RouterLink :to="{ name: 'validate', query: { project: detail.project, runId: detail.runId } }" class="validate-link">
           Run Validation
         </RouterLink>
+        <RouterLink :to="{ name: 'manual-validate', query: { project: detail.project, runId: detail.runId } }" class="validate-link">
+          Manual Answers
+        </RouterLink>
         <span class="date">{{ formatDate(detail.createdAt) }}</span>
       </div>
 
@@ -23,7 +26,11 @@
         <div class="validation-head">
           <div>
             <h2>Validation</h2>
-            <p>{{ validationDetail.docVariant }} - {{ validationDetail.mode }} - answer {{ validationDetail.answerProvider }} - judge {{ validationDetail.judgeProvider }}</p>
+            <p>
+              {{ validationDetail.docVariant }}
+              <template v-if="validationDetail.mode"> - {{ validationDetail.mode }}</template>
+              - answer {{ validationDetail.answerProvider }} - judge {{ validationDetail.judgeProvider }}
+            </p>
           </div>
           <div class="validation-side">
             <select v-if="validationEntries.length > 1" v-model="selectedVariant" class="variant-select" @change="loadSelectedValidation">

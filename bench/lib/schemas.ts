@@ -55,7 +55,7 @@ export const JudgeOutput = z.object({
 export type JudgeOutput = z.infer<typeof JudgeOutput>;
 
 export const ValidationAnswer = z.object({
-  provider: Provider,
+  provider: z.string(),
   sessionId: z.string(),
   text: z.string(),
   metrics: AgentMetrics.optional(),
@@ -85,10 +85,10 @@ export type ValidationItem = z.infer<typeof ValidationItem>;
 export const ValidationFile = z.object({
   schemaVersion: z.literal(2),
   project: z.string(),
-  docVariant: Variant,
+  docVariant: z.string(),
   workdir: z.string(),
   language: Language,
-  answerProvider: Provider,
+  answerProvider: z.string(),
   judgeProvider: Provider,
   createdAt: z.string(),
   updatedAt: z.string(),
