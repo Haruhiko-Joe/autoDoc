@@ -38,6 +38,38 @@
           <span>{{ validationDetail.completedCount }}/{{ validationDetail.itemCount }} completed</span>
           <span>{{ formatDate(validationDetail.updatedAt) }}</span>
         </div>
+        <div v-if="answerUsageSummary" class="usage-summary">
+          <div class="usage-grid">
+            <div class="usage-cell">
+              <span class="usage-label">Total</span>
+              <span class="usage-value">{{ formatTokens(answerUsageSummary.totalTokens) }}</span>
+            </div>
+            <div class="usage-cell">
+              <span class="usage-label">Input</span>
+              <span class="usage-value">{{ formatTokens(answerUsageSummary.inputTokens) }}</span>
+            </div>
+            <div class="usage-cell">
+              <span class="usage-label">Output</span>
+              <span class="usage-value">{{ formatTokens(answerUsageSummary.outputTokens) }}</span>
+            </div>
+            <div class="usage-cell">
+              <span class="usage-label">Cached</span>
+              <span class="usage-value">{{ formatTokens(answerUsageSummary.cachedInputTokens) }}</span>
+            </div>
+            <div v-if="answerUsageSummary.reasoningOutputTokens" class="usage-cell">
+              <span class="usage-label">Reasoning</span>
+              <span class="usage-value">{{ formatTokens(answerUsageSummary.reasoningOutputTokens) }}</span>
+            </div>
+            <div v-if="answerUsageSummary.costUsd" class="usage-cell">
+              <span class="usage-label">Cost</span>
+              <span class="usage-value">${{ answerUsageSummary.costUsd.toFixed(2) }}</span>
+            </div>
+            <div class="usage-cell">
+              <span class="usage-label">Avg/item</span>
+              <span class="usage-value">{{ formatTokens(Math.round(answerUsageSummary.totalTokens / answerUsageSummary.count)) }}</span>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="qa-list">
@@ -65,11 +97,26 @@
                   <span>{{ validationByItem[item.id]?.judge?.output.verdict }}</span>
                   <span class="muted">{{ usageText(validationByItem[item.id]?.answer?.metrics) }}</span>
                 </div>
-                <div class="answer-text candidate">{{ validationByItem[item.id]?.answer?.output.answer }}</div>
-                <div v-if="validationByItem[item.id]?.answer?.output.citations.length" class="citation-list">
-                  <div v-for="citation in validationByItem[item.id]?.answer?.output.citations" :key="citation.source" class="citation">
-                    <strong>{{ citation.source }}</strong>
-                    <span>{{ citation.summary }}</span>
+                <div class="answer-columns">
+                  <div class="answer-col">
+                    <div class="col-head">
+                      <select v-model="compareLeft" class="compare-select">
+                        <option v-for="o in compareOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
+                      </select>
+                      <span v-if="compareLeft !== 'gold'" class="score-mini inline">{{ percent(compareScore(item.id, compareLeft)) }}</span>
+                      <span v-if="compareLeft !== 'gold'" class="muted">{{ usageText(compareMetrics(item.id, compareLeft)) }}</span>
+                    </div>
+                    <div class="answer-text" :class="{ candidate: compareLeft !== 'gold' }">{{ compareText(item.id, compareLeft, item) }}</div>
+                  </div>
+                  <div class="answer-col">
+                    <div class="col-head">
+                      <select v-model="compareRight" class="compare-select">
+                        <option v-for="o in compareOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
+                      </select>
+                      <span v-if="compareRight !== 'gold'" class="score-mini inline">{{ percent(compareScore(item.id, compareRight)) }}</span>
+                      <span v-if="compareRight !== 'gold'" class="muted">{{ usageText(compareMetrics(item.id, compareRight)) }}</span>
+                    </div>
+                    <div class="answer-text" :class="{ candidate: compareRight !== 'gold' }">{{ compareText(item.id, compareRight, item) }}</div>
                   </div>
                 </div>
                 <div v-if="validationByItem[item.id]?.judge?.output.judgeSummary" class="judge-summary">
@@ -83,10 +130,6 @@
                   </div>
                 </div>
               </template>
-            </div>
-            <div class="section">
-              <h3>Gold Answer</h3>
-              <div class="answer-text">{{ item.goldAnswer }}</div>
             </div>
             <div class="section">
               <h3>Scoring Points</h3>
@@ -124,7 +167,7 @@ import { useRoute, RouterLink } from 'vue-router'
 import {
   fetchRunDetailById,
   fetchValidationByVariant,
-  type AgentRunMetrics,
+  type AgentMetrics,
   type RunDetail,
   type ValidationDetail,
   type ValidationItem,
@@ -141,6 +184,31 @@ const selectedVariant = ref('')
 const validationDetail = ref<ValidationDetail | null>(null)
 const validationByItem = ref<Record<string, ValidationItem>>({})
 
+const allVariantData = ref<Record<string, Record<string, ValidationItem>>>({})
+const compareLeft = ref('gold')
+const compareRight = ref('')
+
+const answerUsageSummary = computed(() => {
+  const items = Object.values(validationByItem.value).filter(r => r.status === 'done' && r.answer?.metrics)
+  if (items.length === 0) return null
+  let inputTokens = 0, cachedInputTokens = 0, cacheCreationInputTokens = 0
+  let outputTokens = 0, reasoningOutputTokens = 0, totalTokens = 0
+  let costUsd = 0, durationMs = 0, count = 0
+  for (const item of items) {
+    const m = item.answer!.metrics!
+    inputTokens += m.inputTokens ?? 0
+    cachedInputTokens += m.cachedInputTokens ?? 0
+    cacheCreationInputTokens += m.cacheCreationInputTokens ?? 0
+    outputTokens += m.outputTokens ?? 0
+    reasoningOutputTokens += m.reasoningOutputTokens ?? 0
+    totalTokens += m.totalTokens ?? 0
+    costUsd += m.costUsd ?? 0
+    durationMs += m.durationMs ?? 0
+    count++
+  }
+  return { inputTokens, cachedInputTokens, cacheCreationInputTokens, outputTokens, reasoningOutputTokens, totalTokens, costUsd, durationMs, count }
+})
+
 const validationEntries = computed(() => {
   const data = detail.value
   const validations = data?.validations ?? (data?.validation ? { [data.validation.docVariant]: data.validation } : {})
@@ -149,12 +217,51 @@ const validationEntries = computed(() => {
     .sort((a, b) => variantRank(a.variant) - variantRank(b.variant) || a.variant.localeCompare(b.variant))
 })
 
+const compareOptions = computed(() => {
+  const opts = [{ value: 'gold', label: 'Gold Answer' }]
+  for (const e of validationEntries.value) {
+    opts.push({ value: e.variant, label: e.variant })
+  }
+  return opts
+})
+
+function compareText(itemId: string, source: string, item: { goldAnswer: string }): string {
+  if (source === 'gold') return item.goldAnswer
+  return answerText(allVariantData.value[source]?.[itemId])
+}
+
+function compareScore(itemId: string, source: string): number | null | undefined {
+  if (source === 'gold') return undefined
+  return allVariantData.value[source]?.[itemId]?.judge?.output.normalizedScore
+}
+
+function compareMetrics(itemId: string, source: string): AgentMetrics | undefined {
+  if (source === 'gold') return undefined
+  return allVariantData.value[source]?.[itemId]?.answer?.metrics
+}
+
 onMounted(async () => {
   detail.value = await fetchRunDetailById(project, runId)
   selectedVariant.value = detail.value.validation?.docVariant ?? validationEntries.value[0]?.variant ?? ''
   await loadSelectedValidation()
+  await loadAllVariants()
+  compareRight.value = selectedVariant.value || validationEntries.value[0]?.variant || ''
   loading.value = false
 })
+
+async function loadAllVariants() {
+  if (!detail.value) return
+  const data: Record<string, Record<string, ValidationItem>> = {}
+  for (const entry of validationEntries.value) {
+    try {
+      const vd = entry.variant === validationDetail.value?.docVariant
+        ? validationDetail.value
+        : await fetchValidationByVariant(detail.value.project, detail.value.runId, entry.variant)
+      if (vd) data[entry.variant] = Object.fromEntries(vd.results.map(r => [r.itemId, r]))
+    } catch { /* skip */ }
+  }
+  allVariantData.value = data
+}
 
 async function loadSelectedValidation() {
   if (!detail.value || !selectedVariant.value) {
@@ -193,13 +300,33 @@ function percent(value: number | null | undefined): string {
   return `${Math.round(value * 100)}%`
 }
 
-function usageText(metrics: AgentRunMetrics | undefined): string {
-  const tokens = metrics?.usage?.totalTokens
-  const tools = metrics?.toolUse?.total
-  const parts = []
-  if (typeof tokens === 'number') parts.push(`${tokens.toLocaleString()} tokens`)
-  if (typeof tools === 'number') parts.push(`${tools} tools`)
-  return parts.join(' - ')
+function answerText(item: ValidationItem | undefined): string {
+  if (!item?.answer) return ''
+  const a = item.answer as Record<string, unknown>
+  if (typeof a.text === 'string') return a.text
+  if (typeof a.output === 'object' && a.output && typeof (a.output as Record<string, unknown>).answer === 'string') {
+    return (a.output as Record<string, unknown>).answer as string
+  }
+  return ''
+}
+
+function formatTokens(n: number | undefined): string {
+  if (n == null) return ''
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
+  return String(n)
+}
+
+function usageText(metrics: AgentMetrics | undefined): string {
+  if (!metrics) return ''
+  const parts: string[] = []
+  if (metrics.totalTokens != null) parts.push(`${formatTokens(metrics.totalTokens)} tok`)
+  if (metrics.cachedInputTokens) parts.push(`cache ${formatTokens(metrics.cachedInputTokens)}`)
+  if (metrics.costUsd != null) parts.push(`$${metrics.costUsd.toFixed(3)}`)
+  if (metrics.durationMs != null) parts.push(`${(metrics.durationMs / 1000).toFixed(1)}s`)
+  const toolTotal = metrics.toolCalls ? Object.values(metrics.toolCalls).reduce((s, n) => s + n, 0) : 0
+  if (toolTotal > 0) parts.push(`${toolTotal} tools`)
+  return parts.join(' · ')
 }
 
 function variantRank(variant: string): number {
@@ -403,6 +530,34 @@ function variantRank(variant: string): number {
   border: 1px solid var(--border);
 }
 
+.answer-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.col-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.compare-select {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-card);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  outline: none;
+}
+
+.answer-col .answer-text {
+  height: 100%;
+}
+
 .concepts {
   display: flex;
   flex-wrap: wrap;
@@ -532,6 +687,37 @@ function variantRank(variant: string): number {
 .task-error {
   color: var(--red);
   font-size: 13px;
+}
+
+.usage-summary {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.usage-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.usage-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.usage-label {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.usage-value {
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 @media (prefers-color-scheme: dark) {

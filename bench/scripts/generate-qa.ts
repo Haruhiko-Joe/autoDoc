@@ -347,7 +347,7 @@ function exactBatch(items: QaItem[], batchCount: number, provider: Provider, bat
 }
 
 function outputPath(options: GenerateOptions): string {
-  return path.join(options.outDir, options.project, options.runId, "qa.generated.json");
+  return path.join(options.outDir, options.project, "qa.generated.json");
 }
 
 function newRunId(): string {

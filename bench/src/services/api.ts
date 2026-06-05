@@ -46,37 +46,17 @@ export interface QaItem {
   itemIndex: number
 }
 
-export interface AgentUsage {
-  inputTokens?: number | null
-  cachedInputTokens?: number | null
-  outputTokens?: number | null
-  reasoningOutputTokens?: number | null
-  totalTokens?: number | null
-  totalCostUsd?: number | null
-  durationMs?: number | null
-  turns?: number | null
-}
-
-export interface AgentToolUse {
-  total: number
-  byType: Record<string, number>
-}
-
-export interface AgentRunMetrics {
-  usage?: AgentUsage
-  toolUse?: AgentToolUse
-}
-
-export interface AnswerCitation {
-  source: string
-  summary: string
-}
-
-export interface AnswerVerifierOutput {
-  answer: string
-  citations: AnswerCitation[]
-  confidence: 'high' | 'medium' | 'low'
-  missingInfo: string
+export interface AgentMetrics {
+  inputTokens?: number
+  cachedInputTokens?: number
+  cacheCreationInputTokens?: number
+  outputTokens?: number
+  reasoningOutputTokens?: number
+  totalTokens?: number
+  costUsd?: number
+  durationMs?: number
+  turns?: number
+  toolCalls?: Record<string, number>
 }
 
 export interface AnswerJudgePointResult {
@@ -105,14 +85,14 @@ export interface ValidationItem {
   answer?: {
     provider: string
     sessionId: string
-    output: AnswerVerifierOutput
-    metrics?: AgentRunMetrics
+    text: string
+    metrics?: AgentMetrics
   }
   judge?: {
     provider: string
     sessionId: string
     output: AnswerJudgeOutput
-    metrics?: AgentRunMetrics
+    metrics?: AgentMetrics
   }
   error?: string
 }

@@ -96,7 +96,10 @@ export class ClaudeAgent<S extends z.ZodType, T = z.infer<S>> {
           metrics = {
             usage: {
               inputTokens: message.usage.input_tokens,
+              cachedInputTokens: message.usage.cache_read_input_tokens,
+              cacheCreationInputTokens: message.usage.cache_creation_input_tokens,
               outputTokens: message.usage.output_tokens,
+              reasoningOutputTokens: message.usage.output_tokens_details?.thinking_tokens ?? 0,
               totalTokens: message.usage.input_tokens + message.usage.output_tokens,
               totalCostUsd: message.total_cost_usd,
               durationMs: message.duration_ms,

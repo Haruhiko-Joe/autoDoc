@@ -359,39 +359,36 @@ function startAblation(body: Record<string, unknown>): { ok: boolean; project: s
   return { ok: true, project, runId: "ablation" };
 }
 
-async function startValidate(body: Record<string, unknown>): Promise<{ ok: boolean; project: string; runId: string; error?: string }> {
+async function startValidate(body: Record<string, unknown>): Promise<{ ok: boolean; project: string; error?: string }> {
   const project = stringValue(body.project, "git");
-  const requestedRunId = optionalString(body.runId);
-  const ref = await resolveRunRef(project, requestedRunId);
-  if (!ref) return { ok: false, project, runId: requestedRunId ?? "", error: `QA run not found for ${project}` };
-
   const docVariant = docVariantValue(body.docVariant, "full");
-  if (!docVariant) return { ok: false, project, runId: ref.runId, error: "Invalid documentation variant" };
-  const key = validationTaskKey(project, ref.runId, docVariant);
+  if (!docVariant) return { ok: false, project, error: "Invalid documentation variant" };
+
+  const key = `${project}/${docVariant}`;
   const existing = validateTasks.get(key);
   if (existing?.status === "running") {
-    return { ok: false, project, runId: ref.runId, error: `Validation already running for ${key}` };
+    return { ok: false, project, error: `Validation already running for ${key}` };
   }
 
-  const docRoot = resolveDocRoot(body, docVariant);
   const args: string[] = [
     "--project", project,
-    "--run-id", ref.runId,
     "--data-dir", BENCH_DIR,
     "--doc-variant", docVariant,
-    "--doc-root", docRoot,
-    "--doc-project", stringValue(body.docProject, project),
+    "--validation-root", path.resolve("bench/validation"),
+    "--ablation-docs", path.resolve("bench/data/ablation-docs"),
+    "--skill-template", path.resolve("src/skill-template-readonly"),
   ];
   if (body.limit) args.push("--limit", String(body.limit));
   if (body.itemIds) args.push("--item-ids", String(body.itemIds));
   if (body.answerProvider) args.push("--answer-provider", String(body.answerProvider));
   if (body.judgeProvider) args.push("--judge-provider", String(body.judgeProvider));
   if (body.language) args.push("--language", String(body.language));
+  if (body.force) args.push("--force");
 
-  const state: TaskState = { status: "running", log: [], project, runId: ref.runId, docVariant };
+  const state: TaskState = { status: "running", log: [], project, runId: docVariant, docVariant };
   validateTasks.set(key, state);
   spawnTask(state, VALIDATE_SCRIPT, args);
-  return { ok: true, project, runId: ref.runId };
+  return { ok: true, project };
 }
 
 function spawnTask(state: TaskState, script: string, args: string[]): void {

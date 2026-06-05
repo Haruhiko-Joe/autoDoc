@@ -195,6 +195,7 @@ export const CheckerOutput = z.object({
 export const AgentUsage = z.object({
   inputTokens: z.number().int().min(0).nullable().optional(),
   cachedInputTokens: z.number().int().min(0).nullable().optional(),
+  cacheCreationInputTokens: z.number().int().min(0).nullable().optional(),
   outputTokens: z.number().int().min(0).nullable().optional(),
   reasoningOutputTokens: z.number().int().min(0).nullable().optional(),
   totalTokens: z.number().int().min(0).nullable().optional(),

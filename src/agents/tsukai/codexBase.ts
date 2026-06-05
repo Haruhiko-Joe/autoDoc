@@ -102,7 +102,7 @@ function collectCodexMetrics(usage: Usage | null, items: ThreadItem[]): AgentRun
       cachedInputTokens: usage.cached_input_tokens,
       outputTokens: usage.output_tokens,
       reasoningOutputTokens: usage.reasoning_output_tokens,
-      totalTokens: usage.input_tokens + usage.cached_input_tokens + usage.output_tokens + usage.reasoning_output_tokens,
+      totalTokens: usage.input_tokens + usage.output_tokens,
     } : undefined,
     toolUse: { total, byType },
   };
