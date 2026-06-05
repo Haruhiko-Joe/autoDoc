@@ -4,7 +4,9 @@
       <RouterLink to="/" class="nav-brand">ACCEED Benchmark</RouterLink>
       <div class="nav-links">
         <RouterLink to="/">Runs</RouterLink>
+        <RouterLink to="/ablation">Ablation</RouterLink>
         <RouterLink to="/generate">Generate</RouterLink>
+        <RouterLink to="/validate">Validate</RouterLink>
       </div>
     </nav>
     <main class="main">

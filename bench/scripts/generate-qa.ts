@@ -97,6 +97,7 @@ const GeneratedQaItem = QaItem.extend({
 const GeneratedQaFile = z.object({
   schemaVersion: z.literal(1),
   project: z.string(),
+  runId: z.string(),
   repoPath: z.string(),
   language: Language,
   createdAt: z.string(),
@@ -121,6 +122,7 @@ type GeneratedQaFile = z.infer<typeof GeneratedQaFile>;
 
 type GenerateOptions = {
   project: string;
+  runId: string;
   repoPath: string;
   outDir: string;
   language: Language;
@@ -139,6 +141,7 @@ function usage(): string {
     "",
     "Options:",
     "  --project <name>          Project name (default: git)",
+    "  --run-id <id>             Output run id (default: timestamp)",
     "  --repo <path>             Target source repo (default: src/souko/repo/git)",
     "  --out-dir <path>          Output root (default: bench/data)",
     "  --language <zh|en>        QA language (default: zh)",
@@ -167,6 +170,7 @@ function parseArgs(argv: string[]): GenerateOptions {
 
   return {
     project: values.get("project") ?? "git",
+    runId: values.get("run-id") ?? newRunId(),
     repoPath: path.resolve(values.get("repo") ?? "src/souko/repo/git"),
     outDir: path.resolve(values.get("out-dir") ?? "bench/data"),
     language,
@@ -343,7 +347,11 @@ function exactBatch(items: QaItem[], batchCount: number, provider: Provider, bat
 }
 
 function outputPath(options: GenerateOptions): string {
-  return path.join(options.outDir, options.project, "qa.generated.json");
+  return path.join(options.outDir, options.project, options.runId, "qa.generated.json");
+}
+
+function newRunId(): string {
+  return new Date().toISOString().replace(/[:.]/g, "-");
 }
 
 async function writeGeneratedFile(filePath: string, data: GeneratedQaFile): Promise<void> {
@@ -360,6 +368,7 @@ async function main(): Promise<void> {
   const data: GeneratedQaFile = {
     schemaVersion: 1,
     project: options.project,
+    runId: options.runId,
     repoPath: options.repoPath,
     language: options.language,
     createdAt: now,

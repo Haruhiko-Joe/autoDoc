@@ -1,6 +1,6 @@
-import type { Codex, Thread } from "@openai/codex-sdk";
+import type { Codex, Thread, ThreadItem, Usage } from "@openai/codex-sdk";
 import { toOutputSchema, resolveInstruction } from "../schemas/schema.js";
-import type { AgentResult, Language } from "../schemas/schema.js";
+import type { AgentResult, AgentRunMetrics, Language } from "../schemas/schema.js";
 import type { z } from "zod";
 import { createCodexClient } from "./codexProfile.js";
 import type { CodexProfileName } from "./codexProfile.js";
@@ -78,6 +78,32 @@ export class CodexAgent<S extends z.ZodType, T = z.infer<S>> {
     if (!threadId) throw new Error("Thread has no ID after execution");
     this.threadId = threadId;
     const result = this.config.outputSchema.parse(JSON.parse(turn.finalResponse)) as T;
-    return { sessionId: threadId, result };
+    return { sessionId: threadId, result, metrics: collectCodexMetrics(turn.usage, turn.items) };
   }
+}
+
+function collectCodexMetrics(usage: Usage | null, items: ThreadItem[]): AgentRunMetrics {
+  const byType: Record<string, number> = {};
+  for (const item of items) {
+    if (item.type === "command_execution") {
+      byType.command_execution = (byType.command_execution ?? 0) + 1;
+    } else if (item.type === "mcp_tool_call") {
+      const key = `mcp:${item.server}/${item.tool}`;
+      byType[key] = (byType[key] ?? 0) + 1;
+    } else if (item.type === "web_search") {
+      byType.web_search = (byType.web_search ?? 0) + 1;
+    }
+  }
+
+  const total = Object.values(byType).reduce((sum, count) => sum + count, 0);
+  return {
+    usage: usage ? {
+      inputTokens: usage.input_tokens,
+      cachedInputTokens: usage.cached_input_tokens,
+      outputTokens: usage.output_tokens,
+      reasoningOutputTokens: usage.reasoning_output_tokens,
+      totalTokens: usage.input_tokens + usage.cached_input_tokens + usage.output_tokens + usage.reasoning_output_tokens,
+    } : undefined,
+    toolUse: { total, byType },
+  };
 }
