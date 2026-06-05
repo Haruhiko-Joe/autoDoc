@@ -69,6 +69,18 @@ approval_policy = "never"
 sandbox_mode = "danger-full-access"
 personality = "pragmatic"
 `,
+  answerverifier: `
+model_reasoning_effort = "xhigh"
+approval_policy = "never"
+sandbox_mode = "read-only"
+personality = "pragmatic"
+`,
+  answerjudge: `
+model_reasoning_effort = "high"
+approval_policy = "never"
+sandbox_mode = "read-only"
+personality = "pragmatic"
+`,
 } as const;
 
 export type CodexProfileName = keyof typeof CODEX_PROFILE_TEMPLATES;

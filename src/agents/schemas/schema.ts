@@ -190,6 +190,58 @@ export const CheckerOutput = z.object({
   issues: z.array(CheckerIssue),
 })
 
+// --- Benchmark Answer Validation ---
+
+export const AgentUsage = z.object({
+  inputTokens: z.number().int().min(0).nullable().optional(),
+  cachedInputTokens: z.number().int().min(0).nullable().optional(),
+  cacheCreationInputTokens: z.number().int().min(0).nullable().optional(),
+  outputTokens: z.number().int().min(0).nullable().optional(),
+  reasoningOutputTokens: z.number().int().min(0).nullable().optional(),
+  totalTokens: z.number().int().min(0).nullable().optional(),
+  totalCostUsd: z.number().min(0).nullable().optional(),
+  durationMs: z.number().int().min(0).nullable().optional(),
+  turns: z.number().int().min(0).nullable().optional(),
+})
+
+export const AgentToolUse = z.object({
+  total: z.number().int().min(0),
+  byType: z.record(z.string(), z.number().int().min(0)),
+})
+
+export const AgentRunMetrics = z.object({
+  usage: AgentUsage.optional(),
+  toolUse: AgentToolUse.optional(),
+})
+
+export const AnswerCitation = z.object({
+  source: z.string(),
+  summary: z.string(),
+})
+
+export const AnswerVerifierOutput = z.object({
+  answer: z.string(),
+  citations: z.array(AnswerCitation),
+  confidence: z.enum(["high", "medium", "low"]),
+  missingInfo: z.string(),
+})
+
+export const AnswerJudgePointResult = z.object({
+  point: z.string(),
+  weight: z.number().int().min(1),
+  covered: z.boolean(),
+  rationale: z.string(),
+})
+
+export const AnswerJudgeOutput = z.object({
+  score: z.number().min(0),
+  maxScore: z.number().min(0),
+  normalizedScore: z.number().min(0).max(1),
+  verdict: z.enum(["excellent", "good", "partial", "poor"]),
+  scoringPointResults: z.array(AnswerJudgePointResult),
+  judgeSummary: z.string(),
+})
+
 // --- Insight (code review findings extracted from a finished worker session) ---
 
 export const InsightSeverity = z.enum(["critical", "high", "medium", "low"])
@@ -221,6 +273,7 @@ export const InsightOutput = z.object({
 export interface AgentResult<T = string> {
   sessionId: string
   result: T
+  metrics?: AgentRunMetrics
 }
 
 export interface IChecker {
@@ -272,6 +325,20 @@ export interface IPrUpdater {
   continue(prompt: string, onDelta?: PrUpdaterDelta): Promise<AgentResult<string>>
 }
 
+export interface IAnswerVerifier {
+  getSessionId(): string | undefined
+  restore(sessionId: string, workpath: string): void
+  run(prompt: string, workpath: string): Promise<AgentResult<AnswerVerifierOutput>>
+  continue(prompt: string): Promise<AgentResult<AnswerVerifierOutput>>
+}
+
+export interface IAnswerJudge {
+  getSessionId(): string | undefined
+  restore(sessionId: string, workpath: string): void
+  run(prompt: string, workpath: string): Promise<AgentResult<AnswerJudgeOutput>>
+  continue(prompt: string): Promise<AgentResult<AnswerJudgeOutput>>
+}
+
 // --- Inferred types ---
 
 export type EdgeType = z.infer<typeof EdgeType>
@@ -291,6 +358,13 @@ export type CheckerIssueType = z.infer<typeof CheckerIssueType>
 export type CheckerSeverity = z.infer<typeof CheckerSeverity>
 export type CheckerIssue = z.infer<typeof CheckerIssue>
 export type CheckerOutput = z.infer<typeof CheckerOutput>
+export type AgentUsage = z.infer<typeof AgentUsage>
+export type AgentToolUse = z.infer<typeof AgentToolUse>
+export type AgentRunMetrics = z.infer<typeof AgentRunMetrics>
+export type AnswerCitation = z.infer<typeof AnswerCitation>
+export type AnswerVerifierOutput = z.infer<typeof AnswerVerifierOutput>
+export type AnswerJudgePointResult = z.infer<typeof AnswerJudgePointResult>
+export type AnswerJudgeOutput = z.infer<typeof AnswerJudgeOutput>
 export type InsightSeverity = z.infer<typeof InsightSeverity>
 export type InsightCategory = z.infer<typeof InsightCategory>
 export type InsightItem = z.infer<typeof InsightItem>

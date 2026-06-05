@@ -1,4 +1,6 @@
 export { claudeChecker } from "./claudechecker.js";
+export { claudeAnswerJudge } from "./claudeanswerjudge.js";
+export { claudeAnswerVerifier } from "./claudeanswerverifier.js";
 export { claudeDecomposer } from "./claudedecomposer.js";
 export { claudeFlowAnalyzer } from "./claudeflowanalyzer.js";
 export { claudeKnowledge } from "./claudeknowledge.js";
@@ -6,6 +8,8 @@ export { claudeScaffold } from "./claudescaffold.js";
 export { claudeWriter } from "./claudewriter.js";
 export { claudePrUpdater } from "./claudeprupdater.js";
 export { codexChecker } from "./codexchecker.js";
+export { codexAnswerJudge } from "./codexanswerjudge.js";
+export { codexAnswerVerifier } from "./codexanswerverifier.js";
 export { codexDecomposer } from "./codexdecomposer.js";
 export { codexFlowAnalyzer } from "./codexflowanalyzer.js";
 export { codexKnowledge } from "./codexknowledge.js";

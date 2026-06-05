@@ -13,6 +13,50 @@ cd bench && pnpm dev
 
 打开 http://localhost:8009 即可通过 UI 操作。
 
+## Phase 0：生成消融文档
+
+先把 ACCEED 文档转换成本实验使用的三种 doc-drill 兼容变体：
+
+### 通过 UI
+
+访问 http://localhost:8009/ablation，选择项目和文档变体，点击 Generate Docs。
+
+### 通过 CLI
+
+```bash
+# 从项目根目录执行
+pnpm exec tsx bench/scripts/generate-ablation-docs.ts --project git --overwrite
+```
+
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `--project` | `git` | 项目名（对应 `src/souko/doc/{project}`） |
+| `--doc-root` | `src/souko/doc` | ACCEED 文档根目录 |
+| `--out-root` | `bench/data/ablation-docs` | 输出目录 |
+| `--variants` | `full,no-edges,flat-md` | 逗号分隔的变体列表 |
+| `--overwrite` | 关闭 | 覆盖已有输出 |
+
+输出结构：
+
+```
+bench/data/ablation-docs/
+├── full/{project}/
+│   ├── top.json
+│   ├── flows.json
+│   └── ...
+├── no-edges/{project}/
+│   ├── top.json          # edges cleared
+│   ├── flows.json        # { "flows": [] }
+│   └── ...
+└── flat-md/{project}/
+    ├── top.json
+    ├── flows.json        # { "flows": [] }
+    ├── manifest.json
+    └── FlatMarkdown/
+        ├── FlatMarkdown.json
+        └── *.md
+```
+
 ## Phase 1：生成 QA 对
 
 ### 通过 UI
@@ -65,35 +109,49 @@ pnpm exec tsx bench/scripts/generate-qa.ts --project git --count 10 --providers 
 - 行为后果和边界情况
 - 错误处理策略和状态转换
 
-## Phase 2：Validation（TODO）
+## Phase 2：Validation
 
-基于生成的 QA 对，让模型仅通过文档工具（doc-drill）回答问题，再用 judge 对比 gold answer 和采分点打分。
+基于生成的 QA 对，让模型分别根据 `full`、`no-edges`、`flat-md` 三种文档回答问题，再用 judge 对比 gold answer 和采分点打分。
 
-## 生成消融文档
+当前 Web UI 对应实验一：选择文档变体并跑回答验证。RAG 与 doc-drill 的消费方式对比属于实验二，计划见 `bench/实验提纲.md`。
 
-为结构消融实验生成文档变体（完整、去边、扁平 MD）：
+### 通过 UI
+
+访问 http://localhost:8009/validate，选择 QA run、回答 agent、judge agent 和文档变体，点击 Start Validation。
+
+验证结果会写入同一 run 目录：
+
+```
+bench/data/{project}/{runId}/validation.{variant}.json
+```
+
+Run 详情页会展示每题的回答、引用、采分点命中、总分和 token/tool 统计。
+
+### 通过 CLI
 
 ```bash
-# 从项目根目录执行
-pnpm exec tsx bench/scripts/generate-ablation-docs.ts [options]
+pnpm exec tsx bench/scripts/validate-answers.ts \
+  --project git \
+  --run-id 2026-06-01T055834-209Z \
+  --doc-variant full \
+  --doc-root bench/data/ablation-docs/full \
+  --answer-provider codex \
+  --judge-provider claude
 ```
 
 | 参数 | 默认值 | 说明 |
 |---|---|---|
-| `--project` | `git` | 项目名（对应 `src/souko/doc/{project}`） |
-| `--doc-root` | `src/souko/doc` | ACCEED 文档根目录 |
-| `--out-root` | `bench/data/ablation-docs` | 输出目录 |
-| `--variants` | `full,no-edges,flat-md` | 逗号分隔的变体列表 |
-| `--overwrite` | 关闭 | 覆盖已有输出 |
-
-输出结构示例：
-
-```
-bench/data/ablation-docs/
-├── full/{project}/ ...
-├── no-edges/{project}/ ...
-└── flat-md/{project}/ ...
-```
+| `--project` | `git` | 项目名 |
+| `--run-id` | 最新 run | QA run id |
+| `--data-dir` | `bench/data` | benchmark 数据根目录 |
+| `--doc-variant` | `source` | 文档变体标签；UI 使用 `full` / `no-edges` / `flat-md` |
+| `--doc-root` | `src/souko/doc` | 文档根目录 |
+| `--doc-project` | `--project` | 文档项目名 |
+| `--language` | QA 文件语言 | 输出语言（zh / en） |
+| `--limit` | 全部 | 仅验证前 N 个已选 QA |
+| `--item-ids` | 全部 | 逗号分隔 QA item id |
+| `--answer-provider` | `codex` | 回答 agent backend |
+| `--judge-provider` | `claude` | judge agent backend |
 
 ## 目录结构
 
@@ -104,7 +162,8 @@ bench/
 ├── vite.config.ts
 ├── index.html
 ├── scripts/
-│   ├── generate-qa.ts          # QA 生成脚本
+│   ├── generate-qa.ts             # QA 生成脚本
+│   ├── validate-answers.ts        # 回答验证脚本
 │   └── generate-ablation-docs.ts  # 生成消融文档变体
 ├── src/
 │   ├── main.ts
@@ -116,10 +175,14 @@ bench/
 │   └── views/
 │       ├── RunListPage.vue     # 历史 run 列表
 │       ├── RunDetailPage.vue   # QA 对详情
-│       └── GeneratePage.vue    # 生成配置
+│       ├── AblationPage.vue    # 消融文档生成配置
+│       ├── GeneratePage.vue    # 生成配置
+│       └── ValidatePage.vue    # 回答验证配置
 └── data/                       # 生成输出（gitignored）
+    ├── ablation-docs/{variant}/{project}/
     └── {project}/{runId}/
-        └── qa.generated.json
+        ├── qa.generated.json
+        └── validation.{variant}.json
 ```
 
 ## 后端 API
@@ -130,5 +193,11 @@ benchmark 相关的 API 挂载在主后端服务器（`:3100`）上：
 |---|---|---|
 | `/api/bench/runs` | GET | 列出所有 run（可 `?project=` 过滤） |
 | `/api/bench/runs/:project/:runId` | GET | 获取单个 run 的完整数据 |
+| `/api/bench/ablation` | POST | 触发消融文档生成 |
+| `/api/bench/ablation/status` | GET | 查询消融文档生成进度和日志 |
 | `/api/bench/generate` | POST | 触发 QA 生成 |
 | `/api/bench/generate/status` | GET | 查询生成进度和日志 |
+| `/api/bench/validate` | POST | 触发回答验证 |
+| `/api/bench/validate/status` | GET | 查询验证进度和日志 |
+| `/api/bench/validation/:project/:runId` | GET | 获取验证结果 |
+| `/api/bench/validation/:project/:runId/:variant` | GET | 获取指定文档变体的验证结果 |

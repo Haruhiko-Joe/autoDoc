@@ -6,7 +6,7 @@ export default defineConfig({
   server: {
     port: 8009,
     proxy: {
-      '/api': 'http://localhost:3100',
+      '/api': process.env.BENCH_API_TARGET ?? 'http://localhost:3100',
     },
   },
 })
