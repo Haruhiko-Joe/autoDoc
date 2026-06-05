@@ -7,6 +7,7 @@
         <RouterLink to="/ablation">Ablation</RouterLink>
         <RouterLink to="/generate">Generate</RouterLink>
         <RouterLink to="/validate">Validate</RouterLink>
+        <RouterLink to="/manual-validate">Manual</RouterLink>
       </div>
     </nav>
     <main class="main">

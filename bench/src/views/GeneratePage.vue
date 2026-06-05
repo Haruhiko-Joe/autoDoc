@@ -45,10 +45,14 @@
           <input v-model="form.codexModel" placeholder="(default)" />
         </div>
       </div>
-      <button type="submit" class="btn-primary"
-              :disabled="!form.project || isProjectRunning">
-        {{ isProjectRunning ? `${form.project} running...` : 'Start Generation' }}
-      </button>
+      <div class="actions">
+        <button type="submit" class="btn-primary"
+                :disabled="!form.project || isProjectRunning">
+          {{ isProjectRunning ? `${form.project} running...` : 'Start Generation' }}
+        </button>
+        <RouterLink to="/validate" class="link-button">Validate</RouterLink>
+        <RouterLink to="/manual-validate" class="link-button">Manual Answers</RouterLink>
+      </div>
     </form>
 
     <div v-if="Object.keys(tasks).length" class="tasks-panel">
@@ -70,6 +74,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { RouterLink } from 'vue-router'
 import { startGenerate, fetchGenerateStatus, fetchProjects, type Project, type TaskState } from '../services/api'
 
 const projects = ref<Project[]>([])
@@ -194,6 +199,20 @@ function stopPolling() {
   font-weight: 600;
   transition: background 0.15s;
   align-self: flex-start;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.link-button {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .btn-primary:hover:not(:disabled) {

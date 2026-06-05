@@ -31,6 +31,7 @@
         </button>
         <RouterLink to="/generate" class="link-button">Generate QA</RouterLink>
         <RouterLink to="/validate" class="link-button">Validate</RouterLink>
+        <RouterLink to="/manual-validate" class="link-button">Manual Answers</RouterLink>
       </div>
     </form>
 
