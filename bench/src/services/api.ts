@@ -62,6 +62,7 @@ export interface AgentMetrics {
 export interface AnswerJudgePointResult {
   point: string
   weight: number
+  score: number
   covered: boolean
   rationale: string
 }

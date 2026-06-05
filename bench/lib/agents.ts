@@ -3,7 +3,7 @@ import "dotenv/config";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { Codex } from "@openai/codex-sdk";
 import { z } from "zod";
-import { JudgeOutput, type AgentMetrics, type Language, type Provider, type Variant } from "./schemas.ts";
+import { RawJudgeOutput, type AgentMetrics, type Language, type Provider, type Variant } from "./schemas.ts";
 import { getVerifierInstruction, getJudgeInstruction } from "./instructions.ts";
 
 export interface AgentResult {
@@ -33,7 +33,7 @@ export async function runAnswerVerifier(opts: {
 // AnswerJudge — structured output, no tools
 // ---------------------------------------------------------------------------
 
-const judgeJsonSchema = toJsonSchema(JudgeOutput);
+const judgeJsonSchema = toJsonSchema(RawJudgeOutput);
 
 export async function runAnswerJudge(opts: {
   provider: Provider;

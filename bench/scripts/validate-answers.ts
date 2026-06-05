@@ -1,9 +1,9 @@
 import "dotenv/config";
 
-import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
-  JudgeOutput,
+  RawJudgeOutput,
   Provider,
   QaFile,
   ValidationFile,
@@ -103,16 +103,18 @@ function averageScore(results: ValidationItem[]): number | null {
 // ---------------------------------------------------------------------------
 
 function normalizeJudge(
-  raw: JudgeOutput,
+  raw: RawJudgeOutput,
   scoringPoints: Array<{ point: string; weight: number }>,
-): JudgeOutput {
+): import("../lib/schemas.ts").JudgeOutput {
   const maxScore = scoringPoints.reduce((s, p) => s + p.weight, 0);
-  const coveredScore = raw.scoringPointResults
-    .filter(p => p.covered)
-    .reduce((s, p) => s + p.weight, 0);
-  const score = Math.min(maxScore, Math.max(0, raw.scoringPointResults.length > 0 ? coveredScore : raw.score));
+  const scoringPointResults = scoringPoints.map((sp, i) => {
+    const r = raw.results[i];
+    const pts = Math.max(0, Math.min(sp.weight, r?.score ?? 0));
+    return { point: sp.point, weight: sp.weight, score: pts, covered: pts >= sp.weight, rationale: r?.rationale ?? "" };
+  });
+  const score = scoringPointResults.reduce((s, p) => s + p.score, 0);
   const normalizedScore = maxScore > 0 ? Number((score / maxScore).toFixed(4)) : 0;
-  return { ...raw, score, maxScore, normalizedScore, verdict: verdictFor(normalizedScore) };
+  return { score, maxScore, normalizedScore, verdict: verdictFor(normalizedScore), scoringPointResults, judgeSummary: raw.judgeSummary };
 }
 
 function verdictFor(n: number): "excellent" | "good" | "partial" | "poor" {
@@ -206,7 +208,7 @@ async function main(): Promise<void> {
       });
 
       const judgeOutput = normalizeJudge(
-        JudgeOutput.parse(JSON.parse(judgeResult.text)),
+        RawJudgeOutput.parse(JSON.parse(judgeResult.text)),
         item.scoringPoints,
       );
 

@@ -16,6 +16,9 @@ export function buildJudgePrompt(opts: {
   candidateAnswer: string;
 }): string {
   const lang = opts.language === "zh" ? "Chinese" : "English";
+  const pointsList = opts.scoringPoints
+    .map((sp, i) => `${i + 1}. [max ${sp.weight}] ${sp.point}`)
+    .join("\n");
   return [
     `Evaluate this candidate answer in ${lang}.`,
     "",
@@ -25,8 +28,8 @@ export function buildJudgePrompt(opts: {
     "## Gold Answer",
     opts.goldAnswer,
     "",
-    "## Scoring Points",
-    JSON.stringify(opts.scoringPoints, null, 2),
+    `## Scoring Points (${opts.scoringPoints.length} items)`,
+    pointsList,
     "",
     "## Candidate Answer",
     opts.candidateAnswer,

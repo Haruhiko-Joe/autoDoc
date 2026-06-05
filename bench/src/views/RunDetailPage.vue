@@ -124,8 +124,8 @@
                 </div>
                 <div class="scoring-list judge-points">
                   <div v-for="(sp, i) in validationByItem[item.id]?.judge?.output.scoringPointResults" :key="i"
-                       class="scoring-item" :class="{ covered: sp.covered, missed: !sp.covered }">
-                    <span class="scoring-weight">{{ sp.covered ? 'Hit' : 'Miss' }}</span>
+                       class="scoring-item" :class="{ covered: sp.covered, partial: !sp.covered && sp.score > 0, missed: sp.score === 0 }">
+                    <span class="scoring-weight">{{ sp.score }}/{{ sp.weight }}</span>
                     <span>{{ sp.point }}</span>
                   </div>
                 </div>
@@ -677,6 +677,11 @@ function variantRank(variant: string): number {
 .scoring-item.covered .scoring-weight {
   min-width: 40px;
   background: var(--green);
+}
+
+.scoring-item.partial .scoring-weight {
+  min-width: 40px;
+  background: var(--yellow, #ca8a04);
 }
 
 .scoring-item.missed .scoring-weight {

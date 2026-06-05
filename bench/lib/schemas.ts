@@ -23,17 +23,30 @@ export const AgentMetrics = z.object({
 
 export type AgentMetrics = z.infer<typeof AgentMetrics>;
 
+export const RawJudgePointResult = z.object({
+  score: z.number().int(),
+  rationale: z.string(),
+});
+
+export const RawJudgeOutput = z.object({
+  results: z.array(RawJudgePointResult),
+  judgeSummary: z.string(),
+});
+
+export type RawJudgeOutput = z.infer<typeof RawJudgeOutput>;
+
 export const JudgePointResult = z.object({
   point: z.string(),
   weight: z.number(),
+  score: z.number(),
   covered: z.boolean(),
   rationale: z.string(),
 });
 
 export const JudgeOutput = z.object({
-  score: z.number().min(0),
-  maxScore: z.number().min(0),
-  normalizedScore: z.number().min(0).max(1),
+  score: z.number(),
+  maxScore: z.number(),
+  normalizedScore: z.number(),
   verdict: z.enum(["excellent", "good", "partial", "poor"]),
   scoringPointResults: z.array(JudgePointResult),
   judgeSummary: z.string(),
