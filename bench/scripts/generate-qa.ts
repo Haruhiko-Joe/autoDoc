@@ -3,7 +3,7 @@ import "dotenv/config";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { OutputFormat } from "@anthropic-ai/claude-agent-sdk";
 import { Codex } from "@openai/codex-sdk";
-import { mkdir, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { toOutputSchema } from "../../src/agents/schemas/schema.js";
@@ -360,12 +360,24 @@ async function writeGeneratedFile(filePath: string, data: GeneratedQaFile): Prom
   await writeFile(filePath, `${JSON.stringify(parsed, null, 2)}\n`, "utf-8");
 }
 
+async function loadExistingGenerated(filePath: string): Promise<GeneratedQaFile | null> {
+  try {
+    const raw = JSON.parse(await readFile(filePath, "utf-8"));
+    return GeneratedQaFile.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   await assertDirectory(options.repoPath, "Repository path");
 
+  const filePath = outputPath(options);
+  const existing = await loadExistingGenerated(filePath);
+
   const now = new Date().toISOString();
-  const data: GeneratedQaFile = {
+  const data: GeneratedQaFile = existing ?? {
     schemaVersion: 1,
     project: options.project,
     runId: options.runId,
@@ -379,19 +391,30 @@ async function main(): Promise<void> {
     batches: [],
     items: [],
   };
-  const filePath = outputPath(options);
+  data.countPerProvider = options.count;
+  data.providers = options.providers;
+
+  if (existing) {
+    console.log(`[resume] loaded ${existing.items.length} existing items from ${filePath}`);
+  }
   await writeGeneratedFile(filePath, data);
 
   for (const provider of options.providers) {
+    const existingCount = data.items.filter(it => it.generator === provider).length;
+    if (existingCount >= options.count) {
+      console.log(`[${provider}] already has ${existingCount}/${options.count} items, skipping`);
+      continue;
+    }
+
     const codexThreadState: { thread?: ReturnType<Codex["startThread"]> } = {};
     let claudeSessionId: string | undefined;
-    let generatedForProvider = 0;
-    let batchIndex = 0;
+    let generatedForProvider = existingCount;
+    let batchIndex = data.batches.filter(b => b.provider === provider).length;
 
     while (generatedForProvider < options.count) {
       const remaining = options.count - generatedForProvider;
       const batchCount = Math.min(options.batchSize, remaining);
-      console.log(`[${provider}] generating batch ${batchIndex + 1} (${batchCount} QA pairs)`);
+      console.log(`[${provider}] generating batch ${batchIndex + 1} (${batchCount} QA pairs, ${generatedForProvider}/${options.count} done)`);
       const batch = provider === "codex"
         ? await runCodexBatch(options, provider, batchIndex, batchCount, codexThreadState)
         : await runClaudeBatch(options, provider, batchIndex, batchCount, claudeSessionId);

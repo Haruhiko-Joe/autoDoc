@@ -320,8 +320,10 @@ function formatTokens(n: number | undefined): string {
 function usageText(metrics: AgentMetrics | undefined): string {
   if (!metrics) return ''
   const parts: string[] = []
-  if (metrics.totalTokens != null) parts.push(`${formatTokens(metrics.totalTokens)} tok`)
-  if (metrics.cachedInputTokens) parts.push(`cache ${formatTokens(metrics.cachedInputTokens)}`)
+  if (metrics.inputTokens != null) parts.push(`in ${formatTokens(metrics.inputTokens)}`)
+  if (metrics.outputTokens != null) parts.push(`out ${formatTokens(metrics.outputTokens)}`)
+  if (metrics.cachedInputTokens) parts.push(`cached ${formatTokens(metrics.cachedInputTokens)}`)
+  if (metrics.reasoningOutputTokens) parts.push(`reason ${formatTokens(metrics.reasoningOutputTokens)}`)
   if (metrics.costUsd != null) parts.push(`$${metrics.costUsd.toFixed(3)}`)
   if (metrics.durationMs != null) parts.push(`${(metrics.durationMs / 1000).toFixed(1)}s`)
   const toolTotal = metrics.toolCalls ? Object.values(metrics.toolCalls).reduce((s, n) => s + n, 0) : 0

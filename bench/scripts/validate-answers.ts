@@ -140,6 +140,15 @@ function selectItems(data: QaFile, opts: Options): QaItem[] {
 // Main
 // ---------------------------------------------------------------------------
 
+async function loadExistingValidation(filePath: string): Promise<ValidationFile | null> {
+  try {
+    const raw = JSON.parse(await readFile(filePath, "utf-8"));
+    return ValidationFile.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
 async function main(): Promise<void> {
   const opts = parseArgs(process.argv.slice(2));
   const { file: qaFile, data: qaData } = await loadQaFile(opts.dataDir, opts.project);
@@ -158,6 +167,11 @@ async function main(): Promise<void> {
   });
   console.log(`[setup] workdir ready: ${workdir}`);
 
+  const existing = await loadExistingValidation(outFile);
+  const doneIds = new Set(
+    existing?.results.filter(r => r.status === "done").map(r => r.itemId) ?? [],
+  );
+
   const now = new Date().toISOString();
   const validation: ValidationFile = {
     schemaVersion: 2,
@@ -167,18 +181,19 @@ async function main(): Promise<void> {
     language,
     answerProvider: opts.answerProvider,
     judgeProvider: opts.judgeProvider,
-    createdAt: now,
+    createdAt: existing?.createdAt ?? now,
     updatedAt: now,
     itemCount: items.length,
     completedCount: 0,
     averageScore: null,
-    results: [],
+    results: existing?.results.filter(r => r.status === "done") ?? [],
   };
   await writeValidation(outFile, validation);
 
-  console.log(`[validation] project=${opts.project} variant=${opts.docVariant} items=${items.length}`);
+  const pending = items.filter(it => !doneIds.has(it.id));
+  console.log(`[validation] project=${opts.project} variant=${opts.docVariant} items=${items.length} done=${doneIds.size} pending=${pending.length}`);
 
-  for (const item of items) {
+  for (const item of pending) {
     const startedAt = new Date().toISOString();
     console.log(`[answer:${opts.answerProvider}] item=${item.id}`);
 
