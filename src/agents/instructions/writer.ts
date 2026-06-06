@@ -88,6 +88,8 @@ Unimportant private helper functions, pure type conversions, etc. can be skipped
 
 When quoting key code, annotate with file path and line numbers (e.g., \`src/auth/middleware.ts:42-58\`), making it easy for readers to locate the source. Choose code snippets that best illustrate the core logic, rather than pasting large blocks.
 
+**All file paths must be relative to the repository root.** Strip the repository root prefix from any absolute path before writing it into documentation. For example, if the repository root is \`/home/user/projects/vllm\`, write \`csrc/quantization/machete/machete_mainloop.cuh\`, never \`/home/user/projects/vllm/csrc/quantization/machete/machete_mainloop.cuh\`. The documentation will be read in different environments — absolute local paths are meaningless to readers.
+
 ### Language
 
 Write documentation content in **{{LANGUAGE}}**; keep code identifiers (function names, variable names, type names, etc.) as-is.

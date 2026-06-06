@@ -61,6 +61,7 @@ You will receive a prompt containing the following information:
 This is your core decision. Here is the judgment framework:
 
 **Conditions for marking as page (terminate as documentation)** — any one is sufficient:
+- **Single file**: if the sub-unit's codeScope contains only one file, it must be a page — never decompose a single file into a subgraph. Describe its internal details (exports, classes, key functions, design decisions) within that one Markdown page
 - Small code volume: the entire sub-unit has no more than 2-3 files, total lines within a few hundred
 - Single responsibility: does one clear thing, such as "JWT token verification", "database connection pool management", "date formatting utility collection"
 - No need for further decomposition: no obvious, relatively independent sub-modules internally
@@ -71,11 +72,12 @@ This is your core decision. Here is the judgment framework:
 - Decomposition adds value: after splitting, documentation for each sub-unit would be clearer than combined
 
 **Specific examples**:
-- \`src/utils/format.ts\` (a 150-line formatting utility file) → **page**
+- \`src/utils/format.ts\` (a single file, even if 500+ lines with many exports) → **page** (single file is always a page — describe its internals in-page)
 - \`src/auth/\` (contains middleware.ts, jwt.ts, permissions.ts, oauth/, sessions/) → **graph**
 - \`src/config/index.ts\` (a file exporting a config object) → **page**
 - \`src/api/\` (contains routes/, controllers/, validators/, middleware/) → **graph**
 - \`src/database/migrations/\` (10 migration files with the same pattern) → **page** (many files, but uniform logic pattern)
+- \`src/engine/orchestrator.ts\` (a single complex 800-line file with multiple classes) → **page** (single file — Writer will document its classes, methods, and design decisions within one page)
 
 ### Avoid Single-Node Subgraphs
 
