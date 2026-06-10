@@ -84,9 +84,9 @@ function renderNode(name: string): string {
 }
 
 function compactPositions(n: number, canvasW: number, canvasH: number) {
-  const margin = 72
-  const gapX = 56
-  const gapY = 48
+  const margin = Math.min(72, Math.max(24, Math.min(canvasW, canvasH) * 0.16))
+  const gapX = Math.min(56, Math.max(20, canvasW * 0.09))
+  const gapY = Math.min(48, Math.max(20, canvasH * 0.11))
   const cellW = NODE_WIDTH + gapX
   const cellH = NODE_HEIGHT + gapY
   const maxCols = Math.max(1, Math.floor(Math.max(canvasW - margin * 2, NODE_WIDTH) / cellW))
@@ -232,9 +232,10 @@ function createGraph() {
     if (!edgeData?.data) return
     const data = edgeData.data as unknown as EdgeData
     const rect = containerRef.value.getBoundingClientRect()
+    const popoverHalf = Math.min(280, rect.width) / 2
     popover.value = {
       visible: true,
-      x: (e.client?.x ?? 0) - rect.left,
+      x: Math.min(Math.max((e.client?.x ?? 0) - rect.left, popoverHalf), rect.width - popoverHalf),
       y: (e.client?.y ?? 0) - rect.top,
       source: data.sourceName,
       target: String(edgeData.target),
@@ -383,8 +384,7 @@ watch(isDark, recreateGraph)
 .edge-popover {
   position: absolute;
   z-index: 20;
-  width: 280px;
-  max-width: calc(100vw - 32px);
+  width: min(280px, 100%);
   transform: translate(-50%, 10px);
   padding: 12px;
   border: 1px solid var(--border-card);

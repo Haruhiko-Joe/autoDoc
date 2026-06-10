@@ -82,7 +82,7 @@ watch(() => [props.content, props.blameLines], () => render(props.content), { de
 
 <style scoped>
 .markdown-body {
-  max-width: 860px;
+  max-width: clamp(720px, 75vw, 1040px);
   margin: 0 auto;
   padding: 32px clamp(16px, 3vw, 24px);
   font-size: 15px;
@@ -159,7 +159,7 @@ watch(() => [props.content, props.blameLines], () => render(props.content), { de
 }
 
 .blame-body {
-  max-width: 1040px;
+  max-width: clamp(860px, 85vw, 1280px);
 }
 
 .blame-block {

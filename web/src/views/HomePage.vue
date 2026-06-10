@@ -484,16 +484,20 @@ async function handleRetryErrors() {
               <button class="dialog-close" @click="showConfigDialog = false">&times;</button>
             </div>
             <div class="dialog-body">
-              <label class="input-label">Max Concurrency</label>
-              <select v-model.number="maxConcurrency" class="project-select">
-                <option v-for="n in [1, 2, 4, 8, 16, 32]" :key="n" :value="n">{{ n }}</option>
-                <option :value="0">Unlimited</option>
-              </select>
-              <label class="input-label select-label">Language</label>
-              <select v-model="language" class="project-select">
-                <option value="zh">中文</option>
-                <option value="en">English</option>
-              </select>
+              <div class="dialog-field">
+                <label class="input-label">Max Concurrency</label>
+                <select v-model.number="maxConcurrency" class="project-select">
+                  <option v-for="n in [1, 2, 4, 8, 16, 32]" :key="n" :value="n">{{ n }}</option>
+                  <option :value="0">Unlimited</option>
+                </select>
+              </div>
+              <div class="dialog-field">
+                <label class="input-label">Language</label>
+                <select v-model="language" class="project-select">
+                  <option value="zh">中文</option>
+                  <option value="en">English</option>
+                </select>
+              </div>
               <label class="review-toggle">
                 <input v-model="reviewEnabled" type="checkbox" />
                 <span>
@@ -685,14 +689,13 @@ async function handleRetryErrors() {
 <style scoped>
 .page-layout {
   display: flex;
-  height: 100vh;
+  height: 100dvh;
   overflow: hidden;
 }
 
 .sidebar {
-  width: 20%;
-  min-width: 180px;
-  max-width: 280px;
+  width: clamp(220px, 18vw, 340px);
+  flex-shrink: 0;
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border);
   backdrop-filter: blur(18px);
@@ -706,6 +709,7 @@ async function handleRetryErrors() {
   padding: 0 20px 16px;
   border-bottom: 1px solid var(--border);
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
 }
@@ -759,18 +763,19 @@ async function handleRetryErrors() {
 
 .input-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
 }
 
 .path-input {
   flex: 1;
-  height: 34px;
+  height: 32px;
   padding: 0 10px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-control);
   font-size: 13px;
   outline: none;
-  min-width: 0;
+  min-width: 120px;
   background: var(--bg-surface);
   color: var(--text-primary);
 }
@@ -786,8 +791,8 @@ async function handleRetryErrors() {
 }
 
 .config-btn {
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-control);
   background: var(--bg-surface);
@@ -811,7 +816,7 @@ async function handleRetryErrors() {
 }
 
 .run-btn {
-  min-height: 34px;
+  min-height: 32px;
   padding: 0 14px;
   border: none;
   border-radius: var(--radius-control);
@@ -842,7 +847,7 @@ async function handleRetryErrors() {
 
 .project-select {
   width: 100%;
-  height: 34px;
+  height: 32px;
   padding: 0 10px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-control);
@@ -908,6 +913,7 @@ async function handleRetryErrors() {
 
 .progress-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 8px;
@@ -917,6 +923,10 @@ async function handleRetryErrors() {
   font-size: 12px;
   color: var(--accent);
   font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .pause-btn {
@@ -1048,7 +1058,7 @@ async function handleRetryErrors() {
   list-style: none;
   margin: 6px 0 0;
   padding: 0;
-  max-height: 200px;
+  max-height: min(200px, 30vh);
   overflow-y: auto;
 }
 
@@ -1111,6 +1121,7 @@ async function handleRetryErrors() {
   min-height: 56px;
   padding: 14px clamp(16px, 2vw, 32px) 10px;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
 }
@@ -1143,9 +1154,12 @@ async function handleRetryErrors() {
   font-size: 13px;
   color: var(--accent);
   cursor: pointer;
-  margin-left: auto;
   flex-shrink: 0;
   white-space: nowrap;
+}
+
+.flows-link:first-of-type {
+  margin-left: auto;
 }
 
 .flows-link:hover {
@@ -1248,60 +1262,8 @@ async function handleRetryErrors() {
 
 /* ─── Config Dialog ─── */
 
-.dialog-overlay {
-  position: fixed;
-  inset: 0;
-  background: var(--bg-overlay);
-  backdrop-filter: blur(14px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
 .dialog {
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-card);
-  width: 420px;
-  max-width: 90vw;
-  max-height: 80vh;
-  box-shadow: var(--shadow-panel);
-  display: flex;
-  flex-direction: column;
-}
-
-.dialog-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 20px 24px 0;
-}
-
-.dialog-header h3 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 650;
-  color: var(--text-heading);
-}
-
-.dialog-close {
-  border: none;
-  background: none;
-  font-size: 22px;
-  color: var(--text-muted);
-  cursor: pointer;
-  padding: 0 4px;
-  line-height: 1;
-}
-
-.dialog-close:hover {
-  color: var(--text-primary);
-}
-
-.dialog-body {
-  padding: 20px 24px;
-  overflow-y: auto;
+  --dialog-width: 420px;
 }
 
 .dialog-body .project-select {
@@ -1312,7 +1274,6 @@ async function handleRetryErrors() {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  margin-top: 14px;
   padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
@@ -1345,8 +1306,6 @@ async function handleRetryErrors() {
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  margin-top: 18px;
-  margin-bottom: 12px;
   padding-bottom: 6px;
   border-bottom: 1px solid var(--border-light);
 }
@@ -1368,5 +1327,25 @@ async function handleRetryErrors() {
   padding: 0 24px 20px;
   display: flex;
   justify-content: flex-end;
+}
+
+@media (max-width: 900px) {
+  .sidebar {
+    width: clamp(180px, 26vw, 220px);
+  }
+
+  .sidebar-header,
+  .sidebar-input {
+    padding-left: var(--space-md);
+    padding-right: var(--space-md);
+  }
+
+  .canvas-header {
+    gap: var(--space-sm);
+  }
+
+  .canvas-graph {
+    margin: 0 var(--space-md) var(--space-md);
+  }
 }
 </style>

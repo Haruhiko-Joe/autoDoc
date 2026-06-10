@@ -16,6 +16,7 @@ const loading = ref(true)
 const error = ref('')
 const activeIndex = ref(0)
 const expandedStep = ref<number | null>(null)
+const sidebarOpen = ref(false)
 
 function getProject(): string {
   return firstRouteParam(route.params.project)
@@ -95,7 +96,9 @@ function selectFlow(i: number) {
 
 <template>
   <div class="flows-page">
-    <aside class="sidebar">
+    <button class="sidebar-toggle" title="Toggle navigation" @click="sidebarOpen = !sidebarOpen">&#9776;</button>
+    <div v-if="sidebarOpen" class="sidebar-scrim" @click="sidebarOpen = false"></div>
+    <aside class="sidebar" :class="{ open: sidebarOpen }">
       <div class="sidebar-header">
         <button class="back-btn" @click="router.push({ name: 'project', params: { project: getProject() } })">
           &larr; Back
@@ -139,7 +142,7 @@ function selectFlow(i: number) {
 
         <!-- Diagram -->
         <div class="diagram-scroll">
-          <div class="diagram" :style="{ minWidth: participants.length * 152 + 48 + 'px' }">
+          <div class="diagram" :style="{ '--n': participants.length }">
             <!-- Participant headers -->
             <div class="p-row">
               <div class="gutter"></div>
@@ -193,7 +196,7 @@ function selectFlow(i: number) {
                         class="arrow-label"
                         :style="{ left: (colPct(step.from) + colPct(step.to)) / 2 + '%', '--c': stepColor(step) }"
                       >
-                        <span class="al-text">{{ step.action }}</span>
+                        <span class="al-text" :title="step.action">{{ step.action }}</span>
                         <span v-if="step.edgeType" class="al-edge" :style="{ background: stepColor(step) + '18', color: stepColor(step) }">{{ step.edgeType }}</span>
                       </div>
                     </template>
@@ -207,7 +210,7 @@ function selectFlow(i: number) {
                         class="arrow-label self-label"
                         :style="{ left: colPct(step.from) + 4 + '%', '--c': stepColor(step) }"
                       >
-                        <span class="al-text">{{ step.action }}</span>
+                        <span class="al-text" :title="step.action">{{ step.action }}</span>
                       </div>
                     </template>
                   </div>
@@ -241,7 +244,7 @@ function selectFlow(i: number) {
 
 .flows-page {
   display: flex;
-  height: 100vh;
+  height: 100dvh;
   overflow: hidden;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;
   background: var(--flows-bg);
@@ -249,9 +252,8 @@ function selectFlow(i: number) {
 }
 
 .sidebar {
-  width: 20%;
-  min-width: 180px;
-  max-width: 280px;
+  width: clamp(200px, 16vw, 320px);
+  flex-shrink: 0;
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border);
   backdrop-filter: blur(18px);
@@ -259,6 +261,63 @@ function selectFlow(i: number) {
   flex-direction: column;
   padding: 24px 0;
   box-sizing: border-box;
+}
+
+.sidebar-toggle {
+  display: none;
+}
+
+.sidebar-scrim {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: min(280px, 80vw);
+    z-index: var(--z-sidepanel);
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  .sidebar-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: var(--bg-overlay);
+    z-index: calc(var(--z-sidepanel) - 1);
+  }
+
+  .sidebar-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    left: var(--space-lg);
+    bottom: var(--space-lg);
+    width: 40px;
+    height: 40px;
+    border: 1px solid var(--border-strong);
+    border-radius: 50%;
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    font-size: var(--font-lg);
+    cursor: pointer;
+    box-shadow: var(--shadow-soft);
+    z-index: var(--z-canvas-ui);
+  }
+
+  .sidebar-toggle:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
 }
 
 .sidebar-header {
@@ -330,6 +389,7 @@ function selectFlow(i: number) {
   font-size: 13px;
   margin-bottom: 16px;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 2px;
 }
@@ -356,12 +416,19 @@ function selectFlow(i: number) {
 
 .flow-tabs-wrap {
   margin-bottom: 10px;
+  padding-bottom: var(--space-xs);
   overflow-x: auto;
-  scrollbar-width: none;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
 }
 
 .flow-tabs-wrap::-webkit-scrollbar {
-  display: none;
+  height: 4px;
+}
+
+.flow-tabs-wrap::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 2px;
 }
 
 .flow-tabs {
@@ -419,6 +486,7 @@ function selectFlow(i: number) {
 }
 
 .diagram {
+  min-width: calc(var(--n) * clamp(96px, 14vw, 152px) + 48px);
   background: var(--flows-diagram-bg);
   border: 1px solid var(--flows-diagram-border);
   border-radius: var(--radius-card);
@@ -642,6 +710,7 @@ function selectFlow(i: number) {
   display: flex;
   align-items: center;
   gap: 5px;
+  max-width: calc(180% / var(--n));
   white-space: nowrap;
   pointer-events: none;
 }
@@ -655,6 +724,10 @@ function selectFlow(i: number) {
   border-radius: 4px;
   letter-spacing: -0.01em;
   backdrop-filter: blur(2px);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: auto;
 }
 
 .al-edge {
@@ -664,6 +737,7 @@ function selectFlow(i: number) {
   padding: 1px 6px;
   border-radius: var(--radius-control);
   letter-spacing: 0.02em;
+  flex-shrink: 0;
 }
 
 /* ─── Self Arrow ─── */
@@ -725,6 +799,7 @@ function selectFlow(i: number) {
 
 .sd-route {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   margin-bottom: 8px;

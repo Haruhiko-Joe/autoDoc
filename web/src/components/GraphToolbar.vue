@@ -28,9 +28,9 @@ defineProps<{
 <style scoped>
 .graph-toolbar {
   position: absolute;
-  top: 12px;
-  right: 12px;
-  z-index: 10;
+  top: var(--space-md);
+  left: var(--space-md);
+  z-index: var(--z-canvas-ui);
   display: flex;
   gap: 6px;
   background: var(--bg-surface);

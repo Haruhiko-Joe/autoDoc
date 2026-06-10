@@ -313,13 +313,14 @@ onMounted(async () => {
 .knowledge-page {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100dvh;
   overflow: hidden;
   background: var(--bg-body);
 }
 
 .k-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 16px;
   padding: 16px 24px;
@@ -334,6 +335,10 @@ onMounted(async () => {
   color: var(--text-heading);
   margin: 0;
   flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .back-btn {

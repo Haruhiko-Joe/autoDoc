@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onUnmounted, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onUnmounted, watch } from 'vue'
 import TaskCard from './TaskCard.vue'
 import TaskConfirmDialog from './TaskConfirmDialog.vue'
 import { useUpdateQueue } from '../composables/useUpdateQueue'
@@ -24,48 +24,19 @@ const {
 
 onUnmounted(() => {
   dispose()
-  resizeObserver?.disconnect()
 })
 
 const selectedMode = ref<'auto' | 'manual'>('auto')
 
-// Dynamic visible-limit based on task-list container height.
-// Per-card = collapsed height (44px) + 8px gap. Running/done-expanded cards
-// are taller but users can scroll; we optimize for the "many idle waiting" case.
-const taskListRef = ref<HTMLElement | null>(null)
-const containerHeight = ref(0)
-const PER_CARD_PX = 52
-const MIN_VISIBLE = 3
-let resizeObserver: ResizeObserver | null = null
-
-const visibleLimit = computed(() =>
-  Math.max(MIN_VISIBLE, Math.floor(containerHeight.value / PER_CARD_PX)),
+watch(
+  () => props.visible,
+  (v) => {
+    if (!v) return
+    projectRef.value = props.project
+    void restore()
+  },
+  { immediate: true },
 )
-
-onMounted(() => {
-  resizeObserver?.disconnect()
-  watch(
-    () => props.visible,
-    async (v) => {
-      if (!v) return
-      projectRef.value = props.project
-      void restore()
-      await nextTick()
-      if (!taskListRef.value) return
-      containerHeight.value = taskListRef.value.clientHeight
-      resizeObserver?.disconnect()
-      resizeObserver = new ResizeObserver((entries) => {
-        if (!entries.length) return
-
-        for (const entry of entries) {
-          containerHeight.value = entry.contentRect.height
-        }
-      })
-      resizeObserver.observe(taskListRef.value)
-    },
-    { immediate: true },
-  )
-})
 
 watch(
   () => props.project,
@@ -133,8 +104,6 @@ const counts = computed(() => {
 const activeTasks = computed(() =>
   tasks.value.filter((t) => t.status === 'running' || t.status === 'idle' || t.status === 'error' || t.status === 'awaiting-review'),
 )
-const visibleTasks = computed(() => activeTasks.value.slice(0, visibleLimit.value))
-const hiddenCount = computed(() => activeTasks.value.length - visibleTasks.value.length)
 
 async function handleStart() {
   projectRef.value = props.project
@@ -190,17 +159,14 @@ async function handleStart() {
         <span class="count-pending">{{ counts.idle + counts.running }} queued</span>
       </div>
 
-      <div class="task-list" ref="taskListRef">
+      <div class="task-list">
         <TaskCard
-          v-for="task in visibleTasks"
+          v-for="task in activeTasks"
           :key="task.id"
           :task="task"
           @skip="skip"
           @open="activeDialogTaskId = $event"
         />
-        <div v-if="hiddenCount > 0" class="more-indicator">
-          +{{ hiddenCount }} more queued
-        </div>
       </div>
 
       <div class="panel-empty" v-if="!isRunning && tasks.length === 0 && !error">
@@ -226,8 +192,7 @@ async function handleStart() {
 
 <style scoped>
 .update-panel {
-  width: min(380px, 30vw);
-  min-width: 260px;
+  width: clamp(280px, 24vw, 460px);
   background: var(--bg-sidebar);
   border-left: 1px solid var(--border);
   backdrop-filter: blur(18px);
@@ -241,6 +206,7 @@ async function handleStart() {
 .panel-header {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   justify-content: space-between;
   padding: 16px 20px;
   border-bottom: 1px solid var(--border);
@@ -362,6 +328,7 @@ async function handleStart() {
 .panel-status {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 10px 20px;
   border-bottom: 1px solid var(--border);
@@ -419,6 +386,7 @@ async function handleStart() {
 
 .panel-counts {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   padding: 8px 20px;
   border-bottom: 1px solid var(--border);
@@ -432,14 +400,15 @@ async function handleStart() {
 .panel-counts .count-error { color: var(--color-red); }
 .panel-counts .count-pending { margin-left: auto; color: var(--text-disabled); }
 
-.more-indicator {
-  padding: 10px 14px;
-  text-align: center;
-  font-size: 12px;
-  color: var(--text-disabled);
-  border: 1px dashed var(--border);
-  border-radius: var(--radius-card);
-  margin-top: 4px;
+@media (max-width: 900px) {
+  .update-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    height: 100dvh;
+    width: min(380px, calc(100vw - 48px));
+    z-index: var(--z-sidepanel);
+  }
 }
 
 .panel-slide-enter-active,

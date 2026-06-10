@@ -119,15 +119,15 @@ function renderMd(md: string): string {
   position: fixed;
   bottom: 24px;
   left: 24px;
-  width: min(420px, calc(100vw - 48px));
-  height: min(540px, calc(100vh - 48px));
+  width: min(clamp(360px, 28vw, 520px), calc(100vw - 48px));
+  height: min(clamp(420px, 60vh, 760px), calc(100dvh - 48px));
   background: var(--bg-surface);
   border: 1px solid var(--border-card);
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-panel);
   display: flex;
   flex-direction: column;
-  z-index: 1000;
+  z-index: var(--z-chat);
   overflow: hidden;
 }
 

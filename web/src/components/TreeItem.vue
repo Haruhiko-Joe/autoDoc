@@ -10,13 +10,17 @@ const emit = defineEmits<{
   toggle: [node: TreeNode]
   navigate: [node: TreeNode]
 }>()
+
+function indent(depth: number) {
+  return Math.min(depth, 3) * 16 + Math.max(depth - 3, 0) * 10 + 12
+}
 </script>
 
 <template>
   <div class="tree-item">
     <div
       class="tree-row"
-      :style="{ paddingLeft: depth * 16 + 12 + 'px' }"
+      :style="{ paddingLeft: indent(depth) + 'px' }"
       @click="emit('toggle', node)"
     >
       <span class="tree-chevron">

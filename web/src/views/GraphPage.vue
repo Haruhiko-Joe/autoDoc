@@ -546,7 +546,7 @@ watch(subGraph, (sg) => {
 <style scoped>
 .page-layout {
   display: flex;
-  height: 100vh;
+  height: 100dvh;
   overflow: hidden;
 }
 
@@ -634,7 +634,8 @@ watch(subGraph, (sg) => {
 .header-meta {
   display: flex;
   align-items: center;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: var(--space-md);
 }
 
 .desc {
@@ -642,6 +643,10 @@ watch(subGraph, (sg) => {
   color: var(--text-secondary);
   margin: 0;
   flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   line-height: 1.45;
   letter-spacing: -0.01em;
 }
@@ -728,6 +733,12 @@ watch(subGraph, (sg) => {
   flex: 1;
   overflow-y: auto;
   background: var(--bg-surface);
+}
+
+@media (max-width: 900px) {
+  .canvas-page-split {
+    flex-direction: column;
+  }
 }
 
 .view-mode-group {

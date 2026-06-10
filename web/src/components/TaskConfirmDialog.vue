@@ -108,7 +108,7 @@ function handleKeydown(e: KeyboardEvent) {
     <div class="chatbox" role="dialog" aria-labelledby="chat-title">
       <header class="chatbox-header">
         <div class="header-main">
-          <code class="task-sha">{{ task.sha.slice(0, 7) }}</code>
+          <code class="sha-badge">{{ task.sha.slice(0, 7) }}</code>
           <h3 id="chat-title" class="dialog-title">{{ task.title }}</h3>
           <button class="close-btn" @click="emit('close')" title="Close">&times;</button>
         </div>
@@ -135,7 +135,7 @@ function handleKeydown(e: KeyboardEvent) {
           <div class="pr-body-block">
             <div class="pr-body-label">Commit / PR title</div>
             <div class="pr-body-content title-line">
-              <code class="inline-sha">{{ task.sha.slice(0, 12) }}</code>
+              <code class="sha-badge">{{ task.sha.slice(0, 12) }}</code>
               {{ task.title }}
             </div>
           </div>
@@ -245,13 +245,13 @@ function handleKeydown(e: KeyboardEvent) {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: var(--z-modal);
   animation: fade-in 0.15s ease;
 }
 
 .chatbox {
-  width: min(760px, calc(100vw - 48px));
-  height: min(720px, calc(100vh - 64px));
+  width: min(clamp(640px, 60vw, 1100px), calc(100vw - 48px));
+  max-height: min(85vh, 960px);
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
@@ -277,15 +277,11 @@ function handleKeydown(e: KeyboardEvent) {
 .header-main {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
 }
 
-.task-sha {
-  font-size: 11px;
-  color: var(--accent);
-  background: var(--bg-surface-alt);
-  padding: 3px 8px;
-  border-radius: var(--radius-control);
+.sha-badge {
   flex-shrink: 0;
 }
 
@@ -318,6 +314,7 @@ function handleKeydown(e: KeyboardEvent) {
 .header-meta {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 8px;
   font-size: 12px;
@@ -341,7 +338,6 @@ function handleKeydown(e: KeyboardEvent) {
 .phase.skipped { color: var(--color-orange); border-color: var(--color-orange); }
 .phase.idle    { color: var(--text-secondary); }
 
-.btn-primary:disabled,
 .btn-ghost:disabled {
   opacity: 0.45;
   cursor: not-allowed;
@@ -365,7 +361,7 @@ function handleKeydown(e: KeyboardEvent) {
   padding: 10px 12px;
   background: var(--bg-surface-alt);
   border-radius: var(--radius-card);
-  max-height: 140px;
+  max-height: clamp(140px, 20vh, 300px);
   overflow-y: auto;
   font-size: 12px;
   line-height: 1.55;
@@ -375,6 +371,7 @@ function handleKeydown(e: KeyboardEvent) {
 
 .chatbox-stream {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 18px 22px;
   background: var(--bg-surface);
@@ -454,16 +451,6 @@ function handleKeydown(e: KeyboardEvent) {
   font-weight: 500;
 }
 
-.inline-sha {
-  font-size: 11px;
-  color: var(--accent);
-  background: var(--bg-surface);
-  padding: 2px 8px;
-  border-radius: var(--radius-control);
-  border: 1px solid var(--border);
-  flex-shrink: 0;
-}
-
 .file-list {
   list-style: none;
   margin: 0;
@@ -471,7 +458,7 @@ function handleKeydown(e: KeyboardEvent) {
   background: var(--bg-surface-alt);
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
-  max-height: 240px;
+  max-height: clamp(160px, 30vh, 400px);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -544,6 +531,12 @@ function handleKeydown(e: KeyboardEvent) {
   margin: 10px 0;
   color: var(--text-secondary);
 }
+.md-body :deep(img) { max-width: 100%; }
+.md-body :deep(table) {
+  display: block;
+  overflow-x: auto;
+  max-width: 100%;
+}
 
 .stream-cursor {
   display: inline-block;
@@ -610,8 +603,9 @@ function handleKeydown(e: KeyboardEvent) {
 .input-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   margin-top: 10px;
-  gap: 12px;
+  gap: var(--space-md);
 }
 
 .shortcut-hint {
@@ -632,27 +626,16 @@ function handleKeydown(e: KeyboardEvent) {
   color: var(--text-secondary);
 }
 
-.btn-group { display: flex; gap: 8px; }
+.btn-group { display: flex; flex-wrap: wrap; gap: var(--space-sm); }
 
-.btn-primary,
 .btn-ghost {
   min-height: 32px;
-  padding: 0 16px;
+  padding: 0 14px;
   border-radius: var(--radius-control);
-  font-size: 13px;
+  font-size: var(--font-md);
   font-weight: 500;
   cursor: pointer;
   transition: opacity 0.15s, background 0.15s;
-}
-
-.btn-primary {
-  background: var(--accent);
-  color: #fff;
-  border: 1px solid var(--accent);
-}
-.btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); }
-
-.btn-ghost {
   background: transparent;
   color: var(--text-secondary);
   border: 1px solid var(--border);
@@ -660,5 +643,10 @@ function handleKeydown(e: KeyboardEvent) {
 .btn-ghost:hover {
   color: var(--text-primary);
   background: var(--bg-surface);
+}
+
+@media (max-width: 900px) {
+  .shortcut-hint { display: none; }
+  .btn-group { margin-left: auto; }
 }
 </style>

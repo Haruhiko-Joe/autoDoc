@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, onUnmounted, watch } from 'vue'
+import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 import {
   approveDecompositionReview,
   fetchDecompositionReviews,
@@ -40,9 +40,11 @@ const editableNodes = ref<GraphNode[]>([])
 const feedback = ref('')
 const loading = ref(false)
 const error = ref('')
-const graphHeight = ref(460)
+const graphHeight = ref<number | null>(null)
 const graphFullscreen = ref(false)
-const panelWidth = ref(Math.min(720, Math.max(440, window.innerWidth * 0.5)))
+const panelWidth = ref<number | null>(null)
+const panelRef = ref<HTMLElement>()
+const graphShellRef = ref<HTMLDivElement>()
 type ReviewAction = 'saving' | 'approving' | 'rejecting'
 const reviewActions = ref<Record<string, ReviewAction>>({})
 
@@ -70,9 +72,13 @@ const selectedAction = computed(() => selectedReview.value ? reviewActions.value
 const selectedBusy = computed(() => selectedAction.value !== undefined)
 const feedbackHasText = computed(() => feedback.value.trim().length > 0)
 const graphShellStyle = computed(() =>
-  graphFullscreen.value ? undefined : { height: `${graphHeight.value}px` },
+  graphFullscreen.value || graphHeight.value === null
+    ? undefined
+    : { height: `${graphHeight.value}px` },
 )
-const reviewPanelStyle = computed(() => ({ width: `${panelWidth.value}px` }))
+const reviewPanelStyle = computed(() =>
+  panelWidth.value === null ? undefined : { width: `${panelWidth.value}px` },
+)
 
 function setReviewAction(id: string, action: ReviewAction) {
   const next = { ...reviewActions.value }
@@ -118,16 +124,27 @@ watch(() => [props.visible, props.project], ([visible]) => {
 
 watch(selectedId, syncEditableNodes)
 
+function currentPanelWidth(): number {
+  return panelWidth.value ?? panelRef.value?.getBoundingClientRect().width ?? PANEL_MIN_WIDTH
+}
+
 function getPanelMaxWidth(): number {
   const canvas = document.querySelector('.canvas')
   if (!canvas) return Math.max(PANEL_MIN_WIDTH, window.innerWidth - PANEL_FALLBACK_RESERVED_WIDTH)
 
   const canvasWidth = canvas.getBoundingClientRect().width
-  return Math.max(PANEL_MIN_WIDTH, panelWidth.value + Math.max(0, canvasWidth - MAIN_CANVAS_MIN_WIDTH))
+  return Math.max(PANEL_MIN_WIDTH, currentPanelWidth() + Math.max(0, canvasWidth - MAIN_CANVAS_MIN_WIDTH))
+}
+
+function clampPanelWidthToViewport() {
+  if (panelWidth.value === null) return
+  const min = Math.min(PANEL_MIN_WIDTH, window.innerWidth * 0.9)
+  const max = Math.max(min, window.innerWidth - MAIN_CANVAS_MIN_WIDTH)
+  panelWidth.value = Math.min(max, Math.max(min, panelWidth.value))
 }
 
 function startPanelResize(event: PointerEvent) {
-  panelResizeStart = { x: event.clientX, width: panelWidth.value, maxWidth: getPanelMaxWidth() }
+  panelResizeStart = { x: event.clientX, width: currentPanelWidth(), maxWidth: getPanelMaxWidth() }
   window.addEventListener('pointermove', resizePanel)
   window.addEventListener('pointerup', stopPanelResize)
 }
@@ -146,7 +163,8 @@ function stopPanelResize() {
 
 function startGraphResize(event: PointerEvent) {
   if (graphFullscreen.value) return
-  resizeStart = { y: event.clientY, height: graphHeight.value }
+  const height = graphHeight.value ?? graphShellRef.value?.getBoundingClientRect().height ?? 280
+  resizeStart = { y: event.clientY, height }
   window.addEventListener('pointermove', resizeGraph)
   window.addEventListener('pointerup', stopGraphResize)
 }
@@ -163,7 +181,12 @@ function stopGraphResize() {
   window.removeEventListener('pointerup', stopGraphResize)
 }
 
+onMounted(() => {
+  window.addEventListener('resize', clampPanelWidthToViewport)
+})
+
 onUnmounted(() => {
+  window.removeEventListener('resize', clampPanelWidthToViewport)
   stopGraphResize()
   stopPanelResize()
 })
@@ -316,7 +339,7 @@ function handleEdgeDelete(source: string, edgeTarget: string, edgeType: EdgeType
 
 <template>
   <Transition name="panel-slide">
-    <aside v-if="visible" class="review-panel" :style="reviewPanelStyle">
+    <aside v-if="visible" ref="panelRef" class="review-panel" :style="reviewPanelStyle">
       <button
         class="panel-resize-handle"
         type="button"
@@ -363,54 +386,61 @@ function handleEdgeDelete(source: string, edgeTarget: string, edgeType: EdgeType
       </div>
 
       <template v-else-if="selectedReview">
-        <div class="review-meta">
-          <span class="review-kind">{{ selectedReview.kind }}</span>
-          <h4>{{ selectedReview.title }}</h4>
-          <p>{{ selectedReview.description }}</p>
-        </div>
-
-        <div class="graph-shell" :class="{ fullscreen: graphFullscreen }" :style="graphShellStyle">
-          <div v-if="graphFullscreen" class="fullscreen-bar">
-            <div>
-              <strong>{{ selectedReview.title }}</strong>
-              <span>{{ selectedReview.kind }}</span>
-            </div>
-            <button class="panel-close" @click="graphFullscreen = false">&times;</button>
+        <div class="panel-scroll">
+          <div class="review-meta">
+            <span class="review-kind">{{ selectedReview.kind }}</span>
+            <h4>{{ selectedReview.title }}</h4>
+            <p>{{ selectedReview.description }}</p>
           </div>
-          <ReviewGraphView
-            :nodes="editableNodes"
-            @node-edit="openEditNode"
-            @node-delete="handleDeleteNode"
-            @edge-edit="openEditEdge"
-            @edge-delete="handleEdgeDelete"
-            @edge-create="handleEdgeCreate"
-          />
-          <button class="add-node-btn" title="Add node" @click="openAddNode">+</button>
-          <button
-            v-if="!graphFullscreen"
-            class="fullscreen-btn"
-            title="Full screen"
-            @click="graphFullscreen = true"
-          >
-            &#x26F6;
-          </button>
-          <button
-            v-if="!graphFullscreen"
-            class="resize-handle"
-            title="Resize canvas"
-            @pointerdown.prevent="startGraphResize"
-          />
-        </div>
 
-        <label class="feedback-box">
-          <span>Feedback for redo</span>
-          <textarea
-            v-model="feedback"
-            rows="4"
-            placeholder="Explain what should be changed before this decomposition is accepted."
-            :disabled="selectedBusy"
-          />
-        </label>
+          <div
+            ref="graphShellRef"
+            class="graph-shell"
+            :class="{ fullscreen: graphFullscreen }"
+            :style="graphShellStyle"
+          >
+            <div v-if="graphFullscreen" class="fullscreen-bar">
+              <div>
+                <strong>{{ selectedReview.title }}</strong>
+                <span>{{ selectedReview.kind }}</span>
+              </div>
+              <button class="panel-close" @click="graphFullscreen = false">&times;</button>
+            </div>
+            <ReviewGraphView
+              :nodes="editableNodes"
+              @node-edit="openEditNode"
+              @node-delete="handleDeleteNode"
+              @edge-edit="openEditEdge"
+              @edge-delete="handleEdgeDelete"
+              @edge-create="handleEdgeCreate"
+            />
+            <button class="add-node-btn" title="Add node" @click="openAddNode">+</button>
+            <button
+              v-if="!graphFullscreen"
+              class="fullscreen-btn"
+              title="Full screen"
+              @click="graphFullscreen = true"
+            >
+              &#x26F6;
+            </button>
+            <button
+              v-if="!graphFullscreen"
+              class="resize-handle"
+              title="Resize canvas"
+              @pointerdown.prevent="startGraphResize"
+            />
+          </div>
+
+          <label class="feedback-box">
+            <span>Feedback for redo</span>
+            <textarea
+              v-model="feedback"
+              rows="4"
+              placeholder="Explain what should be changed before this decomposition is accepted."
+              :disabled="selectedBusy"
+            />
+          </label>
+        </div>
 
         <p v-if="error" class="panel-error">{{ error }}</p>
 
@@ -450,7 +480,7 @@ function handleEdgeDelete(source: string, edgeTarget: string, edgeType: EdgeType
 <style scoped>
 .review-panel {
   width: clamp(440px, 50vw, 720px);
-  min-width: 380px;
+  min-width: min(380px, 90vw);
   max-width: calc(100vw - 300px);
   position: relative;
   box-sizing: border-box;
@@ -499,10 +529,16 @@ function handleEdgeDelete(source: string, edgeTarget: string, edgeType: EdgeType
 
 .panel-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
+  gap: var(--space-xs) var(--space-sm);
   padding: 16px 20px;
   border-bottom: 1px solid var(--border);
+}
+
+.panel-header > div {
+  min-width: 0;
 }
 
 .panel-header h3 {
@@ -517,6 +553,9 @@ function handleEdgeDelete(source: string, edgeTarget: string, edgeType: EdgeType
   font-size: 12px;
   color: var(--text-secondary);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .panel-close {
@@ -619,6 +658,12 @@ function handleEdgeDelete(source: string, edgeTarget: string, edgeType: EdgeType
   color: var(--text-secondary);
 }
 
+.panel-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .graph-shell {
   position: relative;
   margin: 0 20px;
@@ -626,6 +671,7 @@ function handleEdgeDelete(source: string, edgeTarget: string, edgeType: EdgeType
   border-radius: var(--radius-card);
   overflow: hidden;
   background: var(--bg-body);
+  height: clamp(280px, 45dvh, 560px);
   min-height: 280px;
 }
 
@@ -770,37 +816,11 @@ function handleEdgeDelete(source: string, edgeTarget: string, edgeType: EdgeType
 
 .panel-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
   padding: 14px 20px 18px;
-}
-
-.btn-primary,
-.btn-secondary {
-  min-height: 32px;
-  padding: 0 14px;
-  border-radius: var(--radius-control);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.btn-primary {
-  border: 1px solid var(--accent);
-  background: var(--accent);
-  color: #fff;
-}
-
-.btn-secondary {
-  border: 1px solid var(--border);
-  background: var(--bg-surface);
-  color: var(--text-primary);
-}
-
-.btn-primary:disabled,
-.btn-secondary:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
+  flex-shrink: 0;
 }
 
 .panel-empty {

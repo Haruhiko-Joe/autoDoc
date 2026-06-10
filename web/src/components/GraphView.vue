@@ -36,6 +36,11 @@ let graph: Graph | null = null
 
 const CARD_WIDTH = 468
 const CARD_HEIGHT = 234
+const CARD_WIDTH_COMPACT = 380
+const CARD_HEIGHT_COMPACT = 156
+const COMPACT_THRESHOLD = 8
+const OVERLAP_TOLERANCE = 0.15
+const POPOVER_WIDTH = 380
 const FOCUS_DIM_OPACITY = 0.1
 
 interface PopoverState {
@@ -90,7 +95,8 @@ function renderCard(name: string, description: string, isFocused: boolean): stri
   const editBtns = props.editable
     ? `<span class="node-card-edit-btn" data-action="edit" data-node-id="${escapedName}" title="Edit">&#9998;</span>`
     : ''
-  return `<div class="node-card${isSelected ? ' is-selected' : ''}" data-node-id="${escapedName}">
+  const isCompact = visibleNodes.value.length > COMPACT_THRESHOLD
+  return `<div class="node-card${isSelected ? ' is-selected' : ''}${isCompact ? ' is-compact' : ''}" data-node-id="${escapedName}">
     <div class="node-card-header">
       <div class="node-card-name">${escapedName}</div>
       ${editBtns}
@@ -195,12 +201,14 @@ function getFocusTrigger(target: EventTarget | null): HTMLElement | null {
   return target.closest('.node-card-focus-trigger') as HTMLElement | null
 }
 
-function superellipsePositions(n: number, canvasW: number, canvasH: number) {
-  const cx = canvasW / 2
-  const cy = canvasH / 2
-  const margin = 100
-  const rx = (canvasW - margin * 2 - CARD_WIDTH) / 2
-  const ry = (canvasH - margin * 2 - CARD_HEIGHT) / 2
+function cardSizeFor(n: number) {
+  return n > COMPACT_THRESHOLD
+    ? { w: CARD_WIDTH_COMPACT, h: CARD_HEIGHT_COMPACT }
+    : { w: CARD_WIDTH, h: CARD_HEIGHT }
+}
+
+/** 超椭圆等角分布（原版布局，节点少时观感不变） */
+function superellipsePositions(n: number, rx: number, ry: number) {
   const p = 6
   const startAngle = -Math.PI / 2
   return Array.from({ length: n }, (_, i) => {
@@ -208,11 +216,58 @@ function superellipsePositions(n: number, canvasW: number, canvasH: number) {
     const cosA = Math.cos(angle)
     const sinA = Math.sin(angle)
     const r = (Math.abs(cosA / rx) ** p + Math.abs(sinA / ry) ** p) ** (-1 / p)
-    return {
-      x: cx + r * cosA,
-      y: cy + r * sinA,
-    }
+    return { x: r * cosA, y: r * sinA }
   })
+}
+
+/** 矩形周界按弧长均匀分布（密集图：角部相邻卡天然纵向错位，缩放压力小） */
+function perimeterPositions(n: number, rx: number, ry: number) {
+  const w = 2 * rx
+  const h = 2 * ry
+  const per = 2 * (w + h)
+  const step = per / n
+  return Array.from({ length: n }, (_, i) => {
+    let d = (i * step + w / 2) % per
+    if (d < w) return { x: -rx + d, y: -ry }
+    d -= w
+    if (d < h) return { x: rx, y: -ry + d }
+    d -= h
+    if (d < w) return { x: rx - d, y: ry }
+    d -= w
+    return { x: -rx, y: ry - d }
+  })
+}
+
+/**
+ * 半径按画布尺寸计算，画布够大时布局与改造前完全相同（节点 ≤ 阈值时
+ * 连分布算法也与原版一致）。仅当任意两卡交叠超过 OVERLAP_TOLERANCE 时，
+ * 等比放大坐标空间到刚好满足容差为止，渲染后用 zoomTo(1/scale, 画布中心)
+ * 把整体缩回画布——卡片变小但最多轻微交叠。坐标始终以画布中心为圆心。
+ */
+function ringLayout(n: number, canvasW: number, canvasH: number) {
+  const { w: cardW, h: cardH } = cardSizeFor(n)
+  const margin = 100
+  const cx = canvasW / 2
+  const cy = canvasH / 2
+  const rx = Math.max(1, (canvasW - margin * 2 - cardW) / 2)
+  const ry = Math.max(1, (canvasH - margin * 2 - cardH) / 2)
+  const raw = n > COMPACT_THRESHOLD ? perimeterPositions(n, rx, ry) : superellipsePositions(n, rx, ry)
+
+  const minDx = (1 - OVERLAP_TOLERANCE) * cardW
+  const minDy = (1 - OVERLAP_TOLERANCE) * cardH
+  let scale = 1
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const dx = Math.abs(raw[i].x - raw[j].x)
+      const dy = Math.abs(raw[i].y - raw[j].y)
+      if (dx >= minDx || dy >= minDy) continue
+      scale = Math.max(scale, Math.min(minDx / Math.max(dx, 1), minDy / Math.max(dy, 1)))
+    }
+  }
+  return {
+    positions: raw.map(({ x, y }) => ({ x: cx + x * scale, y: cy + y * scale })),
+    scale,
+  }
 }
 
 type G6EdgeData = Record<string, unknown> & {
@@ -224,7 +279,7 @@ type G6EdgeData = Record<string, unknown> & {
 }
 
 function buildData(nodes: GraphNode[], canvasW: number, canvasH: number) {
-  const positions = superellipsePositions(nodes.length, canvasW, canvasH)
+  const { positions, scale } = ringLayout(nodes.length, canvasW, canvasH)
 
   const g6Nodes = nodes.map((n, i) => ({
     id: n.name,
@@ -261,7 +316,7 @@ function buildData(nodes: GraphNode[], canvasW: number, canvasH: number) {
 
   assignParallelEdgeOffsets(g6Edges, 25)
 
-  return { nodes: g6Nodes, edges: g6Edges }
+  return { nodes: g6Nodes, edges: g6Edges, scale }
 }
 
 function createGraph() {
@@ -272,19 +327,20 @@ function createGraph() {
   const rect = containerRef.value.getBoundingClientRect()
   const canvasW = rect.width || 800
   const canvasH = rect.height || 600
-  const data = buildData(visibleNodes.value, canvasW, canvasH)
+  const { nodes: g6Nodes, edges: g6Edges, scale } = buildData(visibleNodes.value, canvasW, canvasH)
+  const { w: cardW, h: cardH } = cardSizeFor(visibleNodes.value.length)
 
   graph = new Graph({
     container: containerRef.value,
     width: canvasW,
     height: canvasH,
-    data,
+    data: { nodes: g6Nodes, edges: g6Edges },
     node: {
       type: 'html',
       style: {
-        size: [CARD_WIDTH, CARD_HEIGHT],
-        dx: -CARD_WIDTH / 2,
-        dy: -CARD_HEIGHT / 2,
+        size: [cardW, cardH],
+        dx: -cardW / 2,
+        dy: -cardH / 2,
         innerHTML: (d: { id: string; data?: { description?: string } }) => {
           const isFocused = focusedNodeId.value === d.id
           return renderCard(d.id, d.data?.description ?? '', isFocused)
@@ -391,9 +447,11 @@ function createGraph() {
     const container = containerRef.value
     if (!container) return
     const containerRect = container.getBoundingClientRect()
+    const halfWidth = Math.min(POPOVER_WIDTH, containerRect.width - 24) / 2
+    const rawX = (e.client?.x ?? 0) - containerRect.left
     popover.value = {
       visible: true,
-      x: (e.client?.x ?? 0) - containerRect.left,
+      x: Math.min(Math.max(rawX, halfWidth), containerRect.width - halfWidth),
       y: (e.client?.y ?? 0) - containerRect.top,
       source: d.sourceName,
       target: edgeData.target as string,
@@ -407,6 +465,14 @@ function createGraph() {
 
   const activeGraph = graph
   void activeGraph.render()
+    .catch((error) => {
+      if (graph === activeGraph) console.error(error)
+    })
+    .then(() => {
+      if (graph !== activeGraph || scale <= 1) return
+
+      return activeGraph.zoomTo(1 / scale, undefined, [canvasW / 2, canvasH / 2])
+    })
     .then(() => {
       if (graph !== activeGraph) return
 
@@ -441,11 +507,36 @@ function recreateGraph() {
   createGraph()
 }
 
+let resizeObserver: ResizeObserver | null = null
+let resizeTimer: ReturnType<typeof setTimeout> | undefined
+
+function onContainerResize() {
+  const container = containerRef.value
+  if (!graph || !container) return
+
+  const { width, height } = container.getBoundingClientRect()
+  if (!width || !height) return
+  const [prevWidth, prevHeight] = graph.getSize()
+  if (Math.round(width) === Math.round(prevWidth) && Math.round(height) === Math.round(prevHeight)) return
+
+  recreateGraph()
+}
+
 onMounted(() => {
   createGraph()
   window.addEventListener('keydown', onKeyDown)
+  if (containerRef.value) {
+    resizeObserver = new ResizeObserver(() => {
+      clearTimeout(resizeTimer)
+      resizeTimer = setTimeout(onContainerResize, 150)
+    })
+    resizeObserver.observe(containerRef.value)
+  }
 })
 onUnmounted(() => {
+  resizeObserver?.disconnect()
+  resizeObserver = null
+  clearTimeout(resizeTimer)
   destroyGraph()
   window.removeEventListener('keydown', onKeyDown)
 })
@@ -606,13 +697,26 @@ watch(isDark, recreateGraph)
   color: var(--text-secondary);
   line-height: 1.55;
   overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 7;
+  overflow: hidden;
+}
+
+:global(.node-card.is-compact) {
+  padding: 16px 20px;
+  gap: 8px;
+}
+
+:global(.node-card.is-compact .node-card-desc) {
+  -webkit-line-clamp: 3;
 }
 
 .edge-popover {
   position: absolute;
-  z-index: 100;
+  z-index: var(--z-popover);
   width: 380px;
-  max-width: calc(100vw - 32px);
+  max-width: calc(100% - 24px);
   background: var(--bg-surface);
   border: 1px solid var(--border-card);
   border-radius: var(--radius-card);
@@ -642,6 +746,7 @@ watch(isDark, recreateGraph)
 
 .edge-popover-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   margin-bottom: 10px;
@@ -656,6 +761,7 @@ watch(isDark, recreateGraph)
 }
 
 .edge-popover-node {
+  min-width: 0;
   font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
