@@ -34,8 +34,8 @@ defineProps<{
 }
 
 .impact-badge.none { background: var(--bg-surface-alt); color: var(--text-disabled); }
-.impact-badge.minor { background: #dbeafe; color: #2563eb; }
-.impact-badge.structural { background: #fef3c7; color: #d97706; }
+.impact-badge.minor { background: var(--badge-active-bg); color: var(--accent); }
+.impact-badge.structural { background: var(--badge-pending-bg); color: var(--color-orange); }
 
 .summary-text {
   flex: 1;

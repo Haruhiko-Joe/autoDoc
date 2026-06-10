@@ -31,7 +31,7 @@ const entries = Object.entries(EDGE_STYLES)
   gap: 16px;
   padding: 12px 16px;
   background: var(--bg-sidebar);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   border: 1px solid var(--border);
 }
 

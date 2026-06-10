@@ -85,70 +85,21 @@ function onSubmit() {
 </template>
 
 <style scoped>
-.dialog-overlay {
-  position: fixed;
-  inset: 0;
-  background: var(--bg-overlay);
-  backdrop-filter: blur(14px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.dialog {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-card);
-  border-radius: var(--radius-card);
-  width: 420px;
-  max-width: 90vw;
-  box-shadow: var(--shadow-panel);
-}
-
-.dialog-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 20px 24px 0;
-}
-
-.dialog-header h3 { margin: 0; font-size: 17px; color: var(--text-heading); }
-
-.dialog-close {
-  background: none; border: none; font-size: 22px;
-  color: var(--text-disabled); cursor: pointer; padding: 0 4px; line-height: 1;
-}
-
-.dialog-close:hover { color: var(--text-secondary); }
-
-.dialog-body {
-  padding: 20px 24px 24px;
-  display: flex; flex-direction: column; gap: 16px;
-}
+.dialog { --dialog-width: 420px; }
 
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field-label { font-size: 13px; font-weight: 500; color: var(--text-secondary); }
 .field-value { font-size: 14px; color: var(--text-primary); font-weight: 500; }
 
 .field-input {
-  padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px;
+  padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius-control);
   background: var(--bg-body); color: var(--text-primary); font-size: 14px; font-family: inherit;
 }
 
 .field-input:focus { outline: none; border-color: var(--accent); }
 
-.dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
-
-.btn-primary, .btn-secondary {
-  padding: 8px 20px; border-radius: 6px; font-size: 14px; font-weight: 500;
-  cursor: pointer; border: 1px solid transparent;
-}
-
-.btn-primary { background: var(--accent); color: #fff; }
-.btn-primary:hover { opacity: 0.9; }
-.btn-secondary { background: var(--bg-surface); border-color: var(--border); color: var(--text-primary); }
-.btn-secondary:hover { border-color: var(--accent); }
-
 .dialog-enter-active, .dialog-leave-active { transition: opacity 0.15s; }
+.dialog-enter-active .dialog, .dialog-leave-active .dialog { transition: transform 0.15s; }
 .dialog-enter-from, .dialog-leave-to { opacity: 0; }
+.dialog-enter-from .dialog { transform: scale(0.95); }
 </style>

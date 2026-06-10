@@ -70,67 +70,72 @@ watch(() => [props.visible, props.project, props.refreshToken], ([visible]) => {
         <button class="panel-close" @click="emit('close')">&times;</button>
       </div>
 
-      <div class="git-state">
-        <span class="state-dot" :class="{ dirty: status?.dirty }" />
-        <div>
-          <strong>{{ status?.dirty ? 'Uncommitted changes' : 'Clean working tree' }}</strong>
-          <p v-if="status">{{ status.fileCount }} file{{ status.fileCount === 1 ? '' : 's' }} changed</p>
-          <p v-else>{{ loading ? 'Checking status...' : 'Status unavailable' }}</p>
+      <div class="panel-body">
+        <div class="git-state">
+          <span class="state-dot" :class="{ dirty: status?.dirty }" />
+          <div>
+            <strong>{{ status?.dirty ? 'Uncommitted changes' : 'Clean working tree' }}</strong>
+            <p v-if="status">{{ status.fileCount }} file{{ status.fileCount === 1 ? '' : 's' }} changed</p>
+            <p v-else>{{ loading ? 'Checking status...' : 'Status unavailable' }}</p>
+          </div>
         </div>
+
+        <div v-if="status?.head" class="head-box">
+          <span>{{ status.head.shortSha }}</span>
+          <strong>{{ status.head.message }}</strong>
+          <p>{{ formatDate(status.head.date) }}</p>
+        </div>
+
+        <label class="commit-label" for="doc-git-message">Commit message</label>
+        <textarea
+          id="doc-git-message"
+          v-model="message"
+          class="commit-message"
+          rows="3"
+          :disabled="committing"
+        />
+
+        <div class="panel-actions">
+          <button class="btn-secondary" :disabled="loading || committing" @click="loadStatus">Refresh</button>
+          <button
+            class="btn-primary"
+            :disabled="!status?.dirty || !message.trim() || committing"
+            @click="commitNow"
+          >
+            {{ committing ? 'Committing...' : 'Commit' }}
+          </button>
+        </div>
+
+        <p v-if="error" class="git-error">{{ error }}</p>
       </div>
-
-      <div v-if="status?.head" class="head-box">
-        <span>{{ status.head.shortSha }}</span>
-        <strong>{{ status.head.message }}</strong>
-        <p>{{ formatDate(status.head.date) }}</p>
-      </div>
-
-      <label class="commit-label" for="doc-git-message">Commit message</label>
-      <textarea
-        id="doc-git-message"
-        v-model="message"
-        class="commit-message"
-        rows="3"
-        :disabled="committing"
-      />
-
-      <div class="panel-actions">
-        <button class="btn-secondary" :disabled="loading || committing" @click="loadStatus">Refresh</button>
-        <button
-          class="btn-primary"
-          :disabled="!status?.dirty || !message.trim() || committing"
-          @click="commitNow"
-        >
-          {{ committing ? 'Committing...' : 'Commit' }}
-        </button>
-      </div>
-
-      <p v-if="error" class="git-error">{{ error }}</p>
     </aside>
   </Transition>
 </template>
 
 <style scoped>
 .git-panel {
-  width: min(360px, 30vw);
-  min-width: 240px;
+  width: clamp(280px, 24vw, 420px);
   background: var(--bg-sidebar);
   border-left: 1px solid var(--border);
   backdrop-filter: blur(18px);
-  box-shadow: -16px 0 42px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-soft);
+  z-index: var(--z-sidepanel);
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding-bottom: 20px;
   flex-shrink: 0;
 }
 
 .panel-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
-  padding: 16px 20px;
+  padding: var(--space-lg) var(--space-xl);
   border-bottom: 1px solid var(--border);
+}
+
+.panel-header > div {
+  min-width: 0;
 }
 
 .panel-header h3 {
@@ -145,6 +150,9 @@ watch(() => [props.visible, props.project, props.refreshToken], ([visible]) => {
   font-size: 12px;
   color: var(--text-secondary);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .panel-close {
@@ -155,14 +163,14 @@ watch(() => [props.visible, props.project, props.refreshToken], ([visible]) => {
   cursor: pointer;
 }
 
-.git-state,
-.head-box,
-.commit-label,
-.commit-message,
-.panel-actions,
-.git-error {
-  margin-left: 20px;
-  margin-right: 20px;
+.panel-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  padding: var(--space-lg) var(--space-xl) var(--space-xl);
+  overflow-y: auto;
 }
 
 .git-state {
@@ -229,7 +237,7 @@ watch(() => [props.visible, props.project, props.refreshToken], ([visible]) => {
 }
 
 .commit-message {
-  width: calc(100% - 40px);
+  width: 100%;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-card);
   background: var(--bg-surface);
@@ -250,38 +258,6 @@ watch(() => [props.visible, props.project, props.refreshToken], ([visible]) => {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-}
-
-.btn-primary,
-.btn-secondary {
-  border-radius: var(--radius-control);
-  min-height: 32px;
-  padding: 0 14px;
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.btn-primary {
-  border: 1px solid var(--accent);
-  background: var(--accent);
-  color: #fff;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: var(--accent-hover);
-  transform: translateY(-1px);
-}
-
-.btn-secondary {
-  border: 1px solid var(--border);
-  background: var(--bg-surface);
-  color: var(--text-primary);
-}
-
-.btn-primary:disabled,
-.btn-secondary:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
 }
 
 .git-error {

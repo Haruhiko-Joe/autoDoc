@@ -1,3 +1,8 @@
+/* Breakpoints (literals — CSS vars don't work in @media):
+   - 900px: narrow window / browser split-screen — sidebars collapse or become drawers,
+     split editors stack vertically, secondary header actions fold
+   - 700px: minimum supported width */
+
 :root {
   /* Backgrounds */
   --bg-body: #f5f5f7;
@@ -39,6 +44,39 @@
   --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 26px rgba(0, 0, 0, 0.06);
   --shadow-panel: 0 20px 54px rgba(0, 0, 0, 0.18);
   --shadow-focus: 0 0 0 3px rgba(0, 113, 227, 0.14);
+
+  /* Spacing scale */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 20px;
+  --space-2xl: 24px;
+  --space-3xl: 32px;
+
+  /* Font scale */
+  --font-xs: 11px;
+  --font-sm: 12px;
+  --font-md: 13px;
+  --font-base: 14px;
+  --font-lg: 16px;
+  --font-xl: 20px;
+  --font-2xl: 24px;
+  --font-3xl: 28px;
+
+  /* Z-index scale */
+  --z-canvas-ui: 10;
+  --z-popover: 30;
+  --z-sidepanel: 100;
+  --z-modal: 1000;
+  --z-fab: 1100;
+  --z-chat: 1200;
+
+  /* Severity palette */
+  --severity-critical: #ef4444;
+  --severity-high: #f97316;
+  --severity-medium: #eab308;
+  --severity-low: #64748b;
 
   /* Status badge backgrounds */
   --badge-done-bg: rgba(36, 138, 61, 0.1);
@@ -82,6 +120,12 @@
 }
 
 [data-theme="dark"] {
+  /* Severity palette */
+  --severity-critical: #f87171;
+  --severity-high: #fb923c;
+  --severity-medium: #facc15;
+  --severity-low: #94a3b8;
+
   /* Backgrounds */
   --bg-body: #0b0c0f;
   --bg-sidebar: rgba(22, 23, 27, 0.92);
@@ -209,4 +253,120 @@ input:focus-visible,
 textarea:focus-visible {
   outline: none;
   box-shadow: var(--shadow-focus);
+}
+
+/* Shared buttons — components must not redefine these */
+.btn-primary,
+.btn-secondary {
+  border-radius: var(--radius-control);
+  min-height: 32px;
+  padding: 0 14px;
+  font-size: var(--font-md);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.btn-primary {
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+}
+
+.btn-secondary {
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.btn-primary:disabled,
+.btn-secondary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Shared modal dialog — width parameterized via --dialog-width */
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--bg-overlay);
+  backdrop-filter: blur(14px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--z-modal);
+}
+
+.dialog {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-card);
+  width: min(var(--dialog-width, 480px), calc(100vw - 32px));
+  max-height: min(85vh, 760px);
+  box-shadow: var(--shadow-panel);
+}
+
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  padding: 20px 24px 0;
+}
+
+.dialog-header h3 {
+  margin: 0;
+  font-size: 17px;
+  color: var(--text-heading);
+}
+
+.dialog-close {
+  background: none;
+  border: none;
+  font-size: 22px;
+  color: var(--text-disabled);
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.dialog-close:hover {
+  color: var(--text-secondary);
+}
+
+.dialog-body {
+  padding: 20px 24px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+}
+
+.dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+/* Shared SHA badge */
+.sha-badge {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--font-xs);
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--bg-code-inline);
+  border: 1px solid var(--border-light);
+  color: var(--text-secondary);
 }

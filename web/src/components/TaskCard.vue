@@ -17,7 +17,7 @@ const emit = defineEmits<{
     <div class="task-status-bar" />
     <div class="task-content">
       <div class="task-header">
-        <code class="task-sha">{{ task.sha.slice(0, 7) }}</code>
+        <code class="sha-badge">{{ task.sha.slice(0, 7) }}</code>
         <span class="task-title" :class="{ strikethrough: task.status === 'skipped' }">{{ task.title }}</span>
         <span class="task-files">{{ task.filesChanged }}f</span>
         <button
@@ -78,15 +78,11 @@ const emit = defineEmits<{
 .task-header {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
-.task-sha {
-  font-size: 11px;
-  color: var(--accent);
-  background: var(--bg-surface-alt);
-  padding: 1px 6px;
-  border-radius: var(--radius-control);
+.sha-badge {
   flex-shrink: 0;
 }
 
