@@ -24,6 +24,36 @@ export class Semaphore {
   }
 }
 
+/**
+ * A resettable wake-up signal with a version counter. `wait(since)` resolves
+ * immediately if the signal has fired since the `snapshot()`, otherwise it
+ * blocks until the next `fire()`.
+ */
+export class Signal {
+  private seq = 0;
+  private promise: Promise<void> | null = null;
+  private resolve: (() => void) | null = null;
+
+  snapshot(): number {
+    return this.seq;
+  }
+
+  wait(since?: number): Promise<void> {
+    if (since !== undefined && this.seq !== since) return Promise.resolve();
+    if (!this.promise) {
+      this.promise = new Promise<void>((resolve) => { this.resolve = resolve; });
+    }
+    return this.promise;
+  }
+
+  fire(): void {
+    this.seq++;
+    this.resolve?.();
+    this.resolve = null;
+    this.promise = null;
+  }
+}
+
 export async function withSemaphore<T>(sem: Semaphore, fn: () => Promise<T>): Promise<T> {
   await sem.acquire();
   try {

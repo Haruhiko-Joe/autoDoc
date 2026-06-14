@@ -8,16 +8,28 @@ import {
   QaFile,
   ValidationFile,
   Variant,
+  type JudgeOutput,
   type Language,
   type QaItem,
+  type ValidationAnswer,
   type ValidationItem,
+  type ValidationJudge,
 } from "../lib/schemas.ts";
 import { runAnswerJudge, runAnswerVerifier } from "../lib/agents.ts";
 import { buildJudgePrompt, buildVerifierPrompt } from "../lib/prompts.ts";
 import { cleanWorkdir, setupWorkdir } from "../lib/workdir.ts";
+import {
+  judgeFor,
+  judgesFor,
+  normalizeValidationFile,
+  normalizeValidationItem,
+  syncValidationStats,
+  upsertJudge,
+} from "../lib/validation.ts";
+import { assertBenchWorker } from "../lib/worker.ts";
 
 // ---------------------------------------------------------------------------
-// CLI arg parsing
+// Worker option parsing
 // ---------------------------------------------------------------------------
 
 interface Options {
@@ -29,7 +41,7 @@ interface Options {
   limit?: number;
   itemIds?: string[];
   answerProvider: "codex" | "claude";
-  judgeProvider: "codex" | "claude";
+  judgeProviders: Array<"codex" | "claude">;
   validationRoot: string;
   ablationDocs: string;
   skillTemplate: string;
@@ -57,12 +69,19 @@ function parseArgs(argv: string[]): Options {
     limit: m.has("limit") ? Number.parseInt(m.get("limit")!, 10) : undefined,
     itemIds: m.get("item-ids")?.split(",").map(s => s.trim()).filter(Boolean),
     answerProvider: Provider.parse(m.get("answer-provider") ?? "codex"),
-    judgeProvider: Provider.parse(m.get("judge-provider") ?? "claude"),
+    judgeProviders: parseProviderList(m.get("judge-providers") ?? m.get("judge-provider") ?? "claude"),
     validationRoot: path.resolve(m.get("validation-root") ?? "bench/validation"),
     ablationDocs: path.resolve(m.get("ablation-docs") ?? "bench/data/ablation-docs"),
     skillTemplate: path.resolve(m.get("skill-template") ?? "src/skill-template-readonly"),
     force: m.has("force"),
   };
+}
+
+function parseProviderList(value: string): Array<"codex" | "claude"> {
+  const providers = value.split(",").map((item) => Provider.parse(item.trim())).filter(Boolean);
+  const unique = [...new Set(providers)];
+  if (unique.length === 0) throw new Error("At least one judge provider is required");
+  return unique;
 }
 
 // ---------------------------------------------------------------------------
@@ -97,18 +116,9 @@ function validationPath(qaFile: string, variant: string): string {
 }
 
 async function writeValidation(filePath: string, data: ValidationFile): Promise<void> {
-  data.completedCount = data.results.filter(r => r.status === "done").length;
-  data.averageScore = averageScore(data.results);
-  data.updatedAt = new Date().toISOString();
+  syncValidationStats(data);
   await mkdir(path.dirname(filePath), { recursive: true });
   await writeFile(filePath, `${JSON.stringify(data, null, 2)}\n`);
-}
-
-function averageScore(results: ValidationItem[]): number | null {
-  const done = results.filter(r => r.status === "done" && r.judge);
-  if (done.length === 0) return null;
-  const sum = done.reduce((s, r) => s + (r.judge?.output.normalizedScore ?? 0), 0);
-  return Number((sum / done.length).toFixed(4));
 }
 
 // ---------------------------------------------------------------------------
@@ -156,13 +166,41 @@ function selectItems(data: QaFile, opts: Options): QaItem[] {
 async function loadExistingValidation(filePath: string): Promise<ValidationFile | null> {
   try {
     const raw = JSON.parse(await readFile(filePath, "utf-8"));
-    return ValidationFile.parse(raw);
+    return normalizeValidationFile(ValidationFile.parse(raw));
   } catch {
     return null;
   }
 }
 
+function findExistingResult(validation: ValidationFile, itemId: string): ValidationItem | undefined {
+  return validation.results.find((result) => result.itemId === itemId && result.status === "done");
+}
+
+function canReuseAnswer(result: ValidationItem | undefined, answerProvider: string): result is ValidationItem & { answer: ValidationAnswer } {
+  return result?.status === "done" && result.answer?.provider === answerProvider && result.answer.text.trim().length > 0;
+}
+
+function needsValidation(item: QaItem, validation: ValidationFile, opts: Options): boolean {
+  const existing = findExistingResult(validation, item.id);
+  if (!canReuseAnswer(existing, opts.answerProvider)) return true;
+  return opts.judgeProviders.some((provider) => !judgeFor(existing, provider));
+}
+
+function removeResult(validation: ValidationFile, itemId: string): void {
+  validation.results = validation.results.filter((result) => result.itemId !== itemId);
+}
+
+function makeJudge(
+  provider: "codex" | "claude",
+  sessionId: string,
+  output: JudgeOutput,
+  metrics: ValidationJudge["metrics"],
+): ValidationJudge {
+  return { provider, sessionId, output, metrics };
+}
+
 async function main(): Promise<void> {
+  assertBenchWorker();
   const opts = parseArgs(process.argv.slice(2));
   const { file: qaFile, data: qaData } = await loadQaFile(opts.dataDir, opts.project, opts.runId);
   const language = opts.language ?? qaData.language;
@@ -181,9 +219,6 @@ async function main(): Promise<void> {
   console.log(`[setup] workdir ready: ${workdir}`);
 
   const existing = await loadExistingValidation(outFile);
-  const doneIds = new Set(
-    existing?.results.filter(r => r.status === "done").map(r => r.itemId) ?? [],
-  );
 
   const now = new Date().toISOString();
   const validation: ValidationFile = {
@@ -193,87 +228,114 @@ async function main(): Promise<void> {
     workdir,
     language,
     answerProvider: opts.answerProvider,
-    judgeProvider: opts.judgeProvider,
+    judgeProvider: opts.judgeProviders[0]!,
+    judgeProviders: opts.judgeProviders,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
     itemCount: items.length,
     completedCount: 0,
     averageScore: null,
-    results: existing?.results.filter(r => r.status === "done") ?? [],
+    averageScores: {},
+    results: existing?.results.filter(r => r.status === "done").map(normalizeValidationItem) ?? [],
   };
   await writeValidation(outFile, validation);
 
-  const pending = items.filter(it => !doneIds.has(it.id));
-  console.log(`[validation] project=${opts.project} variant=${opts.docVariant} items=${items.length} done=${doneIds.size} pending=${pending.length}`);
+  const pending = items.filter(it => needsValidation(it, validation, opts));
+  const reusable = items.length - pending.length;
+  console.log(`[validation] project=${opts.project} variant=${opts.docVariant} items=${items.length} reusable=${reusable} pending=${pending.length}`);
 
   for (const item of pending) {
     const startedAt = new Date().toISOString();
-    console.log(`[answer:${opts.answerProvider}] item=${item.id}`);
+    let resultItem = findExistingResult(validation, item.id);
+    let answer: ValidationAnswer;
 
     try {
-      const answer = await runAnswerVerifier({
-        provider: opts.answerProvider,
-        variant: opts.docVariant,
-        language,
-        prompt: buildVerifierPrompt({ category: item.category, itemId: item.id, question: item.question }),
-        workdir,
-      });
-
-      cleanWorkdir(workdir);
-
-      console.log(`[judge:${opts.judgeProvider}] item=${item.id}`);
-      const judgeResult = await runAnswerJudge({
-        provider: opts.judgeProvider,
-        language,
-        prompt: buildJudgePrompt({
-          language,
-          question: item.question,
-          goldAnswer: item.goldAnswer,
-          scoringPoints: item.scoringPoints,
-          candidateAnswer: answer.text,
-        }),
-        workdir,
-      });
-
-      const judgeOutput = normalizeJudge(
-        RawJudgeOutput.parse(JSON.parse(judgeResult.text)),
-        item.scoringPoints,
-      );
-
-      validation.results.push({
-        itemId: item.id,
-        question: item.question,
-        category: item.category,
-        status: "done",
-        startedAt,
-        completedAt: new Date().toISOString(),
-        answer: {
+      if (canReuseAnswer(resultItem, opts.answerProvider)) {
+        answer = resultItem.answer;
+        console.log(`[answer:${opts.answerProvider}] item=${item.id} reuse`);
+      } else {
+        console.log(`[answer:${opts.answerProvider}] item=${item.id}`);
+        const answerResult = await runAnswerVerifier({
           provider: opts.answerProvider,
-          sessionId: answer.sessionId,
-          text: answer.text,
-          metrics: answer.metrics,
-        },
-        judge: {
-          provider: opts.judgeProvider,
-          sessionId: judgeResult.sessionId,
-          output: judgeOutput,
-          metrics: judgeResult.metrics,
-        },
-      });
+          variant: opts.docVariant,
+          language,
+          prompt: buildVerifierPrompt({ category: item.category, itemId: item.id, question: item.question }),
+          workdir,
+        });
 
+        cleanWorkdir(workdir);
+        answer = {
+          provider: opts.answerProvider,
+          sessionId: answerResult.sessionId,
+          text: answerResult.text,
+          metrics: answerResult.metrics,
+        };
+
+        removeResult(validation, item.id);
+        resultItem = {
+          itemId: item.id,
+          question: item.question,
+          category: item.category,
+          status: "done",
+          startedAt,
+          completedAt: startedAt,
+          answer,
+          judges: [],
+        };
+        validation.results.push(resultItem);
+      }
+
+      for (const judgeProvider of opts.judgeProviders) {
+        if (judgeFor(resultItem, judgeProvider)) {
+          console.log(`[judge:${judgeProvider}] item=${item.id} reuse`);
+          continue;
+        }
+
+        console.log(`[judge:${judgeProvider}] item=${item.id}`);
+        const judgeResult = await runAnswerJudge({
+          provider: judgeProvider,
+          language,
+          prompt: buildJudgePrompt({
+            language,
+            question: item.question,
+            goldAnswer: item.goldAnswer,
+            scoringPoints: item.scoringPoints,
+            candidateAnswer: answer.text,
+          }),
+          workdir,
+        });
+
+        const judgeOutput = normalizeJudge(
+          RawJudgeOutput.parse(JSON.parse(judgeResult.text)),
+          item.scoringPoints,
+        );
+
+        upsertJudge(resultItem, makeJudge(judgeProvider, judgeResult.sessionId, judgeOutput, judgeResult.metrics));
+        await writeValidation(outFile, validation);
+        console.log(`[validation] item=${item.id} judge=${judgeProvider} score=${judgeOutput.normalizedScore}`);
+      }
+
+      resultItem.completedAt = new Date().toISOString();
       await writeValidation(outFile, validation);
-      console.log(`[validation] item=${item.id} score=${judgeOutput.normalizedScore}`);
+      console.log(`[validation] item=${item.id} done`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      validation.results.push({
-        itemId: item.id,
-        question: item.question,
-        category: item.category,
-        status: "error",
-        startedAt,
-        completedAt: new Date().toISOString(),
-        error: message,
-      });
+      if (resultItem?.answer) {
+        resultItem.status = judgesFor(resultItem).length > 0 ? "done" : "error";
+        resultItem.error = message;
+        resultItem.completedAt = new Date().toISOString();
+      } else {
+        removeResult(validation, item.id);
+        validation.results.push({
+          itemId: item.id,
+          question: item.question,
+          category: item.category,
+          status: "error",
+          startedAt,
+          completedAt: new Date().toISOString(),
+          error: message,
+        });
+      }
       await writeValidation(outFile, validation);
       console.error(`[validation] item=${item.id} error=${message}`);
 

@@ -1,0 +1,11 @@
+{
+  "name": "kioku",
+  "displayName": "Kioku Memory",
+  "description": "Agent system maintaining a validated, git-backed project memory tree. Agents file proposals to .agent-memory/staging/; the memory-curator agent consolidates them into a topic tree, hooks gate every write deterministically, and an engine stamps provenance and git-commits the library.",
+  "version": "0.1.0",
+  "author": {
+    "name": "autoDoc"
+  },
+  "license": "MIT",
+  "keywords": ["memory", "agent-memory", "hooks", "knowledge"]
+}

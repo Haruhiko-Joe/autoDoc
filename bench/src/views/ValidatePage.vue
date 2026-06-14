@@ -22,10 +22,16 @@
         </div>
         <div class="field">
           <label>Judge agent</label>
-          <select v-model="form.judgeProvider">
-            <option value="claude">Claude</option>
-            <option value="codex">Codex</option>
-          </select>
+          <div class="check-group">
+            <label class="check-option">
+              <input v-model="form.judgeProviders" type="checkbox" value="claude" />
+              Claude
+            </label>
+            <label class="check-option">
+              <input v-model="form.judgeProviders" type="checkbox" value="codex" />
+              Codex
+            </label>
+          </div>
         </div>
       </div>
 
@@ -61,7 +67,7 @@
 
       <div class="actions">
         <button type="submit" class="btn-primary"
-                :disabled="!selectedRun || isSelectedRunning">
+                :disabled="!selectedRun || isSelectedRunning || form.judgeProviders.length === 0">
           {{ isSelectedRunning ? `${selectedRun?.project}/${selectedRun?.runId} running...` : 'Start Validation' }}
         </button>
         <RouterLink :to="{ name: 'manual-validate', query: selectedRun ? { project: selectedRun.project, runId: selectedRun.runId } : {} }" class="link-button">
@@ -73,9 +79,9 @@
     <div v-if="selectedValidation" class="summary-panel">
       <div>
         <h2>Latest Result</h2>
-        <p>{{ selectedValidation.completedCount }}/{{ selectedValidation.itemCount }} completed - {{ selectedValidation.answerProvider }} answer - {{ selectedValidation.judgeProvider }} judge</p>
+        <p>{{ selectedValidation.completedCount }}/{{ selectedValidation.itemCount }} completed - {{ selectedValidation.answerProvider }} answer</p>
       </div>
-      <div class="score-big">{{ percent(selectedValidation.averageScore) }}</div>
+      <div class="score-big">{{ summaryScoreText(selectedValidation, percent) }}</div>
     </div>
 
     <div v-if="Object.keys(tasks).length" class="tasks-panel">
@@ -86,6 +92,7 @@
           <span class="task-project">{{ state.project }}</span>
           <span class="task-run">{{ state.runId }}</span>
           <span v-if="state.docVariant" class="variant-tag">{{ state.docVariant }}</span>
+          <span v-for="provider in state.judgeProviders ?? []" :key="provider" class="variant-tag">{{ provider }}</span>
           <RouterLink v-if="state.status !== 'running'" :to="{ name: 'detail', params: { project: state.project, runId: state.runId } }" class="detail-link">
             View
           </RouterLink>
@@ -110,6 +117,7 @@ import {
   type RunSummary,
   type TaskState,
 } from '../services/api'
+import { summaryScoreText } from '../utils/validation'
 
 const route = useRoute()
 const runs = ref<RunSummary[]>([])
@@ -118,7 +126,7 @@ const selectedRunKey = ref('')
 
 const form = reactive({
   answerProvider: 'codex',
-  judgeProvider: 'claude',
+  judgeProviders: ['claude'] as string[],
   docVariant: 'full',
   limit: undefined as number | undefined,
   language: '',
@@ -175,7 +183,7 @@ async function submit() {
     project: run.project,
     runId: run.runId,
     answerProvider: form.answerProvider,
-    judgeProvider: form.judgeProvider,
+    judgeProviders: form.judgeProviders,
     docVariant: form.docVariant,
   }
   if (form.limit) opts.limit = form.limit
@@ -270,6 +278,21 @@ function percent(value: number | null | undefined): string {
 .field input:focus,
 .field select:focus {
   border-color: var(--accent);
+}
+
+.check-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 37px;
+}
+
+.check-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text);
 }
 
 .btn-primary {

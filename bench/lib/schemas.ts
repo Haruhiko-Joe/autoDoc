@@ -61,12 +61,16 @@ export const ValidationAnswer = z.object({
   metrics: AgentMetrics.optional(),
 });
 
+export type ValidationAnswer = z.infer<typeof ValidationAnswer>;
+
 export const ValidationJudge = z.object({
   provider: Provider,
   sessionId: z.string(),
   output: JudgeOutput,
   metrics: AgentMetrics.optional(),
 });
+
+export type ValidationJudge = z.infer<typeof ValidationJudge>;
 
 export const ValidationItem = z.object({
   itemId: z.string(),
@@ -76,6 +80,7 @@ export const ValidationItem = z.object({
   startedAt: z.string(),
   completedAt: z.string(),
   answer: ValidationAnswer.optional(),
+  judges: z.array(ValidationJudge).optional(),
   judge: ValidationJudge.optional(),
   error: z.string().optional(),
 });
@@ -90,11 +95,13 @@ export const ValidationFile = z.object({
   language: Language,
   answerProvider: z.string(),
   judgeProvider: Provider,
+  judgeProviders: z.array(Provider).optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
   itemCount: z.number().int().min(0),
   completedCount: z.number().int().min(0),
   averageScore: z.number().nullable(),
+  averageScores: z.record(z.string(), z.number().nullable()).optional(),
   results: z.array(ValidationItem),
 });
 

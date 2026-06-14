@@ -31,10 +31,16 @@
       <div class="row">
         <div class="field">
           <label>Judge agent</label>
-          <select v-model="form.judgeProvider">
-            <option value="claude">Claude</option>
-            <option value="codex">Codex</option>
-          </select>
+          <div class="check-group">
+            <label class="check-option">
+              <input v-model="form.judgeProviders" type="checkbox" value="claude" />
+              Claude
+            </label>
+            <label class="check-option">
+              <input v-model="form.judgeProviders" type="checkbox" value="codex" />
+              Codex
+            </label>
+          </div>
         </div>
         <div class="field">
           <label>Language</label>
@@ -58,9 +64,9 @@
     <div v-if="selectedValidation" class="summary-panel">
       <div>
         <h2>Latest Manual Result</h2>
-        <p>{{ selectedValidation.docVariant }} - {{ selectedValidation.completedCount }}/{{ selectedValidation.itemCount }} completed - judge {{ selectedValidation.judgeProvider }}</p>
+        <p>{{ selectedValidation.docVariant }} - {{ selectedValidation.completedCount }}/{{ selectedValidation.itemCount }} completed</p>
       </div>
-      <div class="score-big">{{ percent(selectedValidation.averageScore) }}</div>
+      <div class="score-big">{{ summaryScoreText(selectedValidation, percent) }}</div>
     </div>
 
     <div v-if="loadingRun" class="empty">Loading...</div>
@@ -71,8 +77,8 @@
           <span class="qa-id">{{ item.id }}</span>
           <span class="tag">{{ item.category }}</span>
           <span class="tag">{{ item.generator }}</span>
-          <span v-if="manualResultByItem[item.id]?.judge" class="score-mini">
-            {{ percent(manualResultByItem[item.id]?.judge?.output.normalizedScore) }}
+          <span v-if="judgesFor(manualResultByItem[item.id]).length" class="score-mini">
+            {{ judgeScoreText(manualResultByItem[item.id]) }}
           </span>
         </div>
 
@@ -96,13 +102,14 @@
             <div class="task-error">{{ manualResultByItem[item.id]?.error }}</div>
           </template>
           <template v-else>
-            <div class="result-head">
-              <span class="score-mini inline">{{ percent(manualResultByItem[item.id]?.judge?.output.normalizedScore) }}</span>
-              <span>{{ manualResultByItem[item.id]?.judge?.output.verdict }}</span>
-              <span class="muted">{{ usageText(manualResultByItem[item.id]?.judge?.metrics) }}</span>
+            <div v-for="judge in judgesFor(manualResultByItem[item.id])" :key="judge.provider" class="result-head">
+              <span class="tag">{{ judge.provider }}</span>
+              <span class="score-mini inline">{{ percent(judge.output.normalizedScore) }}</span>
+              <span>{{ judge.output.verdict }}</span>
+              <span class="muted">{{ usageText(judge.metrics) }}</span>
             </div>
-            <div v-if="manualResultByItem[item.id]?.judge?.output.judgeSummary" class="judge-summary">
-              {{ manualResultByItem[item.id]?.judge?.output.judgeSummary }}
+            <div v-for="judge in judgesFor(manualResultByItem[item.id]).filter(j => j.output.judgeSummary)" :key="`${judge.provider}-summary`" class="judge-summary">
+              <strong>{{ judge.provider }}</strong>: {{ judge.output.judgeSummary }}
             </div>
           </template>
         </div>
@@ -117,6 +124,7 @@
           <span class="task-project">{{ state.project }}</span>
           <span class="task-run">{{ state.runId }}</span>
           <span v-if="state.docVariant" class="variant-tag">{{ state.docVariant }}</span>
+          <span v-for="provider in state.judgeProviders ?? []" :key="provider" class="variant-tag">{{ provider }}</span>
         </div>
         <div v-if="state.error" class="task-error">{{ state.error }}</div>
         <div v-if="state.log.length" class="log-panel">
@@ -145,6 +153,7 @@ import {
   type ValidationItem,
   type ValidationSummary,
 } from '../services/api'
+import { judgesFor, summaryScoreText } from '../utils/validation'
 
 const route = useRoute()
 const runs = ref<RunSummary[]>([])
@@ -159,7 +168,7 @@ const answers = reactive<Record<string, string>>({})
 const form = reactive({
   answerProvider: 'ChatGPT 5.5',
   docVariant: 'chatgpt-5-5',
-  judgeProvider: 'claude',
+  judgeProviders: ['claude'] as string[],
   language: '',
 })
 
@@ -181,6 +190,7 @@ const canSubmit = computed(() =>
   Boolean(selectedRun.value)
     && answeredCount.value > 0
     && labelIsSafe.value
+    && form.judgeProviders.length > 0
     && !isSelectedRunning.value,
 )
 
@@ -274,7 +284,7 @@ async function submit() {
     runId: run.runId,
     docVariant: form.docVariant,
     answerProvider: form.answerProvider.trim() || 'ChatGPT 5.5',
-    judgeProvider: form.judgeProvider,
+    judgeProviders: form.judgeProviders,
     language: form.language || undefined,
     answers: payload,
   })
@@ -367,6 +377,13 @@ function percent(value: number | null | undefined): string {
   return `${Math.round(value * 100)}%`
 }
 
+function judgeScoreText(item: ValidationItem | undefined): string {
+  const judges = judgesFor(item)
+  if (judges.length === 0) return '-'
+  if (judges.length === 1) return percent(judges[0]?.output.normalizedScore)
+  return judges.map(judge => `${judge.provider} ${percent(judge.output.normalizedScore)}`).join(' / ')
+}
+
 function formatTokens(n: number | undefined): string {
   if (n == null) return ''
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
@@ -450,6 +467,21 @@ function usageText(metrics: AgentMetrics | undefined): string {
 .field select:focus,
 .answer-editor textarea:focus {
   border-color: var(--accent);
+}
+
+.check-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 37px;
+}
+
+.check-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text);
 }
 
 .actions {

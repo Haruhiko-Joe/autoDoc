@@ -76,6 +76,13 @@ export interface AnswerJudgeOutput {
   judgeSummary: string
 }
 
+export interface ValidationJudge {
+  provider: string
+  sessionId: string
+  output: AnswerJudgeOutput
+  metrics?: AgentMetrics
+}
+
 export interface ValidationItem {
   itemId: string
   question: string
@@ -89,12 +96,8 @@ export interface ValidationItem {
     text: string
     metrics?: AgentMetrics
   }
-  judge?: {
-    provider: string
-    sessionId: string
-    output: AnswerJudgeOutput
-    metrics?: AgentMetrics
-  }
+  judges?: ValidationJudge[]
+  judge?: ValidationJudge
   error?: string
 }
 
@@ -103,9 +106,11 @@ export interface ValidationSummary {
   itemCount: number
   completedCount: number
   averageScore: number | null
+  averageScores?: Record<string, number | null>
   updatedAt: string
   answerProvider: string
   judgeProvider: string
+  judgeProviders?: string[]
 }
 
 export interface ValidationDetail extends ValidationSummary {
@@ -144,6 +149,7 @@ export interface TaskState {
   project: string
   runId: string
   docVariant?: string
+  judgeProviders?: string[]
   error?: string
 }
 

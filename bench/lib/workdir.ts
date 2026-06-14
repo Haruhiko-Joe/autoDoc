@@ -3,6 +3,7 @@ import path from "node:path";
 import { execSync } from "node:child_process";
 import type { Variant } from "./schemas.ts";
 import { getSkillContent } from "./skill-content.ts";
+import { BENCH_WORKER_ENV } from "./worker.ts";
 
 export interface SetupOptions {
   project: string;
@@ -72,7 +73,11 @@ async function generateAblationDocs(opts: SetupOptions): Promise<void> {
     "--out-root", opts.ablationDocsRoot,
     "--variants", opts.variant,
     "--overwrite",
-  ].join(" "), { cwd: path.resolve("."), stdio: "inherit" });
+  ].join(" "), {
+    cwd: path.resolve("."),
+    stdio: "inherit",
+    env: { ...process.env, [BENCH_WORKER_ENV]: "1" },
+  });
 }
 
 // ---------------------------------------------------------------------------

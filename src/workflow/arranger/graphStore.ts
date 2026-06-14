@@ -60,41 +60,26 @@ export class GraphStore {
   }
 
   async getProgress(phase: Progress["phase"], paused: boolean): Promise<Progress> {
-    const counts = await this.countStatuses();
-    const allNodeIds = await this.scanGraphNodes(this.docDir, "");
-    const nodes: NodeProgress[] = [];
-    for (const nodeId of allNodeIds) {
-      try {
-        const graph = await this.readGraph(nodeId);
-        nodes.push({ nodeId, status: graph.status });
-      } catch { /* skip */ }
-    }
+    const graphs = await this.listGraphs();
+    const counts = this.statusCounts(graphs, await this.readTopGraph().catch(() => undefined));
+    const nodes: NodeProgress[] = graphs.map(({ nodeId, graph }) => ({ nodeId, status: graph.status }));
     return { phase, counts, nodes, paused };
   }
 
   async countStatuses(): Promise<Record<string, number>> {
-    const counts: Record<string, number> = { pending: 0, decomposing: 0, writing: 0, checking: 0, "awaiting-review": 0, done: 0, error: 0 };
-    const top = await this.readTopGraph().catch(() => undefined);
-    if (top?.status === "awaiting-review") counts["awaiting-review"] = (counts["awaiting-review"] ?? 0) + 1;
-    const allNodeIds = await this.scanGraphNodes(this.docDir, "");
-    for (const nodeId of allNodeIds) {
-      try {
-        const graph = await this.readGraph(nodeId);
-        counts[graph.status] = (counts[graph.status] ?? 0) + 1;
-      } catch { /* skip */ }
-    }
-    return counts;
+    return this.statusCounts(await this.listGraphs(), await this.readTopGraph().catch(() => undefined));
   }
 
   async claimNextTask(): Promise<ArrangerTask | null> {
-    const allNodeIds = await this.scanGraphNodes(this.docDir, "");
-    allNodeIds.sort((a, b) => a.split("/").length - b.split("/").length);
-    for (const nodeId of allNodeIds) {
-      try {
-        const graph = await this.readGraph(nodeId);
-        if (!ACTIONABLE.has(graph.status)) continue;
-        if (await this.isNodePaused(nodeId)) continue;
+    const graphs = await this.listGraphs();
+    graphs.sort((a, b) => a.nodeId.split("/").length - b.nodeId.split("/").length);
+    const pausedRoots = this.pausedRoots(graphs);
 
+    for (const { nodeId, graph } of graphs) {
+      if (!ACTIONABLE.has(graph.status)) continue;
+      if (this.isUnderPausedRoot(nodeId, pausedRoots)) continue;
+
+      try {
         if (graph.status === "writing" && graph.pageTasks) {
           const nextPage = Object.entries(graph.pageTasks).find(([, task]) => task.status === "pending");
           if (nextPage) {
@@ -110,7 +95,7 @@ export class GraphStore {
         await this.updateGraph(nodeId, { status: "decomposing", pageTasks: undefined });
         return { kind: "graph", nodeId, graph };
       } catch {
-        console.warn(`[Arranger] Skipping unreadable graph: ${nodeId}`);
+        console.warn(`[Arranger] Skipping unclaimable graph: ${nodeId}`);
       }
     }
     return null;
@@ -128,14 +113,7 @@ export class GraphStore {
     await this.writeTopGraph(topGraph);
 
     for (const node of topResult.nodes) {
-      await this.writeGraph(node.name, {
-        status: "pending",
-        retryCount: 0,
-        sessionId: "",
-        description: node.description,
-        codeScope: node.codeScope,
-        nodes: [],
-      });
+      await this.writeGraph(node.name, this.pendingGraph(node.description, node.codeScope));
     }
   }
 
@@ -251,32 +229,17 @@ export class GraphStore {
   }
 
   async resetRecoverableNodes(): Promise<number> {
-    return this.resetNodes(
-      (status) => RECOVERABLE.has(status),
-      false,
-      "recovery",
-    );
+    return this.resetNodes((status) => RECOVERABLE.has(status), "recovery", false);
   }
 
   async resetErrorNodes(): Promise<number> {
-    return this.resetNodes(
-      (status) => status === "error",
-      true,
-      "error reset",
-      true,
-    );
+    return this.resetNodes((status) => status === "error", "error reset", true);
   }
 
   async hasPendingReviews(): Promise<boolean> {
     const top = await this.readTopGraph().catch(() => undefined);
     if (top?.status === "awaiting-review") return true;
-    const allNodeIds = await this.scanGraphNodes(this.docDir, "");
-    for (const nodeId of allNodeIds) {
-      try {
-        if ((await this.readGraph(nodeId)).status === "awaiting-review") return true;
-      } catch { /* skip */ }
-    }
-    return false;
+    return (await this.listGraphs()).some(({ graph }) => graph.status === "awaiting-review");
   }
 
   async listDecompositionReviews(): Promise<DecompositionReviewItem[]> {
@@ -293,20 +256,16 @@ export class GraphStore {
       });
     }
 
-    const allNodeIds = await this.scanGraphNodes(this.docDir, "");
-    for (const nodeId of allNodeIds) {
-      try {
-        const graph = await this.readGraph(nodeId);
-        if (graph.status !== "awaiting-review") continue;
-        out.push({
-          id: `graph:${nodeId}`,
-          kind: "decomposer",
-          nodeId,
-          title: nodeId,
-          description: graph.description,
-          nodes: graph.nodes,
-        });
-      } catch { /* skip */ }
+    for (const { nodeId, graph } of await this.listGraphs()) {
+      if (graph.status !== "awaiting-review") continue;
+      out.push({
+        id: `graph:${nodeId}`,
+        kind: "decomposer",
+        nodeId,
+        title: nodeId,
+        description: graph.description,
+        nodes: graph.nodes,
+      });
     }
     return out;
   }
@@ -424,57 +383,37 @@ export class GraphStore {
 
   async resumeNode(nodeId: string): Promise<void> {
     const graph = await this.readGraph(nodeId);
-    delete (graph as Record<string, unknown>).paused;
-    await this.writeGraph(nodeId, graph);
+    await this.writeGraph(nodeId, { ...graph, paused: undefined });
   }
 
   async hasPausedNodes(): Promise<boolean> {
-    const allNodeIds = await this.scanGraphNodes(this.docDir, "");
-    for (const nodeId of allNodeIds) {
-      try {
-        const graph = await this.readGraph(nodeId);
-        if (graph.paused && ACTIONABLE.has(graph.status)) return true;
-        if (ACTIONABLE.has(graph.status) && await this.isNodePaused(nodeId)) return true;
-      } catch { /* skip */ }
-    }
-    return false;
+    const graphs = await this.listGraphs();
+    const pausedRoots = this.pausedRoots(graphs);
+    if (pausedRoots.length === 0) return false;
+    return graphs.some(({ nodeId, graph }) =>
+      ACTIONABLE.has(graph.status) && this.isUnderPausedRoot(nodeId, pausedRoots));
   }
 
-  async isNodePaused(nodeId: string): Promise<boolean> {
-    const segments = nodeId.split("/").filter(Boolean);
-    for (let i = segments.length; i > 0; i--) {
-      const ancestorId = segments.slice(0, i).join("/");
-      try {
-        const graph = await this.readGraph(ancestorId);
-        if (graph.paused) return true;
-      } catch { /* skip */ }
-    }
-    return false;
+  private pausedRoots(graphs: Array<{ nodeId: string; graph: GraphType }>): string[] {
+    return graphs.filter(({ graph }) => graph.paused).map(({ nodeId }) => nodeId);
+  }
+
+  private isUnderPausedRoot(nodeId: string, pausedRoots: string[]): boolean {
+    return pausedRoots.some((root) => nodeId === root || nodeId.startsWith(`${root}/`));
   }
 
   private async resetNodes(
     shouldReset: (status: GraphStatusType) => boolean,
-    clearDecomposerSession: boolean,
     label: string,
-    fullReset = false,
+    fullReset: boolean,
   ): Promise<number> {
-    const allNodeIds = await this.scanGraphNodes(this.docDir, "");
     let resetCount = 0;
 
-    for (const nodeId of allNodeIds) {
+    for (const { nodeId, graph } of await this.listGraphs()) {
+      if (!shouldReset(graph.status)) continue;
       try {
-        const graph = await this.readGraph(nodeId);
-        if (!shouldReset(graph.status)) continue;
-
         if (fullReset) {
-          await this.writeGraph(nodeId, {
-            status: "pending",
-            retryCount: 0,
-            sessionId: "",
-            description: graph.description,
-            codeScope: graph.codeScope,
-            nodes: [],
-          });
+          await this.writeGraph(nodeId, this.pendingGraph(graph.description, graph.codeScope));
         } else {
           const pageTasks = this.resetPageTasks(graph.pageTasks);
           const hasPendingPages = pageTasks && Object.values(pageTasks).some((task) => task.status !== "done");
@@ -482,13 +421,12 @@ export class GraphStore {
             ...graph,
             status: hasPendingPages ? "writing" : "pending",
             pageTasks,
-            decomposerSessionId: clearDecomposerSession ? undefined : graph.decomposerSessionId,
             checkerSessionId: undefined,
           });
         }
         resetCount++;
       } catch {
-        console.warn(`[Arranger] Skipping unreadable graph during ${label}: ${nodeId}`);
+        console.warn(`[Arranger] Skipping unwritable graph during ${label}: ${nodeId}`);
       }
     }
 
@@ -505,6 +443,17 @@ export class GraphStore {
       };
     }
     return resetTasks;
+  }
+
+  private pendingGraph(description: string, codeScope: string[]): GraphType {
+    return {
+      status: "pending",
+      retryCount: 0,
+      sessionId: "",
+      description,
+      codeScope,
+      nodes: [],
+    };
   }
 
   private buildPageTasks(nodes: GraphNodeType[]): Record<string, PageTaskType> {
@@ -538,14 +487,7 @@ export class GraphStore {
     if (top.status !== "awaiting-review") throw new Error("Scaffold review is not awaiting approval");
     this.validateScaffoldNodes(top.nodes);
     for (const node of top.nodes) {
-      await this.writeGraph(node.name, {
-        status: "pending",
-        retryCount: 0,
-        sessionId: "",
-        description: node.description,
-        codeScope: node.codeScope,
-        nodes: [],
-      });
+      await this.writeGraph(node.name, this.pendingGraph(node.description, node.codeScope));
     }
     await this.writeTopGraph({ ...top, status: "done" });
     this.onChange();
@@ -623,14 +565,7 @@ export class GraphStore {
       if (node.child.type !== "graph") continue;
       const childId = `${nodeId}/${node.child.ref}`;
       if (await fileExists(this.graphFilePath(childId))) continue;
-      await this.writeGraph(childId, {
-        status: "pending",
-        retryCount: 0,
-        sessionId: "",
-        description: node.description,
-        codeScope: node.codeScope,
-        nodes: [],
-      });
+      await this.writeGraph(childId, this.pendingGraph(node.description, node.codeScope));
     }
   }
 
@@ -660,6 +595,31 @@ export class GraphStore {
       await this.writeGraph(nodeId, { ...graph, ...patch });
     });
     this.onChange();
+  }
+
+  /** One pass over the whole doc tree: every readable graph with its node id. */
+  private async listGraphs(): Promise<Array<{ nodeId: string; graph: GraphType }>> {
+    const graphs: Array<{ nodeId: string; graph: GraphType }> = [];
+    for (const nodeId of await this.scanGraphNodes(this.docDir, "")) {
+      try {
+        graphs.push({ nodeId, graph: await this.readGraph(nodeId) });
+      } catch {
+        console.warn(`[Arranger] Skipping unreadable graph: ${nodeId}`);
+      }
+    }
+    return graphs;
+  }
+
+  private statusCounts(
+    graphs: Array<{ nodeId: string; graph: GraphType }>,
+    top: TopGraphType | undefined,
+  ): Record<string, number> {
+    const counts: Record<string, number> = { pending: 0, decomposing: 0, writing: 0, checking: 0, "awaiting-review": 0, done: 0, error: 0 };
+    if (top?.status === "awaiting-review") counts["awaiting-review"] = (counts["awaiting-review"] ?? 0) + 1;
+    for (const { graph } of graphs) {
+      counts[graph.status] = (counts[graph.status] ?? 0) + 1;
+    }
+    return counts;
   }
 
   private async scanGraphNodes(dir: string, prefix: string): Promise<string[]> {

@@ -21,7 +21,7 @@ This benchmark tests whether the full ACCEED documentation — with its graph hi
 Your current working directory is a self-contained project environment. It contains:
 
 - .codex/skills/doc-drill/SKILL.md — the doc-drill skill definition; read this file first to learn the browse tool and its progressive-disclosure navigation workflow
-- .codex/skills/doc-drill/scripts/browse.mjs — the CLI browse tool referenced by the skill
+- .codex/skills/doc-drill/scripts/browse.mjs — the browse tool referenced by the skill
 - doc/{project}/ — the documentation artifacts (top.json, flows.json, module graphs, leaf pages)
 
 CRITICAL SECURITY BOUNDARY: You may ONLY access files inside this working directory. Do not use cd, absolute paths, ../, or any mechanism to read files outside this directory. Do not access the network. Any answer that relies on information obtained from outside this directory is invalid.
@@ -63,7 +63,7 @@ This means you can navigate the module hierarchy (parent → child), but you wil
 Your current working directory is a self-contained project environment. It contains:
 
 - .codex/skills/doc-drill/SKILL.md — the doc-drill skill definition; read this file first to learn the browse tool
-- .codex/skills/doc-drill/scripts/browse.mjs — the CLI browse tool
+- .codex/skills/doc-drill/scripts/browse.mjs — the browse tool
 - doc/{project}/ — the documentation artifacts (top.json with no edges, empty flows.json, module graphs with no edges, leaf pages)
 
 CRITICAL SECURITY BOUNDARY: You may ONLY access files inside this working directory. Do not use cd, absolute paths, ../, or any mechanism to read files outside this directory. Do not access the network. Any answer that relies on information obtained from outside this directory is invalid.

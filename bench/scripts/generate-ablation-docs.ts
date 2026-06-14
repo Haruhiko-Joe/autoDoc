@@ -1,5 +1,6 @@
 import { copyFile, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { assertBenchWorker } from "../lib/worker.ts";
 
 type Variant = "full" | "no-edges" | "flat-md";
 
@@ -21,25 +22,6 @@ type FlatEntry = {
 const VARIANTS: readonly Variant[] = ["full", "no-edges", "flat-md"];
 const FLAT_MODULE = "FlatMarkdown";
 const SKIP_DIRS = new Set(["_pending"]);
-
-function usage(): string {
-  return [
-    "Usage: pnpm exec tsx bench/scripts/generate-ablation-docs.ts [options]",
-    "",
-    "Creates doc-drill-compatible documentation variants for ablation experiments:",
-    "  - full:     sanitized copy of original ACCEED docs",
-    "  - no-edges: tree + pages only; typed edges and flows removed",
-    "  - flat-md:  all leaf markdown pages exposed under one flat doc-drill graph",
-    "",
-    "Options:",
-    "  --project <name>      Project name in doc root (default: git)",
-    "  --doc-root <path>     ACCEED docs root (default: src/souko/doc)",
-    "  --out-root <path>     Output root (default: bench/data/ablation-docs)",
-    "  --variants <list>     Comma-separated: full,no-edges,flat-md",
-    "  --overwrite           Replace existing outputs",
-    "  --help                Show this help",
-  ].join("\n");
-}
 
 function parseFlagMap(argv: string[]): Map<string, string> {
   const values = new Map<string, string>();
@@ -77,11 +59,6 @@ async function assertFile(filePath: string, label: string): Promise<void> {
 
 function parseArgs(argv: string[]): Options {
   const values = parseFlagMap(argv);
-  if (values.has("help") || values.has("h")) {
-    console.log(usage());
-    process.exit(0);
-  }
-
   const variantsValue = values.get("variants") ?? VARIANTS.join(",");
   const variants = splitList(variantsValue);
   for (const variant of variants) {
@@ -312,6 +289,7 @@ async function buildFlatMd(sourceProject: string, targetProject: string, project
 }
 
 async function main(): Promise<void> {
+  assertBenchWorker();
   const options = parseArgs(process.argv.slice(2));
   const sourceProject = path.join(options.docRoot, options.project);
 

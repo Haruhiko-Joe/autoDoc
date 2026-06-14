@@ -4,9 +4,9 @@ import {
   diffNameOnly, diffPatch, checkoutRemoteBranch, checkoutCommit,
   type PrInfo, type CommitInfo,
 } from "../git/prDiscovery.js";
-import { withProjectLock } from "./locks.js";
+import { withDocProjectLock } from "../mcp/docLock.js";
 import { assertProjectName, getProject, upsertProject, repoDirOf } from "../souko/registry.js";
-import { appendUpdateLog, type UpdateLogEntry } from "../souko/updateLog.js";
+import { appendUpdateLog } from "../souko/updateLog.js";
 import { appendRunLog } from "../souko/runLog.js";
 import { claudePrUpdater } from "../agents/tsukai/claudeprupdater.js";
 import { codexPrUpdater } from "../agents/tsukai/codexprupdater.js";
@@ -61,9 +61,8 @@ export type UpdateEvent =
   | { type: "cancelled" }
   | { type: "finished" };
 
-// ─── Singleton state per project ───
+// ─── Event bus ───
 
-const states = new Map<string, UpdateState>();
 const listeners = new Map<string, Set<UpdateEventListener>>();
 
 function emit(project: string, event: UpdateEvent) {
@@ -79,24 +78,257 @@ export function subscribe(project: string, fn: UpdateEventListener): () => void 
   return () => { set.delete(fn); if (set.size === 0) listeners.delete(project); };
 }
 
-export function getUpdateState(project: string): UpdateState | undefined {
-  assertProjectName(project);
-  return states.get(project);
+// ─── Update run ───
+
+const AUTO_TASK_INTERVAL_MS = 500;
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/** Thrown at await boundaries once the run is cancelled or superseded; swallowed by entry points. */
+class RunCancelled extends Error {}
+
+const runs = new Map<string, UpdateRun>();
+
+class UpdateRun {
+  constructor(readonly state: UpdateState) {}
+
+  private get project(): string {
+    return this.state.project;
+  }
+
+  private get active(): boolean {
+    return runs.get(this.project) === this && this.state.running && this.state.cancelled !== true;
+  }
+
+  private ensureActive(): void {
+    if (!this.active) throw new RunCancelled();
+  }
+
+  private emit(event: UpdateEvent): void {
+    emit(this.project, event);
+  }
+
+  private log(line: string): Promise<void> {
+    return appendRunLog(this.project, line);
+  }
+
+  async processQueue(): Promise<void> {
+    try {
+      while (this.state.currentIndex < this.state.tasks.length && this.active) {
+        if (this.state.awaitingConfirm || this.state.awaitingReview) return;
+
+        const task = this.state.tasks[this.state.currentIndex];
+        if (!task) break;
+
+        if (task.status === "skipped" || task.status === "done") {
+          this.state.currentIndex++;
+          continue;
+        }
+
+        if (this.state.mode === "manual" && !task.confirmed) {
+          this.state.awaitingConfirm = true;
+          this.emit({ type: "awaiting-confirm", taskId: task.id });
+          await this.log(`update awaiting-confirm task=${task.id}`);
+          return;
+        }
+
+        const outcome = await this.runTask(task);
+        if (outcome !== "done") return;
+
+        if (this.state.mode === "auto") await sleep(AUTO_TASK_INTERVAL_MS);
+      }
+
+      this.ensureActive();
+      this.state.running = false;
+      this.emit({ type: "finished" });
+      await this.log(`update finished`);
+      if (runs.get(this.project) === this) runs.delete(this.project);
+    } catch (e) {
+      if (!(e instanceof RunCancelled)) throw e;
+    } finally {
+      await checkoutRemoteBranch(repoDirOf(this.project), this.state.branch).catch(() => {});
+    }
+  }
+
+  continue(extraInstructions?: string): void {
+    if (!this.state.awaitingConfirm) throw new Error("Not awaiting confirmation");
+    const task = this.state.tasks[this.state.currentIndex];
+    const trimmed = extraInstructions?.trim();
+    if (task) {
+      task.confirmed = true;
+      if (trimmed) task.userInstructions = trimmed;
+    }
+    this.state.awaitingConfirm = false;
+    void this.log(`update continue task=${task?.id ?? "?"}${trimmed ? ` instructions-len=${trimmed.length}` : ""}`);
+    void this.processQueue();
+  }
+
+  skip(taskId: string): void {
+    const task = this.state.tasks.find((t) => t.id === taskId);
+    if (!task || task.status !== "idle") throw new Error("Cannot skip task");
+    task.status = "skipped";
+    this.emit({ type: "task-skipped", taskId });
+    void this.log(`task skip id=${taskId}`);
+  }
+
+  async cancel(): Promise<void> {
+    this.state.cancelled = true;
+    this.state.running = false;
+    this.state.awaitingConfirm = false;
+    this.state.awaitingReview = false;
+    this.emit({ type: "cancelled" });
+    if (runs.get(this.project) === this) runs.delete(this.project);
+    void this.log(`update cancel`);
+    await checkoutRemoteBranch(repoDirOf(this.project), this.state.branch).catch(() => {});
+  }
+
+  async accept(taskId: string): Promise<void> {
+    const task = this.state.tasks.find((t) => t.id === taskId);
+    if (!task || task.status !== "awaiting-review") throw new Error("Task is not awaiting review");
+    if (!task.markdown) throw new Error("Task has no response to accept");
+
+    this.state.awaitingReview = false;
+    try {
+      await this.finalize(task, task.markdown);
+    } catch (e) {
+      if (e instanceof RunCancelled) return;
+      throw e;
+    }
+    await this.log(`task accept id=${task.id}`);
+    void this.processQueue();
+  }
+
+  async chat(taskId: string, prompt: string): Promise<void> {
+    const task = this.state.tasks.find((t) => t.id === taskId);
+    if (!task || task.status !== "awaiting-review") throw new Error("Task is not awaiting review");
+    if (!task.sessionId) throw new Error("Task has no session to continue");
+    const trimmed = prompt.trim();
+    if (!trimmed) throw new Error("Empty follow-up prompt");
+
+    task.status = "running";
+    this.state.awaitingReview = false;
+    const separator = `\n\n---\n\n**${this.state.language === "en" ? "You" : "你"}:** ${trimmed}\n\n`;
+    task.markdown = (task.markdown ?? "") + separator;
+    this.emit({ type: "task-start", taskId: task.id });
+    this.emit({ type: "task-text-delta", taskId: task.id, delta: separator });
+    await this.log(`task chat id=${task.id} prompt-len=${trimmed.length}`);
+
+    const repoDir = repoDirOf(this.project);
+    await checkoutCommit(repoDir, task.sha);
+    try {
+      this.ensureActive();
+      const agent = this.makeAgent();
+      agent.restore(task.sessionId, repoDir);
+      const result = await agent.continue(trimmed, this.streamInto(task));
+      this.ensureActive();
+      task.sessionId = result.sessionId;
+      task.status = "awaiting-review";
+      this.state.awaitingReview = true;
+      this.emit({ type: "task-awaiting-review", taskId: task.id, markdown: task.markdown ?? "" });
+      await this.log(`task chat return id=${task.id} len=${result.result.length}`);
+    } catch (e) {
+      if (e instanceof RunCancelled || !this.active) return;
+      const msg = e instanceof Error ? e.message : String(e);
+      task.status = "awaiting-review";
+      task.error = msg;
+      this.state.awaitingReview = true;
+      this.emit({ type: "task-error", taskId: task.id, error: msg, status: "awaiting-review" });
+      await this.log(`task chat error id=${task.id} error=${msg.slice(0, 200)}`);
+      throw e;
+    } finally {
+      await checkoutRemoteBranch(repoDir, this.state.branch).catch(() => {});
+    }
+  }
+
+  private async runTask(task: TaskItem): Promise<"done" | "awaiting-review" | "error"> {
+    task.status = "running";
+    this.emit({ type: "task-start", taskId: task.id });
+    await this.log(`task start id=${task.id} sha=${task.sha.slice(0, 12)} files=${task.filesChanged}${task.userInstructions ? " with-instructions" : ""}`);
+
+    try {
+      const repoDir = repoDirOf(this.project);
+      await checkoutCommit(repoDir, task.sha);
+      const diff = await diffPatch(repoDir, task.sha);
+      const changedFiles = await diffNameOnly(repoDir, task.sha);
+      this.ensureActive();
+
+      const prompt = buildPrUpdaterPrompt(this.project, task, changedFiles, diff, task.userInstructions);
+      await this.log(`prUpdater invoke backend=${this.state.backend} task=${task.id}`);
+
+      task.markdown = "";
+      const agentResult = await this.makeAgent().run(prompt, repoDir, this.streamInto(task));
+      this.ensureActive();
+      const markdown = agentResult.result;
+      task.sessionId = agentResult.sessionId;
+      task.markdown = markdown;
+      await this.log(`prUpdater return task=${task.id} len=${markdown.length} session=${agentResult.sessionId.slice(0, 8)}`);
+
+      if (this.state.mode === "manual") {
+        task.status = "awaiting-review";
+        this.state.awaitingReview = true;
+        this.emit({ type: "task-awaiting-review", taskId: task.id, markdown });
+        await this.log(`task awaiting-review id=${task.id}`);
+        return "awaiting-review";
+      }
+
+      await this.finalize(task, markdown);
+      return "done";
+    } catch (e) {
+      if (e instanceof RunCancelled || !this.active) throw new RunCancelled();
+      const msg = e instanceof Error ? e.message : String(e);
+      task.status = "error";
+      task.error = msg;
+      this.emit({ type: "task-error", taskId: task.id, error: msg, status: "error" });
+      await this.log(`task error id=${task.id} error=${msg.slice(0, 200)}`);
+
+      const meta = await getProject(this.project);
+      if (meta) await upsertProject(this.project, { ...meta, lastUpdateError: msg });
+
+      this.state.running = false;
+      return "error";
+    }
+  }
+
+  private async finalize(task: TaskItem, markdown: string): Promise<void> {
+    this.ensureActive();
+    task.status = "done";
+    task.markdown = markdown;
+    this.emit({ type: "task-done", taskId: task.id, markdown });
+
+    await appendUpdateLog(this.project, {
+      ts: new Date().toISOString(),
+      taskId: task.id,
+      sha: task.sha,
+      title: task.title,
+      markdown,
+    });
+
+    const meta = await getProject(this.project);
+    this.ensureActive();
+    if (meta) {
+      await upsertProject(this.project, { ...meta, lastProcessedSha: task.sha, lastUpdateError: undefined });
+    }
+
+    this.state.currentIndex++;
+    await this.log(`task done id=${task.id} len=${markdown.length}`);
+  }
+
+  private makeAgent(): IPrUpdater {
+    return this.state.backend === "codex"
+      ? new codexPrUpdater(this.state.language)
+      : new claudePrUpdater(this.state.language);
+  }
+
+  private streamInto(task: TaskItem): (chunk: string) => void {
+    return (chunk) => {
+      if (!this.active) return;
+      task.markdown = (task.markdown ?? "") + chunk;
+      this.emit({ type: "task-text-delta", taskId: task.id, delta: chunk });
+    };
+  }
 }
 
-function isUpdateRunActive(
-  state: UpdateState | undefined,
-  runId: string,
-): state is UpdateState {
-  return !!state && state.runId === runId && state.running && state.cancelled !== true;
-}
-
-function getActiveState(project: string, runId: string): UpdateState | undefined {
-  const state = states.get(project);
-  return isUpdateRunActive(state, runId) ? state : undefined;
-}
-
-// ─── Core ───
+// ─── Public API ───
 
 export interface StartUpdateOptions {
   mode?: UpdateMode;
@@ -104,17 +336,21 @@ export interface StartUpdateOptions {
   language?: Language;
 }
 
+export function getUpdateState(project: string): UpdateState | undefined {
+  assertProjectName(project);
+  return runs.get(project)?.state;
+}
+
 export async function startUpdate(project: string, options: StartUpdateOptions = {}): Promise<UpdateState> {
   assertProjectName(project);
   const mode: UpdateMode = options.mode ?? "auto";
   const backend: "claude" | "codex" = options.backend ?? "codex";
   const language: Language = options.language ?? "zh";
-  const existing = states.get(project);
-  if (existing?.running) {
+  if (runs.get(project)?.state.running) {
     throw new Error("Update already running for this project");
   }
 
-  return withProjectLock(project, async () => {
+  return withDocProjectLock(project, async () => {
     const meta = await getProject(project);
     if (!meta) throw new Error(`Project not found: ${project}`);
 
@@ -124,15 +360,9 @@ export async function startUpdate(project: string, options: StartUpdateOptions =
     await checkoutRemoteBranch(repoDir, branch);
 
     const cursor = meta.lastProcessedSha ?? meta.head;
-
-    const useGh = await isGhAvailable(repoDir);
-    let items: (PrInfo | CommitInfo)[];
-    if (useGh) {
-      items = await listMergedPrsSince(repoDir, cursor, branch);
-    } else {
-      items = await listCommitsSince(repoDir, cursor);
-    }
-
+    const items: (PrInfo | CommitInfo)[] = (await isGhAvailable(repoDir))
+      ? await listMergedPrsSince(repoDir, cursor, branch)
+      : await listCommitsSince(repoDir, cursor);
     if (items.length === 0) {
       throw new Error("No new commits/PRs to process");
     }
@@ -150,7 +380,7 @@ export async function startUpdate(project: string, options: StartUpdateOptions =
       };
     }));
 
-    const state: UpdateState = {
+    const run = new UpdateRun({
       runId: randomUUID(),
       project,
       branch,
@@ -162,262 +392,48 @@ export async function startUpdate(project: string, options: StartUpdateOptions =
       running: true,
       awaitingConfirm: false,
       awaitingReview: false,
-    };
-    states.set(project, state);
+    });
+    runs.set(project, run);
     emit(project, { type: "queue", tasks });
 
     await appendRunLog(project, `update start mode=${mode} backend=${backend} language=${language} tasks=${tasks.length} cursor=${cursor?.slice(0, 12) ?? "none"}`);
 
-    void runQueue(project, state.runId);
-    return state;
+    void run.processQueue();
+    return run.state;
   });
 }
 
-async function runQueue(project: string, runId: string): Promise<void> {
-  const state = getActiveState(project, runId);
-  if (!state) return;
-
-  const restoreHead = () => checkoutRemoteBranch(repoDirOf(project), state.branch).catch(() => {});
-
-  try {
-    while (state.currentIndex < state.tasks.length && state.running) {
-      if (!getActiveState(project, runId)) return;
-      if (state.awaitingConfirm || state.awaitingReview) return;
-
-      const task = state.tasks[state.currentIndex];
-      if (!task) break;
-
-      if (task.status === "skipped" || task.status === "done") {
-        state.currentIndex++;
-        continue;
-      }
-
-      if (state.mode === "manual" && !task.confirmed) {
-        state.awaitingConfirm = true;
-        emit(project, { type: "awaiting-confirm", taskId: task.id });
-        await appendRunLog(project, `update awaiting-confirm task=${task.id}`);
-        return;
-      }
-
-      task.status = "running";
-      emit(project, { type: "task-start", taskId: task.id });
-      await appendRunLog(project, `task start id=${task.id} sha=${task.sha.slice(0, 12)} files=${task.filesChanged}${task.userInstructions ? " with-instructions" : ""}`);
-
-      try {
-        const repoDir = repoDirOf(project);
-        await checkoutCommit(repoDir, task.sha);
-        if (!getActiveState(project, runId)) return;
-        const diff = await diffPatch(repoDir, task.sha);
-        const changedFiles = await diffNameOnly(repoDir, task.sha);
-        if (!getActiveState(project, runId)) return;
-
-        const agent: IPrUpdater = state.backend === "codex"
-          ? new codexPrUpdater(state.language)
-          : new claudePrUpdater(state.language);
-
-        const prompt = buildPrUpdaterPrompt(project, task, changedFiles, diff, task.userInstructions);
-        await appendRunLog(project, `prUpdater invoke backend=${state.backend} task=${task.id}`);
-
-        task.markdown = "";
-        const onDelta = (chunk: string) => {
-          if (!getActiveState(project, runId)) return;
-          task.markdown = (task.markdown ?? "") + chunk;
-          emit(project, { type: "task-text-delta", taskId: task.id, delta: chunk });
-        };
-        const agentResult = await agent.run(prompt, repoDir, onDelta);
-        if (!getActiveState(project, runId)) return;
-        const markdown = agentResult.result;
-        task.sessionId = agentResult.sessionId;
-        task.markdown = markdown;
-        await appendRunLog(project, `prUpdater return task=${task.id} len=${markdown.length} session=${agentResult.sessionId.slice(0, 8)}`);
-
-        if (state.mode === "manual") {
-          if (!getActiveState(project, runId)) return;
-          task.status = "awaiting-review";
-          state.awaitingReview = true;
-          emit(project, { type: "task-awaiting-review", taskId: task.id, markdown });
-          await appendRunLog(project, `task awaiting-review id=${task.id}`);
-          return;
-        }
-
-        const finalized = await finalizeTaskAsDone(project, runId, task, markdown);
-        if (!finalized) return;
-
-        if (state.mode === "auto") {
-          await new Promise((r) => setTimeout(r, 500));
-        }
-      } catch (e) {
-        if (!getActiveState(project, runId)) return;
-        const msg = e instanceof Error ? e.message : String(e);
-        task.status = "error";
-        task.error = msg;
-        emit(project, { type: "task-error", taskId: task.id, error: msg, status: "error" });
-        await appendRunLog(project, `task error id=${task.id} error=${msg.slice(0, 200)}`);
-
-        const meta = await getProject(project);
-        if (meta) {
-          await upsertProject(project, { ...meta, lastUpdateError: msg });
-        }
-
-        state.running = false;
-        return;
-      }
-    }
-
-    state.running = false;
-    emit(project, { type: "finished" });
-    await appendRunLog(project, `update finished`);
-    if (states.get(project)?.runId === runId) states.delete(project);
-  } finally {
-    await restoreHead();
-  }
-}
-
-// ─── Controls ───
-
 export function continueUpdate(project: string, extraInstructions?: string): void {
   assertProjectName(project);
-  const state = states.get(project);
-  if (!state || !state.awaitingConfirm) throw new Error("Not awaiting confirmation");
-  const task = state.tasks[state.currentIndex];
-  if (task) {
-    task.confirmed = true;
-    const trimmed = extraInstructions?.trim();
-    if (trimmed) task.userInstructions = trimmed;
-  }
-  state.awaitingConfirm = false;
-  void appendRunLog(project, `update continue task=${task?.id ?? "?"}${extraInstructions?.trim() ? ` instructions-len=${extraInstructions.trim().length}` : ""}`);
-  void runQueue(project, state.runId);
+  const run = runs.get(project);
+  if (!run) throw new Error("Not awaiting confirmation");
+  run.continue(extraInstructions);
 }
 
 export function skipTask(project: string, taskId: string): void {
   assertProjectName(project);
-  const state = states.get(project);
-  if (!state) throw new Error("No active update");
-  const task = state.tasks.find((t) => t.id === taskId);
-  if (!task || task.status !== "idle") throw new Error("Cannot skip task");
-  task.status = "skipped";
-  emit(project, { type: "task-skipped", taskId });
-  void appendRunLog(project, `task skip id=${taskId}`);
+  const run = runs.get(project);
+  if (!run) throw new Error("No active update");
+  run.skip(taskId);
 }
 
 export async function cancelUpdate(project: string): Promise<void> {
   assertProjectName(project);
-  const state = states.get(project);
-  if (!state) return;
-  const branch = state.branch;
-  state.cancelled = true;
-  state.running = false;
-  state.awaitingConfirm = false;
-  state.awaitingReview = false;
-  emit(project, { type: "cancelled" });
-  states.delete(project);
-  void appendRunLog(project, `update cancel`);
-  await checkoutRemoteBranch(repoDirOf(project), branch).catch(() => {});
-}
-
-// ─── Awaiting-review actions (manual mode) ───
-
-async function finalizeTaskAsDone(project: string, runId: string, task: TaskItem, markdown: string): Promise<boolean> {
-  if (!getActiveState(project, runId)) return false;
-  task.status = "done";
-  task.markdown = markdown;
-  emit(project, { type: "task-done", taskId: task.id, markdown });
-
-  const entry: UpdateLogEntry = {
-    ts: new Date().toISOString(),
-    taskId: task.id,
-    sha: task.sha,
-    title: task.title,
-    markdown,
-  };
-  if (!getActiveState(project, runId)) return false;
-  await appendUpdateLog(project, entry);
-
-  if (!getActiveState(project, runId)) return false;
-  const meta = await getProject(project);
-  if (meta) {
-    if (!getActiveState(project, runId)) return false;
-    await upsertProject(project, { ...meta, lastProcessedSha: task.sha, lastUpdateError: undefined });
-  }
-
-  const state = getActiveState(project, runId);
-  if (state) state.currentIndex++;
-  await appendRunLog(project, `task done id=${task.id} len=${markdown.length}`);
-  return true;
+  await runs.get(project)?.cancel();
 }
 
 export async function acceptTask(project: string, taskId: string): Promise<void> {
   assertProjectName(project);
-  const state = states.get(project);
-  if (!state) throw new Error("No active update");
-  const task = state.tasks.find((t) => t.id === taskId);
-  if (!task || task.status !== "awaiting-review") throw new Error("Task is not awaiting review");
-  if (!task.markdown) throw new Error("Task has no response to accept");
-
-  state.awaitingReview = false;
-  const finalized = await finalizeTaskAsDone(project, state.runId, task, task.markdown);
-  if (!finalized) return;
-  await appendRunLog(project, `task accept id=${task.id}`);
-  void runQueue(project, state.runId);
+  const run = runs.get(project);
+  if (!run) throw new Error("No active update");
+  await run.accept(taskId);
 }
 
 export async function chatOnTask(project: string, taskId: string, prompt: string): Promise<void> {
   assertProjectName(project);
-  const state = states.get(project);
-  if (!state) throw new Error("No active update");
-  const task = state.tasks.find((t) => t.id === taskId);
-  if (!task || task.status !== "awaiting-review") throw new Error("Task is not awaiting review");
-  if (!task.sessionId) throw new Error("Task has no session to continue");
-  const runId = state.runId;
-
-  const trimmed = prompt.trim();
-  if (!trimmed) throw new Error("Empty follow-up prompt");
-
-  task.status = "running";
-  state.awaitingReview = false;
-  const separator = `\n\n---\n\n**${state.language === "en" ? "You" : "你"}:** ${trimmed}\n\n`;
-  task.markdown = (task.markdown ?? "") + separator;
-  emit(project, { type: "task-start", taskId: task.id });
-  emit(project, { type: "task-text-delta", taskId: task.id, delta: separator });
-  await appendRunLog(project, `task chat id=${task.id} prompt-len=${trimmed.length}`);
-
-  const repoDir = repoDirOf(project);
-  await checkoutCommit(repoDir, task.sha);
-  if (!getActiveState(project, runId)) return;
-  const agent: IPrUpdater = state.backend === "codex"
-    ? new codexPrUpdater(state.language)
-    : new claudePrUpdater(state.language);
-  agent.restore(task.sessionId, repoDir);
-
-  try {
-    const onDelta = (chunk: string) => {
-      if (!getActiveState(project, runId)) return;
-      task.markdown = (task.markdown ?? "") + chunk;
-      emit(project, { type: "task-text-delta", taskId: task.id, delta: chunk });
-    };
-    const result = await agent.continue(trimmed, onDelta);
-    const activeState = getActiveState(project, runId);
-    if (!activeState) return;
-    task.sessionId = result.sessionId;
-    task.markdown = (task.markdown ?? "");
-    task.status = "awaiting-review";
-    activeState.awaitingReview = true;
-    emit(project, { type: "task-awaiting-review", taskId: task.id, markdown: task.markdown });
-    await appendRunLog(project, `task chat return id=${task.id} len=${result.result.length}`);
-  } catch (e) {
-    const activeState = getActiveState(project, runId);
-    if (!activeState) return;
-    const msg = e instanceof Error ? e.message : String(e);
-    task.status = "awaiting-review";
-    task.error = msg;
-    activeState.awaitingReview = true;
-    emit(project, { type: "task-error", taskId: task.id, error: msg, status: "awaiting-review" });
-    await appendRunLog(project, `task chat error id=${task.id} error=${msg.slice(0, 200)}`);
-    throw e;
-  } finally {
-    await checkoutRemoteBranch(repoDir, state.branch).catch(() => {});
-  }
+  const run = runs.get(project);
+  if (!run) throw new Error("No active update");
+  await run.chat(taskId, prompt);
 }
 
 // ─── Prompt construction ───

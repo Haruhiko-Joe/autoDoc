@@ -29,7 +29,7 @@
             <p>
               {{ validationDetail.docVariant }}
               <template v-if="validationDetail.mode"> - {{ validationDetail.mode }}</template>
-              - answer {{ validationDetail.answerProvider }} - judge {{ validationDetail.judgeProvider }}
+              - answer {{ validationDetail.answerProvider }} - judges {{ validationJudgeProviders.join(', ') || '-' }}
             </p>
           </div>
           <div class="validation-side">
@@ -38,7 +38,12 @@
                 {{ entry.variant }}
               </option>
             </select>
-            <div class="score-big">{{ percent(validationDetail.averageScore) }}</div>
+            <select v-if="validationJudgeProviders.length > 1" v-model="selectedJudgeProvider" class="variant-select">
+              <option v-for="provider in validationJudgeProviders" :key="provider" :value="provider">
+                {{ provider }}
+              </option>
+            </select>
+            <div class="score-big">{{ percent(summaryScore(validationDetail, selectedJudgeProvider)) }}</div>
           </div>
         </div>
         <div class="validation-stats">
@@ -87,8 +92,8 @@
             <span class="qa-id">{{ item.id }}</span>
             <span class="tag">{{ item.category }}</span>
             <span class="tag">{{ item.generator }}</span>
-            <span v-if="validationByItem[item.id]?.judge" class="score-mini">
-              {{ percent(validationByItem[item.id]?.judge?.output.normalizedScore) }}
+            <span v-if="judgeFor(validationByItem[item.id], selectedJudgeProvider)" class="score-mini">
+              {{ percent(scoreFor(validationByItem[item.id], selectedJudgeProvider)) }}
             </span>
           </div>
           <div class="qa-question">{{ item.question }}</div>
@@ -100,8 +105,9 @@
               </template>
               <template v-else>
                 <div class="score-row">
-                  <span class="score-mini inline">{{ percent(validationByItem[item.id]?.judge?.output.normalizedScore) }}</span>
-                  <span>{{ validationByItem[item.id]?.judge?.output.verdict }}</span>
+                  <span class="tag">{{ judgeFor(validationByItem[item.id], selectedJudgeProvider)?.provider }}</span>
+                  <span class="score-mini inline">{{ percent(scoreFor(validationByItem[item.id], selectedJudgeProvider)) }}</span>
+                  <span>{{ judgeFor(validationByItem[item.id], selectedJudgeProvider)?.output.verdict }}</span>
                   <span class="muted">{{ usageText(validationByItem[item.id]?.answer?.metrics) }}</span>
                 </div>
                 <div class="answer-columns">
@@ -126,11 +132,11 @@
                     <div class="answer-text" :class="{ candidate: compareRight !== 'gold' }">{{ compareText(item.id, compareRight, item) }}</div>
                   </div>
                 </div>
-                <div v-if="validationByItem[item.id]?.judge?.output.judgeSummary" class="judge-summary">
-                  {{ validationByItem[item.id]?.judge?.output.judgeSummary }}
+                <div v-if="judgeFor(validationByItem[item.id], selectedJudgeProvider)?.output.judgeSummary" class="judge-summary">
+                  {{ judgeFor(validationByItem[item.id], selectedJudgeProvider)?.output.judgeSummary }}
                 </div>
                 <div class="scoring-list judge-points">
-                  <div v-for="(sp, i) in validationByItem[item.id]?.judge?.output.scoringPointResults" :key="i"
+                  <div v-for="(sp, i) in judgeFor(validationByItem[item.id], selectedJudgeProvider)?.output.scoringPointResults" :key="i"
                        class="scoring-item" :class="{ covered: sp.covered, partial: !sp.covered && sp.score > 0, missed: sp.score === 0 }">
                     <span class="scoring-weight">{{ sp.score }}/{{ sp.weight }}</span>
                     <span>{{ sp.point }}</span>
@@ -179,6 +185,7 @@ import {
   type ValidationDetail,
   type ValidationItem,
 } from '../services/api'
+import { judgeFor, providerList, scoreFor, summaryScore } from '../utils/validation'
 
 const route = useRoute()
 const project = route.params.project as string
@@ -188,6 +195,7 @@ const detail = ref<RunDetail | null>(null)
 const loading = ref(true)
 const expandedId = ref<string | null>(null)
 const selectedVariant = ref('')
+const selectedJudgeProvider = ref('')
 const validationDetail = ref<ValidationDetail | null>(null)
 const validationByItem = ref<Record<string, ValidationItem>>({})
 
@@ -224,6 +232,8 @@ const validationEntries = computed(() => {
     .sort((a, b) => variantRank(a.variant) - variantRank(b.variant) || a.variant.localeCompare(b.variant))
 })
 
+const validationJudgeProviders = computed(() => providerList(validationDetail.value ?? undefined))
+
 const compareOptions = computed(() => {
   const opts = [{ value: 'gold', label: 'Gold Answer' }]
   for (const e of validationEntries.value) {
@@ -239,7 +249,7 @@ function compareText(itemId: string, source: string, item: { goldAnswer: string 
 
 function compareScore(itemId: string, source: string): number | null | undefined {
   if (source === 'gold') return undefined
-  return allVariantData.value[source]?.[itemId]?.judge?.output.normalizedScore
+  return scoreFor(allVariantData.value[source]?.[itemId], selectedJudgeProvider.value)
 }
 
 function compareMetrics(itemId: string, source: string): AgentMetrics | undefined {
@@ -291,6 +301,8 @@ async function loadSelectedValidation() {
   validationByItem.value = Object.fromEntries(
     (validationDetail.value?.results ?? []).map(item => [item.itemId, item]),
   )
+  const providers = providerList(validationDetail.value ?? undefined)
+  if (!providers.includes(selectedJudgeProvider.value)) selectedJudgeProvider.value = providers[0] ?? ''
 }
 
 function toggle(id: string) {

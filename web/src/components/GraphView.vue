@@ -36,10 +36,6 @@ let graph: Graph | null = null
 
 const CARD_WIDTH = 468
 const CARD_HEIGHT = 234
-const CARD_WIDTH_COMPACT = 380
-const CARD_HEIGHT_COMPACT = 156
-const COMPACT_THRESHOLD = 8
-const OVERLAP_TOLERANCE = 0.15
 const POPOVER_WIDTH = 380
 const FOCUS_DIM_OPACITY = 0.1
 
@@ -95,8 +91,7 @@ function renderCard(name: string, description: string, isFocused: boolean): stri
   const editBtns = props.editable
     ? `<span class="node-card-edit-btn" data-action="edit" data-node-id="${escapedName}" title="Edit">&#9998;</span>`
     : ''
-  const isCompact = visibleNodes.value.length > COMPACT_THRESHOLD
-  return `<div class="node-card${isSelected ? ' is-selected' : ''}${isCompact ? ' is-compact' : ''}" data-node-id="${escapedName}">
+  return `<div class="node-card${isSelected ? ' is-selected' : ''}" data-node-id="${escapedName}">
     <div class="node-card-header">
       <div class="node-card-name">${escapedName}</div>
       ${editBtns}
@@ -201,13 +196,7 @@ function getFocusTrigger(target: EventTarget | null): HTMLElement | null {
   return target.closest('.node-card-focus-trigger') as HTMLElement | null
 }
 
-function cardSizeFor(n: number) {
-  return n > COMPACT_THRESHOLD
-    ? { w: CARD_WIDTH_COMPACT, h: CARD_HEIGHT_COMPACT }
-    : { w: CARD_WIDTH, h: CARD_HEIGHT }
-}
-
-/** 超椭圆等角分布（原版布局，节点少时观感不变） */
+/** 超椭圆等角分布 */
 function superellipsePositions(n: number, rx: number, ry: number) {
   const p = 6
   const startAngle = -Math.PI / 2
@@ -220,53 +209,16 @@ function superellipsePositions(n: number, rx: number, ry: number) {
   })
 }
 
-/** 矩形周界按弧长均匀分布（密集图：角部相邻卡天然纵向错位，缩放压力小） */
-function perimeterPositions(n: number, rx: number, ry: number) {
-  const w = 2 * rx
-  const h = 2 * ry
-  const per = 2 * (w + h)
-  const step = per / n
-  return Array.from({ length: n }, (_, i) => {
-    let d = (i * step + w / 2) % per
-    if (d < w) return { x: -rx + d, y: -ry }
-    d -= w
-    if (d < h) return { x: rx, y: -ry + d }
-    d -= h
-    if (d < w) return { x: rx - d, y: ry }
-    d -= w
-    return { x: -rx, y: ry - d }
-  })
-}
-
-/**
- * 半径按画布尺寸计算，画布够大时布局与改造前完全相同（节点 ≤ 阈值时
- * 连分布算法也与原版一致）。仅当任意两卡交叠超过 OVERLAP_TOLERANCE 时，
- * 等比放大坐标空间到刚好满足容差为止，渲染后用 zoomTo(1/scale, 画布中心)
- * 把整体缩回画布——卡片变小但最多轻微交叠。坐标始终以画布中心为圆心。
- */
 function ringLayout(n: number, canvasW: number, canvasH: number) {
-  const { w: cardW, h: cardH } = cardSizeFor(n)
   const margin = 100
   const cx = canvasW / 2
   const cy = canvasH / 2
-  const rx = Math.max(1, (canvasW - margin * 2 - cardW) / 2)
-  const ry = Math.max(1, (canvasH - margin * 2 - cardH) / 2)
-  const raw = n > COMPACT_THRESHOLD ? perimeterPositions(n, rx, ry) : superellipsePositions(n, rx, ry)
+  const rx = Math.max(1, (canvasW - margin * 2 - CARD_WIDTH) / 2)
+  const ry = Math.max(1, (canvasH - margin * 2 - CARD_HEIGHT) / 2)
+  const raw = superellipsePositions(n, rx, ry)
 
-  const minDx = (1 - OVERLAP_TOLERANCE) * cardW
-  const minDy = (1 - OVERLAP_TOLERANCE) * cardH
-  let scale = 1
-  for (let i = 0; i < n; i++) {
-    for (let j = i + 1; j < n; j++) {
-      const dx = Math.abs(raw[i].x - raw[j].x)
-      const dy = Math.abs(raw[i].y - raw[j].y)
-      if (dx >= minDx || dy >= minDy) continue
-      scale = Math.max(scale, Math.min(minDx / Math.max(dx, 1), minDy / Math.max(dy, 1)))
-    }
-  }
   return {
-    positions: raw.map(({ x, y }) => ({ x: cx + x * scale, y: cy + y * scale })),
-    scale,
+    positions: raw.map(({ x, y }) => ({ x: cx + x, y: cy + y })),
   }
 }
 
@@ -279,7 +231,7 @@ type G6EdgeData = Record<string, unknown> & {
 }
 
 function buildData(nodes: GraphNode[], canvasW: number, canvasH: number) {
-  const { positions, scale } = ringLayout(nodes.length, canvasW, canvasH)
+  const { positions } = ringLayout(nodes.length, canvasW, canvasH)
 
   const g6Nodes = nodes.map((n, i) => ({
     id: n.name,
@@ -316,7 +268,7 @@ function buildData(nodes: GraphNode[], canvasW: number, canvasH: number) {
 
   assignParallelEdgeOffsets(g6Edges, 25)
 
-  return { nodes: g6Nodes, edges: g6Edges, scale }
+  return { nodes: g6Nodes, edges: g6Edges }
 }
 
 function createGraph() {
@@ -327,8 +279,7 @@ function createGraph() {
   const rect = containerRef.value.getBoundingClientRect()
   const canvasW = rect.width || 800
   const canvasH = rect.height || 600
-  const { nodes: g6Nodes, edges: g6Edges, scale } = buildData(visibleNodes.value, canvasW, canvasH)
-  const { w: cardW, h: cardH } = cardSizeFor(visibleNodes.value.length)
+  const { nodes: g6Nodes, edges: g6Edges } = buildData(visibleNodes.value, canvasW, canvasH)
 
   graph = new Graph({
     container: containerRef.value,
@@ -338,9 +289,9 @@ function createGraph() {
     node: {
       type: 'html',
       style: {
-        size: [cardW, cardH],
-        dx: -cardW / 2,
-        dy: -cardH / 2,
+        size: [CARD_WIDTH, CARD_HEIGHT],
+        dx: -CARD_WIDTH / 2,
+        dy: -CARD_HEIGHT / 2,
         innerHTML: (d: { id: string; data?: { description?: string } }) => {
           const isFocused = focusedNodeId.value === d.id
           return renderCard(d.id, d.data?.description ?? '', isFocused)
@@ -467,11 +418,6 @@ function createGraph() {
   void activeGraph.render()
     .catch((error) => {
       if (graph === activeGraph) console.error(error)
-    })
-    .then(() => {
-      if (graph !== activeGraph || scale <= 1) return
-
-      return activeGraph.zoomTo(1 / scale, undefined, [canvasW / 2, canvasH / 2])
     })
     .then(() => {
       if (graph !== activeGraph) return
@@ -701,15 +647,6 @@ watch(isDark, recreateGraph)
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 7;
   overflow: hidden;
-}
-
-:global(.node-card.is-compact) {
-  padding: 16px 20px;
-  gap: 8px;
-}
-
-:global(.node-card.is-compact .node-card-desc) {
-  -webkit-line-clamp: 3;
 }
 
 .edge-popover {

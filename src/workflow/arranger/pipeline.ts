@@ -10,7 +10,6 @@ import type {
   IChecker,
   IDecomposer,
   IScaffold,
-  IWriter,
   RawGraph as RawGraphType,
   RawTopGraph as RawTopGraphType,
 } from "../../agents/schemas/schema.js";
@@ -23,6 +22,9 @@ import type { DecompositionReviewMode } from "./types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SKILL_TEMPLATE_DIR = path.resolve(__dirname, "..", "..", "skill-template");
+const CHECKER_MAX_RETRIES = 5;
+const DECOMPOSE_TIMEOUT_MS = 15 * 60_000;
+const WRITE_TIMEOUT_MS = 10 * 60_000;
 const ACCEED_MCP_TOOLS = [
   "list_projects",
   "get_top",
@@ -100,7 +102,7 @@ export class Pipeline {
           decomposerSessionId: graph.decomposerSessionId,
           checkerSessionId: graph.checkerSessionId,
         } : undefined;
-        return withTimeout(() => this.decomposeAndCheck(nodeId, prompt, existing, nodeKnowledge), 15 * 60_000, `decomposer ${nodeId}`);
+        return withTimeout(() => this.decomposeAndCheck(nodeId, prompt, existing, nodeKnowledge), DECOMPOSE_TIMEOUT_MS, `decomposer ${nodeId}`);
       }, 3, this.options.shouldAbort);
       rawGraph = result.rawGraph;
       decomposerSessionId = result.decomposerSessionId;
@@ -119,15 +121,20 @@ export class Pipeline {
       await appendRunLog(store.projectName, `graph awaiting-review node=${nodeId} children=${rawGraph.nodes.length}`);
     } else {
       await store.markGraphDecomposed(nodeId, rawGraph, decomposerSessionId);
-      this.options.insightCollector?.enqueue({
-        scope: "decomposer",
-        nodeId,
-        codeScope: graph.codeScope,
-        sessionId: decomposerSessionId,
-        backend: this.options.agentFactory.getBackend("decomposer"),
-        profile: "decomposer",
-      });
+      this.enqueueDecomposerInsight(nodeId, graph.codeScope, decomposerSessionId);
     }
+  }
+
+  enqueueDecomposerInsight(nodeId: string, codeScope: string[], sessionId: string | undefined): void {
+    if (!sessionId) return;
+    this.options.insightCollector?.enqueue({
+      scope: "decomposer",
+      nodeId,
+      codeScope,
+      sessionId,
+      backend: this.options.agentFactory.getBackend("decomposer"),
+      profile: "decomposer",
+    });
   }
 
   async redoScaffoldReview(feedback: string): Promise<void> {
@@ -183,7 +190,7 @@ export class Pipeline {
     let content: string;
     let writerSessionId: string;
     try {
-      const written = await withRetry(() => withTimeout(() => this.writePage(pageNode, ancestorContext, nodeKnowledge), 10 * 60_000, `writer ${pageNode.name}`), 3, this.options.shouldAbort);
+      const written = await withRetry(() => withTimeout(() => this.writePage(pageNode, ancestorContext, nodeKnowledge), WRITE_TIMEOUT_MS, `writer ${pageNode.name}`), 3, this.options.shouldAbort);
       content = written.content;
       writerSessionId = written.sessionId;
     } catch (e) {
@@ -253,14 +260,15 @@ export class Pipeline {
     existing?: { rawGraph?: RawGraphType; decomposerSessionId?: string; checkerSessionId?: string },
     nodeKnowledge?: string,
   ): Promise<{ rawGraph: RawGraphType; decomposerSessionId: string }> {
-    const { agentFactory, promptBuilder, repoPath, semaphore, store } = this.options;
+    const { agentFactory, repoPath, semaphore, store } = this.options;
     const decomposer = agentFactory.makeDecomposer();
-    const checker = this.options.checkerEnabled ? agentFactory.makeChecker() : undefined;
-
     if (existing?.decomposerSessionId) {
       decomposer.restore(existing.decomposerSessionId, repoPath);
     }
-    if (checker && existing?.checkerSessionId) {
+
+    let checker: IChecker | undefined;
+    if (this.options.checkerEnabled && existing?.checkerSessionId) {
+      checker = agentFactory.makeChecker();
       checker.restore(existing.checkerSessionId, repoPath);
     }
 
@@ -277,25 +285,7 @@ export class Pipeline {
       )).result;
     }
 
-    if (!this.options.checkerEnabled) {
-      await appendRunLog(store.projectName, `checker skip scope=decomposer node=${nodeId}`);
-      return { rawGraph, decomposerSessionId: decomposer.getSessionId() ?? "" };
-    }
-
-    const checked = await this.checkerLoop({
-      scope: "decomposer",
-      nodeId,
-      initialResult: rawGraph,
-      checker,
-      getCheckerPrompt: (r) => promptBuilder.graphCheckerPrompt(nodeId, r, nodeKnowledge),
-      runChecker: (c, prompt) => withSemaphore(semaphore, () =>
-        c.getSessionId() ? c.continue(prompt) : c.run(prompt, repoPath)),
-      fix: (issues) => withSemaphore(semaphore, async () => {
-        const { result, sessionId } = await decomposer.continue(promptBuilder.decomposerFixPrompt(issues));
-        return { result, sessionId };
-      }),
-    });
-    return { rawGraph: checked.result, decomposerSessionId: decomposer.getSessionId() ?? "" };
+    return this.checkRawGraphWithFix(nodeId, rawGraph, decomposer, nodeKnowledge, checker);
   }
 
   private async checkerLoop<T>(opts: {
@@ -305,29 +295,27 @@ export class Pipeline {
     checker?: IChecker;
     getCheckerPrompt: (result: T) => string;
     fix: (issues: CheckerIssueType[]) => Promise<{ result: T; sessionId: string }>;
-    runChecker?: (checker: IChecker, prompt: string) => Promise<{ result: { passed: boolean; issues: CheckerIssueType[] } }>;
-  }): Promise<{ result: T; sessionId: string }> {
-    const { agentFactory, repoPath, store } = this.options;
+  }): Promise<{ result: T; sessionId?: string }> {
+    const { agentFactory, repoPath, semaphore, store } = this.options;
     const checker = opts.checker ?? agentFactory.makeChecker();
     let result = opts.initialResult;
-    let sessionId = "";
+    let sessionId: string | undefined;
     const label = opts.nodeId ? `${opts.scope} node=${opts.nodeId}` : opts.scope;
-
-    const runChecker = opts.runChecker ?? ((c: IChecker, prompt: string) =>
-      c.getSessionId() ? c.continue(prompt) : c.run(prompt, repoPath));
 
     for (let retry = 0; ; retry++) {
       await appendRunLog(store.projectName, `checker invoke scope=${label} retry=${retry}`);
-      const checkerResult = await runChecker(checker, opts.getCheckerPrompt(result));
+      const prompt = opts.getCheckerPrompt(result);
+      const checkerResult = await withSemaphore(semaphore, () =>
+        checker.getSessionId() ? checker.continue(prompt) : checker.run(prompt, repoPath));
 
       if (checkerResult.result.passed) {
         console.log(`[Arranger] ${opts.scope} check passed${opts.nodeId ? `: ${opts.nodeId}` : ""}.`);
         await appendRunLog(store.projectName, `checker pass scope=${label}`);
         return { result, sessionId };
       }
-      if (retry >= 5) throw new Error(`${opts.scope} check failed after 5 retries${opts.nodeId ? ` for ${opts.nodeId}` : ""}: ${JSON.stringify(checkerResult.result.issues)}`);
+      if (retry >= CHECKER_MAX_RETRIES) throw new Error(`${opts.scope} check failed after ${CHECKER_MAX_RETRIES} retries${opts.nodeId ? ` for ${opts.nodeId}` : ""}: ${JSON.stringify(checkerResult.result.issues)}`);
 
-      console.log(`[Arranger] ${opts.scope} check failed${opts.nodeId ? `: ${opts.nodeId}` : ""} (retry ${retry + 1}/5)`);
+      console.log(`[Arranger] ${opts.scope} check failed${opts.nodeId ? `: ${opts.nodeId}` : ""} (retry ${retry + 1}/${CHECKER_MAX_RETRIES})`);
       await appendRunLog(store.projectName, `checker fail scope=${label} retry=${retry + 1}`);
       await appendRunLog(store.projectName, `${opts.scope} continue${opts.nodeId ? ` node=${opts.nodeId}` : ""} retry=${retry + 1}`);
       const fixed = await opts.fix(checkerResult.result.issues);
@@ -351,12 +339,9 @@ export class Pipeline {
       scope: "scaffold",
       initialResult: initialTopResult,
       getCheckerPrompt: (r) => promptBuilder.scaffoldCheckerPrompt(r),
-      fix: async (issues) => {
-        const fixed = await scaffold.continue(promptBuilder.scaffoldFixPrompt(issues));
-        return { result: fixed.result, sessionId: fixed.sessionId };
-      },
+      fix: (issues) => scaffold.continue(promptBuilder.scaffoldFixPrompt(issues)),
     });
-    return { topResult, finalSessionId: sessionId || initialSessionId };
+    return { topResult, finalSessionId: sessionId ?? initialSessionId };
   }
 
   private async checkRawGraphWithFix(
@@ -364,6 +349,7 @@ export class Pipeline {
     initialRawGraph: RawGraphType,
     decomposer: IDecomposer,
     nodeKnowledge?: string,
+    checker?: IChecker,
   ): Promise<{ rawGraph: RawGraphType; decomposerSessionId: string }> {
     const { promptBuilder, semaphore, store } = this.options;
     if (!this.options.checkerEnabled) {
@@ -375,13 +361,10 @@ export class Pipeline {
       scope: "decomposer",
       nodeId,
       initialResult: initialRawGraph,
+      checker,
       getCheckerPrompt: (r) => promptBuilder.graphCheckerPrompt(nodeId, r, nodeKnowledge),
-      runChecker: (c, prompt) => withSemaphore(this.options.semaphore, () =>
-        c.getSessionId() ? c.continue(prompt) : c.run(prompt, this.options.repoPath)),
-      fix: (issues) => withSemaphore(semaphore, async () => {
-        const { result, sessionId } = await decomposer.continue(promptBuilder.decomposerFixPrompt(issues));
-        return { result, sessionId };
-      }),
+      fix: (issues) => withSemaphore(semaphore, () =>
+        decomposer.continue(promptBuilder.decomposerFixPrompt(issues))),
     });
     return { rawGraph, decomposerSessionId: decomposer.getSessionId() ?? "" };
   }
@@ -391,27 +374,17 @@ export class Pipeline {
     ancestorContext: AncestorContextType | null,
     nodeKnowledge?: string,
   ): Promise<{ content: string; sessionId: string }> {
-    const writer = this.options.agentFactory.makeWriter();
-    return withSemaphore(this.options.semaphore, () =>
-      this.generatePageContent(writer, pageNode, ancestorContext, nodeKnowledge),
-    );
-  }
+    const { agentFactory, promptBuilder, repoPath, semaphore, store } = this.options;
+    return withSemaphore(semaphore, async () => {
+      console.log(`[Arranger] Generating page: ${pageNode.name}`);
+      await appendRunLog(store.projectName, `writer invoke node=${pageNode.name} backend=${agentFactory.getBackend("writer")}`);
 
-  private async generatePageContent(
-    writer: IWriter,
-    node: GraphNodeType,
-    ancestorContext: AncestorContextType | null,
-    nodeKnowledge?: string,
-  ): Promise<{ content: string; sessionId: string }> {
-    const { agentFactory, promptBuilder, repoPath, store } = this.options;
-
-    console.log(`[Arranger] Generating page: ${node.name}`);
-    await appendRunLog(store.projectName, `writer invoke node=${node.name} backend=${agentFactory.getBackend("writer")}`);
-
-    const { result, sessionId } = await writer.run(promptBuilder.writerPrompt(node, ancestorContext, nodeKnowledge), repoPath);
-    console.log(`[Arranger] Page generated: ${node.name}`);
-    await appendRunLog(store.projectName, `writer return node=${node.name} len=${result.length}`);
-    return { content: result, sessionId };
+      const writer = agentFactory.makeWriter();
+      const { result, sessionId } = await writer.run(promptBuilder.writerPrompt(pageNode, ancestorContext, nodeKnowledge), repoPath);
+      console.log(`[Arranger] Page generated: ${pageNode.name}`);
+      await appendRunLog(store.projectName, `writer return node=${pageNode.name} len=${result.length}`);
+      return { content: result, sessionId };
+    });
   }
 
   private mcpUrl(): string {

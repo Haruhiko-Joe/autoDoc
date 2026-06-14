@@ -21,21 +21,6 @@ cd bench && pnpm dev
 
 访问 http://localhost:8009/ablation，选择项目和文档变体，点击 Generate Docs。
 
-### 通过 CLI
-
-```bash
-# 从项目根目录执行
-pnpm exec tsx bench/scripts/generate-ablation-docs.ts --project git --overwrite
-```
-
-| 参数 | 默认值 | 说明 |
-|---|---|---|
-| `--project` | `git` | 项目名（对应 `src/souko/doc/{project}`） |
-| `--doc-root` | `src/souko/doc` | ACCEED 文档根目录 |
-| `--out-root` | `bench/data/ablation-docs` | 输出目录 |
-| `--variants` | `full,no-edges,flat-md` | 逗号分隔的变体列表 |
-| `--overwrite` | 关闭 | 覆盖已有输出 |
-
 输出结构：
 
 ```
@@ -62,25 +47,6 @@ bench/data/ablation-docs/
 ### 通过 UI
 
 访问 http://localhost:8009/generate，选择项目、配置参数，点击 Start Generation。
-
-### 通过 CLI
-
-```bash
-# 从项目根目录执行
-pnpm exec tsx bench/scripts/generate-qa.ts --project git --count 10 --providers claude
-```
-
-| 参数 | 默认值 | 说明 |
-|---|---|---|
-| `--project` | `git` | 项目名（对应 `src/souko/repo/{project}`） |
-| `--repo` | `src/souko/repo/git` | 源码仓库路径 |
-| `--out-dir` | `bench/data` | 输出目录 |
-| `--language` | `zh` | 问答语言（zh / en） |
-| `--count` | `20` | 生成 QA 对数量 |
-| `--batch-size` | `1` | 每轮结构化输出的 QA 数量 |
-| `--providers` | `codex,claude` | 生成用的 provider |
-| `--claude-model` | `claude-opus-4-6[1m]` | Claude 模型 |
-| `--codex-model` | SDK 默认 | Codex 模型 |
 
 输出路径：`bench/data/{project}/{runId}/qa.generated.json`
 
@@ -117,7 +83,7 @@ pnpm exec tsx bench/scripts/generate-qa.ts --project git --count 10 --providers 
 
 ### 通过 UI
 
-访问 http://localhost:8009/validate，选择 QA run、回答 agent、judge agent 和文档变体，点击 Start Validation。
+访问 http://localhost:8009/validate，选择 QA run、回答 agent、一个或多个 judge agent 和文档变体，点击 Start Validation。
 
 验证结果会写入同一 run 目录：
 
@@ -126,32 +92,6 @@ bench/data/{project}/{runId}/validation.{variant}.json
 ```
 
 Run 详情页会展示每题的回答、引用、采分点命中、总分和 token/tool 统计。
-
-### 通过 CLI
-
-```bash
-pnpm exec tsx bench/scripts/validate-answers.ts \
-  --project git \
-  --run-id 2026-06-01T055834-209Z \
-  --doc-variant full \
-  --doc-root bench/data/ablation-docs/full \
-  --answer-provider codex \
-  --judge-provider claude
-```
-
-| 参数 | 默认值 | 说明 |
-|---|---|---|
-| `--project` | `git` | 项目名 |
-| `--run-id` | 最新 run | QA run id |
-| `--data-dir` | `bench/data` | benchmark 数据根目录 |
-| `--doc-variant` | `source` | 文档变体标签；UI 使用 `full` / `no-edges` / `flat-md` |
-| `--doc-root` | `src/souko/doc` | 文档根目录 |
-| `--doc-project` | `--project` | 文档项目名 |
-| `--language` | QA 文件语言 | 输出语言（zh / en） |
-| `--limit` | 全部 | 仅验证前 N 个已选 QA |
-| `--item-ids` | 全部 | 逗号分隔 QA item id |
-| `--answer-provider` | `codex` | 回答 agent backend |
-| `--judge-provider` | `claude` | judge agent backend |
 
 ## 目录结构
 
@@ -162,9 +102,9 @@ bench/
 ├── vite.config.ts
 ├── index.html
 ├── scripts/
-│   ├── generate-qa.ts             # QA 生成脚本
-│   ├── validate-answers.ts        # 回答验证脚本
-│   └── generate-ablation-docs.ts  # 生成消融文档变体
+│   ├── generate-qa.ts             # QA 生成 worker
+│   ├── validate-answers.ts        # 回答验证 worker
+│   └── generate-ablation-docs.ts  # 消融文档生成 worker
 ├── src/
 │   ├── main.ts
 │   ├── App.vue

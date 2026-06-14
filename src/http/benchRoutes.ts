@@ -16,6 +16,7 @@ interface TaskState {
   project: string;
   runId: string;
   docVariant?: string;
+  judgeProviders?: string[];
   error?: string;
 }
 
@@ -115,9 +116,11 @@ interface ValidationSummary {
   itemCount: number;
   completedCount: number;
   averageScore: number | null;
+  averageScores?: Record<string, number | null>;
   updatedAt: string;
   answerProvider: string;
   judgeProvider: string;
+  judgeProviders?: string[];
 }
 
 interface RunSummary {
@@ -214,6 +217,7 @@ async function readValidationFromDir(runDir: string, docVariant?: string): Promi
   if (isRecord(raw) && typeof raw.docVariant !== "string") {
     raw.docVariant = variantFromValidationFile(file);
   }
+  if (isRecord(raw)) normalizeValidationRaw(raw);
   return raw;
 }
 
@@ -240,14 +244,19 @@ async function readValidationSummariesFromDir(runDir: string): Promise<Record<st
 
 function validationSummaryFromRaw(raw: Record<string, unknown>, fileSuffix: string): ValidationSummary {
   const fallbackVariant = fileSuffix === "generated" ? "source" : fileSuffix;
+  normalizeValidationRaw(raw);
+  const judgeProviders = stringArrayValue(raw.judgeProviders);
+  const judgeProvider = typeof raw.judgeProvider === "string" ? raw.judgeProvider : (judgeProviders[0] ?? "");
   return {
     docVariant: stringValue(raw.docVariant, fallbackVariant),
     itemCount: numberValue(raw.itemCount),
     completedCount: numberValue(raw.completedCount),
     averageScore: typeof raw.averageScore === "number" ? raw.averageScore : null,
+    averageScores: scoreRecordValue(raw.averageScores),
     updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : "",
     answerProvider: typeof raw.answerProvider === "string" ? raw.answerProvider : "",
-    judgeProvider: typeof raw.judgeProvider === "string" ? raw.judgeProvider : "",
+    judgeProvider,
+    judgeProviders,
   };
 }
 
@@ -373,6 +382,8 @@ async function startValidate(body: Record<string, unknown>): Promise<{ ok: boole
   const runId = stringValue(body.runId, "latest");
   const docVariant = docVariantValue(body.docVariant, "full");
   if (!docVariant) return { ok: false, project, runId, error: "Invalid documentation variant" };
+  const judgeProviders = providerListValue(body.judgeProviders, stringValue(body.judgeProvider, "claude"));
+  if (!judgeProviders) return { ok: false, project, runId, error: "Invalid judge provider list" };
 
   const key = validationTaskKey(project, runId, docVariant);
   const existing = validateTasks.get(key);
@@ -392,11 +403,11 @@ async function startValidate(body: Record<string, unknown>): Promise<{ ok: boole
   if (body.limit) args.push("--limit", String(body.limit));
   if (body.itemIds) args.push("--item-ids", String(body.itemIds));
   if (body.answerProvider) args.push("--answer-provider", String(body.answerProvider));
-  if (body.judgeProvider) args.push("--judge-provider", String(body.judgeProvider));
+  args.push("--judge-providers", judgeProviders.join(","));
   if (body.language) args.push("--language", String(body.language));
   if (body.force) args.push("--force");
 
-  const state: TaskState = { status: "running", log: [], project, runId, docVariant };
+  const state: TaskState = { status: "running", log: [], project, runId, docVariant, judgeProviders };
   validateTasks.set(key, state);
   spawnTask(state, VALIDATE_SCRIPT, args);
   return { ok: true, project, runId };
@@ -407,6 +418,8 @@ async function startManualValidate(body: Record<string, unknown>): Promise<{ ok:
   const runId = stringValue(body.runId, "latest");
   const docVariant = docVariantValue(body.docVariant, "chatgpt-5-5");
   if (!docVariant) return { ok: false, project, runId, error: "Invalid validation label" };
+  const judgeProviders = providerListValue(body.judgeProviders, stringValue(body.judgeProvider, "claude"));
+  if (!judgeProviders) return { ok: false, project, runId, error: "Invalid judge provider list" };
 
   const answers = body.answers;
   if (!isRecord(answers)) return { ok: false, project, runId, error: "answers must be an object keyed by item id" };
@@ -437,13 +450,13 @@ async function startManualValidate(body: Record<string, unknown>): Promise<{ ok:
     "--doc-variant", docVariant,
     "--answers-file", answersFile,
     "--answer-provider", stringValue(body.answerProvider, "ChatGPT 5.5"),
-    "--judge-provider", stringValue(body.judgeProvider, "claude"),
+    "--judge-providers", judgeProviders.join(","),
   ];
   if (body.limit) args.push("--limit", String(body.limit));
   if (body.itemIds) args.push("--item-ids", String(body.itemIds));
   if (body.language) args.push("--language", String(body.language));
 
-  const state: TaskState = { status: "running", log: [], project, runId, docVariant };
+  const state: TaskState = { status: "running", log: [], project, runId, docVariant, judgeProviders };
   validateTasks.set(key, state);
   spawnTask(state, VALIDATE_MANUAL_SCRIPT, args);
   return { ok: true, project, runId };
@@ -452,6 +465,7 @@ async function startManualValidate(body: Record<string, unknown>): Promise<{ ok:
 function spawnTask(state: TaskState, script: string, args: string[]): void {
   const child = spawn("pnpm", ["exec", "tsx", script, ...args], {
     cwd: path.resolve("."),
+    env: { ...process.env, ACCEED_BENCH_WORKER: "1" },
     stdio: ["ignore", "pipe", "pipe"],
   });
 
@@ -515,4 +529,62 @@ function optionalString(value: unknown): string | undefined {
 
 function numberValue(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function providerListValue(value: unknown, fallback: string): string[] | undefined {
+  const raw = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(",")
+      : [fallback];
+  const providers = raw
+    .map((item) => typeof item === "string" ? item.trim() : "")
+    .filter((item): item is "claude" | "codex" => item === "claude" || item === "codex");
+  const unique = [...new Set(providers)];
+  return unique.length > 0 ? unique : undefined;
+}
+
+function stringArrayValue(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string" && item.length > 0)
+    : [];
+}
+
+function scoreRecordValue(value: unknown): Record<string, number | null> | undefined {
+  if (!isRecord(value)) return undefined;
+  return Object.fromEntries(
+    Object.entries(value).filter(([, score]) => score === null || typeof score === "number"),
+  ) as Record<string, number | null>;
+}
+
+function normalizeValidationRaw(raw: Record<string, unknown>): void {
+  const results = Array.isArray(raw.results) ? raw.results : [];
+  const providers = new Set<string>();
+  for (const item of results) {
+    if (!isRecord(item)) continue;
+    const judges = Array.isArray(item.judges)
+      ? item.judges.filter(isRecord)
+      : [];
+    const legacyJudge = isRecord(item.judge) ? item.judge : undefined;
+    if (legacyJudge && !judges.some((judge) => judge.provider === legacyJudge.provider)) {
+      judges.push(legacyJudge);
+    }
+    if (judges.length > 0) {
+      item.judges = judges;
+      if (!isRecord(item.judge)) item.judge = judges[0];
+      for (const judge of judges) {
+        if (typeof judge.provider === "string") providers.add(judge.provider);
+      }
+    }
+  }
+
+  for (const provider of stringArrayValue(raw.judgeProviders)) providers.add(provider);
+  if (typeof raw.judgeProvider === "string") providers.add(raw.judgeProvider);
+  raw.judgeProviders = [...providers];
+
+  if (!isRecord(raw.averageScores)) {
+    raw.averageScores = typeof raw.judgeProvider === "string" && typeof raw.averageScore === "number"
+      ? { [raw.judgeProvider]: raw.averageScore }
+      : {};
+  }
 }

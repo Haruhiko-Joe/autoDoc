@@ -30,7 +30,7 @@
             <div v-if="validationEntries(run).length" class="validation-pills">
               <span v-for="entry in validationEntries(run)" :key="entry.variant" class="score-pill">
                 <span class="variant-name">{{ entry.variant }}</span>
-                {{ percent(entry.summary.averageScore) }}
+                {{ summaryScoreText(entry.summary, percent) }}
                 <span class="score-sub">{{ entry.summary.completedCount }}/{{ entry.summary.itemCount }}</span>
               </span>
             </div>
@@ -47,6 +47,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter, RouterLink } from 'vue-router'
 import { fetchRuns, type RunSummary } from '../services/api'
+import { summaryScoreText } from '../utils/validation'
 
 const router = useRouter()
 const runs = ref<RunSummary[]>([])

@@ -7,6 +7,7 @@ import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { toOutputSchema } from "../../src/agents/schemas/schema.js";
+import { assertBenchWorker } from "../lib/worker.ts";
 
 function parseFlagMap(argv: string[]): Map<string, string> {
   const values = new Map<string, string>();
@@ -133,34 +134,8 @@ type GenerateOptions = {
   claudeModel?: string;
 };
 
-function usage(): string {
-  return [
-    "Usage: pnpm exec tsx scripts/generate-qa.ts [options]",
-    "",
-    "Generates code-grounded QA pairs for a documented repository.",
-    "",
-    "Options:",
-    "  --project <name>          Project name (default: git)",
-    "  --run-id <id>             Output run id (default: timestamp)",
-    "  --repo <path>             Target source repo (default: src/souko/repo/git)",
-    "  --out-dir <path>          Output root (default: bench/data)",
-    "  --language <zh|en>        QA language (default: zh)",
-    "  --count <number>          QA count per provider (default: 20)",
-    "  --batch-size <number>     QA count per structured turn (default: 1)",
-    "  --providers <list>        Comma-separated providers (default: codex,claude)",
-    "  --codex-model <model>     Optional Codex model override",
-    "  --claude-model <model>    Claude model (default: claude-opus-4-6[1m])",
-    "  --help                    Show this help",
-  ].join("\n");
-}
-
 function parseArgs(argv: string[]): GenerateOptions {
   const values = parseFlagMap(argv);
-  if (values.has("help") || values.has("h")) {
-    console.log(usage());
-    process.exit(0);
-  }
-
   const language = Language.parse(values.get("language") ?? "zh");
   const providers = Provider.array().min(1).parse(splitList(values.get("providers") ?? "codex,claude"));
   const count = positiveInt(values.get("count") ?? "20", "count");
@@ -370,6 +345,7 @@ async function loadExistingGenerated(filePath: string): Promise<GeneratedQaFile 
 }
 
 async function main(): Promise<void> {
+  assertBenchWorker();
   const options = parseArgs(process.argv.slice(2));
   await assertDirectory(options.repoPath, "Repository path");
 

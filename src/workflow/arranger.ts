@@ -1,15 +1,15 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import type { Language } from "../agents/schemas/schema.js";
+import type { GraphNode, Language } from "../agents/schemas/schema.js";
 import { DocGit } from "../mcp/docGit.js";
 import { DOC_ROOT, knowledgePathOf } from "../souko/registry.js";
 import { appendRunLog } from "../souko/runLog.js";
 import { AgentFactory, resolveAgentBackends } from "./arranger/agentFactory.js";
-import { GraphStore } from "./arranger/graphStore.js";
-import { InsightCollector, type InsightTask } from "./arranger/insightCollector.js";
+import { GraphStore, type DecompositionReviewItem } from "./arranger/graphStore.js";
+import { InsightCollector } from "./arranger/insightCollector.js";
 import { Pipeline } from "./arranger/pipeline.js";
 import { PromptBuilder } from "./arranger/promptBuilder.js";
-import { Semaphore } from "./arranger/runtime.js";
+import { Semaphore, Signal } from "./arranger/runtime.js";
 import type {
   AgentBackends,
   ArrangerConfig,
@@ -41,13 +41,10 @@ export class Arranger {
   private readonly sem: Semaphore;
   private readonly docGit = new DocGit(DOC_ROOT);
   private readonly agentFactory: AgentFactory;
+  private readonly resumeSignal = new Signal();
+  private readonly reviewSignal = new Signal();
   private insightCollector: InsightCollector | null = null;
   private _paused = false;
-  private _resumeResolve: (() => void) | null = null;
-  private _resumePromise: Promise<void> | null = null;
-  private _reviewResolve: (() => void) | null = null;
-  private _reviewPromise: Promise<void> | null = null;
-  private _reviewSeq = 0;
   private _haltedByError = false;
   private repoPath = "";
   private docDir = "";
@@ -84,11 +81,7 @@ export class Arranger {
     if (!this._paused) return;
     this._paused = false;
     console.log("[Arranger] Resumed.");
-    if (this._resumeResolve) {
-      this._resumeResolve();
-      this._resumeResolve = null;
-      this._resumePromise = null;
-    }
+    this.resumeSignal.fire();
     this.notify();
   }
 
@@ -103,7 +96,7 @@ export class Arranger {
     const { store } = this.activeRuntime();
     await store.resumeNode(nodeId);
     console.log(`[Arranger] Resumed subgraph: ${nodeId}`);
-    this.wakeReviewWaiters();
+    this.reviewSignal.fire();
     this.notify();
   }
 
@@ -135,8 +128,7 @@ export class Arranger {
 
     if (!(await store.hasTopGraph())) {
       console.log("[Arranger] Running scaffold...");
-      this.currentPhase = "scaffold";
-      this.notify();
+      await this.enterPhase(store.projectName, "scaffold");
       await pipeline.runScaffold();
     } else {
       console.log("[Arranger] top.json already exists, skipping scaffold.");
@@ -153,32 +145,7 @@ export class Arranger {
       console.log(`[Arranger] Reset ${errorResetCount} error node(s) for fresh re-run.`);
     }
 
-    this.currentPhase = "processing";
-    this.notify();
-    await appendRunLog(store.projectName, `phase=processing`);
-    await this.processLoop(store, pipeline);
-
-    const counts = await store.countStatuses();
-    if ((counts.error ?? 0) > 0) {
-      console.log(`[Arranger] ${counts.error} node(s) in error state. Stopping — use retry-errors to resume.`);
-      this.currentPhase = "idle";
-      this.notify();
-      throw new Error(`${counts.error} node(s) failed. Use "Retry failed nodes" to reprocess.`);
-    }
-
-    this.currentPhase = "assembling";
-    this.notify();
-    await appendRunLog(store.projectName, `phase=assembling`);
-    await pipeline.assembleSkill(repoPath);
-
-    this.currentPhase = "flows";
-    this.notify();
-    await appendRunLog(store.projectName, `phase=flows`);
-    await pipeline.runFlowAnalysis();
-
-    await this.drainInsights(store.projectName);
-    this.currentPhase = "idle";
-    this.notify();
+    await this.completeRun(store, pipeline);
     await appendRunLog(store.projectName, `arranger done`);
     console.log("[Arranger] Done.");
   }
@@ -189,60 +156,37 @@ export class Arranger {
 
     if (resetCount > 0) {
       console.log(`[Arranger] Reset ${resetCount} error node(s) to pending.`);
-      this.currentPhase = "processing";
-      this.notify();
-      await this.processLoop(store, pipeline);
-
-      this.currentPhase = "assembling";
-      this.notify();
-      await pipeline.assembleSkill(this.repoPath);
-
-      this.currentPhase = "flows";
-      this.notify();
-      await pipeline.runFlowAnalysis();
-
-      await this.drainInsights(store.projectName);
-      this.currentPhase = "idle";
-      this.notify();
+      await this.completeRun(store, pipeline);
     }
 
     return resetCount;
   }
 
-  async listDecompositionReviews(): Promise<Awaited<ReturnType<GraphStore["listDecompositionReviews"]>>> {
+  async listDecompositionReviews(): Promise<DecompositionReviewItem[]> {
     const { store } = this.activeRuntime();
     return store.listDecompositionReviews();
   }
 
-  async updateDecompositionReview(id: string, nodes: Parameters<GraphStore["updateDecompositionReview"]>[1]): Promise<void> {
+  async updateDecompositionReview(id: string, nodes: GraphNode[]): Promise<void> {
     const { store } = this.activeRuntime();
     await store.updateDecompositionReview(id, nodes);
-    this.wakeReviewWaiters();
+    this.reviewSignal.fire();
   }
 
   async approveDecompositionReview(id: string): Promise<void> {
-    const { store } = this.activeRuntime();
-    let insightTask: InsightTask | null = null;
+    const { pipeline, store } = this.activeRuntime();
+    let collectInsight: (() => void) | null = null;
     if (id.startsWith("graph:")) {
       const nodeId = id.slice("graph:".length);
       try {
         const graph = await store.getGraphReview(nodeId);
         const sessionId = graph.decomposerSessionId ?? graph.sessionId;
-        if (sessionId) {
-          insightTask = {
-            scope: "decomposer",
-            nodeId,
-            codeScope: graph.codeScope,
-            sessionId,
-            backend: this.agentFactory.getBackend("decomposer"),
-            profile: "decomposer",
-          };
-        }
+        collectInsight = () => pipeline.enqueueDecomposerInsight(nodeId, graph.codeScope, sessionId);
       } catch { /* insight is best-effort; ignore */ }
     }
     await store.approveDecompositionReview(id);
-    if (insightTask) this.insightCollector?.enqueue(insightTask);
-    this.wakeReviewWaiters();
+    collectInsight?.();
+    this.reviewSignal.fire();
   }
 
   async rejectDecompositionReview(id: string, feedback: string): Promise<void> {
@@ -256,7 +200,7 @@ export class Arranger {
     } else {
       throw new Error(`Invalid review id: ${id}`);
     }
-    this.wakeReviewWaiters();
+    this.reviewSignal.fire();
   }
 
   private async prepareRun(repoPath: string, docDir: string): Promise<{ store: GraphStore; pipeline: Pipeline }> {
@@ -266,7 +210,7 @@ export class Arranger {
 
     const store = new GraphStore(docDir, () => {
       this.notify();
-      this.wakeReviewWaiters();
+      this.reviewSignal.fire();
     });
     const promptBuilder = new PromptBuilder(repoPath, this.language, this.knowledge);
     const insightCollector = this.insightEnabled
@@ -307,6 +251,28 @@ export class Arranger {
     return { store: this.graphStore, pipeline: this.pipeline };
   }
 
+  /** Shared tail of a run: process all nodes, then assemble, analyze flows, and drain insights. */
+  private async completeRun(store: GraphStore, pipeline: Pipeline): Promise<void> {
+    await this.enterPhase(store.projectName, "processing");
+    await this.processLoop(store, pipeline);
+
+    const counts = await store.countStatuses();
+    if ((counts.error ?? 0) > 0) {
+      console.log(`[Arranger] ${counts.error} node(s) in error state. Stopping — use retry-errors to resume.`);
+      this.setPhase("idle");
+      throw new Error(`${counts.error} node(s) failed. Use "Retry failed nodes" to reprocess.`);
+    }
+
+    await this.enterPhase(store.projectName, "assembling");
+    await pipeline.assembleSkill(this.repoPath);
+
+    await this.enterPhase(store.projectName, "flows");
+    await pipeline.runFlowAnalysis();
+
+    await this.drainInsights(store.projectName);
+    this.setPhase("idle");
+  }
+
   private async processLoop(store: GraphStore, pipeline: Pipeline): Promise<void> {
     const running = new Set<Promise<void>>();
     this._haltedByError = false;
@@ -317,8 +283,7 @@ export class Arranger {
         const task = await store.claimNextTask();
         if (!task) break;
 
-        let runner: Promise<void>;
-        runner = this.processTask(task, pipeline)
+        const runner: Promise<void> = this.processTask(task, pipeline)
           .catch(() => {
             if (!this._haltedByError) {
               this._haltedByError = true;
@@ -335,19 +300,17 @@ export class Arranger {
       if (running.size === 0) {
         if (this._haltedByError) break;
         if (this._paused) {
-          await this.waitForResume();
+          await this.resumeSignal.wait();
           continue;
         }
-        const seqBefore = this._reviewSeq;
+        const seen = this.reviewSignal.snapshot();
         const hasReviews = await store.hasPendingReviews();
         const hasPaused = await store.hasPausedNodes();
         if (hasReviews || hasPaused) {
-          if (this._reviewSeq !== seqBefore) continue;
-          this.currentPhase = "awaiting-review";
-          this.notify();
-          await this.waitForReviewChange(seqBefore);
-          this.currentPhase = "processing";
-          this.notify();
+          if (this.reviewSignal.snapshot() !== seen) continue;
+          this.setPhase("awaiting-review");
+          await this.reviewSignal.wait(seen);
+          this.setPhase("processing");
           continue;
         }
         break;
@@ -362,31 +325,14 @@ export class Arranger {
       : pipeline.processPageTask(task.nodeId, task.ref, task.graph);
   }
 
-  private waitForResume(): Promise<void> {
-    if (!this._resumePromise) {
-      this._resumePromise = new Promise<void>((resolve) => {
-        this._resumeResolve = resolve;
-      });
-    }
-    return this._resumePromise;
+  private setPhase(phase: Progress["phase"]): void {
+    this.currentPhase = phase;
+    this.notify();
   }
 
-  private waitForReviewChange(seqSnapshot: number): Promise<void> {
-    if (this._reviewSeq !== seqSnapshot) return Promise.resolve();
-    if (!this._reviewPromise) {
-      this._reviewPromise = new Promise<void>((resolve) => {
-        this._reviewResolve = resolve;
-      });
-    }
-    return this._reviewPromise;
-  }
-
-  private wakeReviewWaiters(): void {
-    this._reviewSeq++;
-    if (!this._reviewResolve) return;
-    this._reviewResolve();
-    this._reviewResolve = null;
-    this._reviewPromise = null;
+  private async enterPhase(projectName: string, phase: Progress["phase"]): Promise<void> {
+    this.setPhase(phase);
+    await appendRunLog(projectName, `phase=${phase}`);
   }
 
   private async drainInsights(projectName: string): Promise<void> {

@@ -11,10 +11,19 @@ import {
   type Language,
   type QaItem,
   type ValidationItem,
+  type ValidationJudge,
   type JudgeOutput,
 } from "../lib/schemas.ts";
 import { runAnswerJudge } from "../lib/agents.ts";
 import { buildJudgePrompt } from "../lib/prompts.ts";
+import {
+  judgesFor,
+  normalizeValidationFile,
+  normalizeValidationItem,
+  syncValidationStats,
+  upsertJudge,
+} from "../lib/validation.ts";
+import { assertBenchWorker } from "../lib/worker.ts";
 
 interface Options {
   project: string;
@@ -25,7 +34,7 @@ interface Options {
   limit?: number;
   itemIds?: string[];
   answerProvider: string;
-  judgeProvider: "codex" | "claude";
+  judgeProviders: Array<"codex" | "claude">;
   answersFile: string;
 }
 
@@ -65,9 +74,16 @@ function parseArgs(argv: string[]): Options {
     limit: m.has("limit") ? Number.parseInt(m.get("limit")!, 10) : undefined,
     itemIds: m.get("item-ids")?.split(",").map(s => s.trim()).filter(Boolean),
     answerProvider: m.get("answer-provider") ?? "ChatGPT 5.5",
-    judgeProvider: Provider.parse(m.get("judge-provider") ?? "claude"),
+    judgeProviders: parseProviderList(m.get("judge-providers") ?? m.get("judge-provider") ?? "claude"),
     answersFile: path.resolve(answersFile),
   };
+}
+
+function parseProviderList(value: string): Array<"codex" | "claude"> {
+  const providers = value.split(",").map((item) => Provider.parse(item.trim())).filter(Boolean);
+  const unique = [...new Set(providers)];
+  if (unique.length === 0) throw new Error("At least one judge provider is required");
+  return unique;
 }
 
 async function loadQaFile(dataDir: string, project: string, runId?: string): Promise<{ file: string; data: QaFile }> {
@@ -107,25 +123,16 @@ function validationPath(qaFile: string, variant: string): string {
 async function loadExistingValidation(filePath: string): Promise<ValidationFile | null> {
   try {
     const raw = JSON.parse(await readFile(filePath, "utf-8"));
-    return ValidationFile.parse(raw);
+    return normalizeValidationFile(ValidationFile.parse(raw));
   } catch {
     return null;
   }
 }
 
 async function writeValidation(filePath: string, data: ValidationFile): Promise<void> {
-  data.completedCount = data.results.filter(r => r.status === "done").length;
-  data.averageScore = averageScore(data.results);
-  data.updatedAt = new Date().toISOString();
+  syncValidationStats(data);
   await mkdir(path.dirname(filePath), { recursive: true });
   await writeFile(filePath, `${JSON.stringify(data, null, 2)}\n`);
-}
-
-function averageScore(results: ValidationItem[]): number | null {
-  const done = results.filter(r => r.status === "done" && r.judge);
-  if (done.length === 0) return null;
-  const sum = done.reduce((s, r) => s + (r.judge?.output.normalizedScore ?? 0), 0);
-  return Number((sum / done.length).toFixed(4));
 }
 
 function normalizeJudge(
@@ -165,7 +172,25 @@ function selectItems(data: QaFile, opts: Options, answers: Map<string, string>):
   return items;
 }
 
+function findExistingResult(validation: ValidationFile, itemId: string): ValidationItem | undefined {
+  return validation.results.find((result) => result.itemId === itemId && result.status === "done");
+}
+
+function removeResult(validation: ValidationFile, itemId: string): void {
+  validation.results = validation.results.filter((result) => result.itemId !== itemId);
+}
+
+function makeJudge(
+  provider: "codex" | "claude",
+  sessionId: string,
+  output: JudgeOutput,
+  metrics: ValidationJudge["metrics"],
+): ValidationJudge {
+  return { provider, sessionId, output, metrics };
+}
+
 async function main(): Promise<void> {
+  assertBenchWorker();
   const opts = parseArgs(process.argv.slice(2));
   const { file: qaFile, data: qaData } = await loadQaFile(opts.dataDir, opts.project, opts.runId);
   const answers = await loadAnswers(opts.answersFile);
@@ -173,7 +198,6 @@ async function main(): Promise<void> {
   const items = selectItems(qaData, opts, answers);
   const outFile = validationPath(qaFile, opts.docVariant);
   const existing = await loadExistingValidation(outFile);
-  const selectedIds = new Set(items.map(item => item.id));
   const now = new Date().toISOString();
   const workdir = path.resolve(".");
 
@@ -184,80 +208,98 @@ async function main(): Promise<void> {
     workdir,
     language,
     answerProvider: opts.answerProvider,
-    judgeProvider: opts.judgeProvider,
+    judgeProvider: opts.judgeProviders[0]!,
+    judgeProviders: opts.judgeProviders,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
     itemCount: qaData.items.length,
     completedCount: 0,
     averageScore: null,
-    results: existing?.results.filter(r => !selectedIds.has(r.itemId)) ?? [],
+    averageScores: {},
+    results: existing?.results.map(normalizeValidationItem) ?? [],
   };
   await writeValidation(outFile, validation);
 
-  console.log(`[manual-validation] project=${opts.project} run=${qaData.runId ?? opts.runId ?? "latest"} label=${opts.docVariant} answered=${items.length}`);
+  console.log(`[manual-validation] project=${opts.project} run=${qaData.runId ?? opts.runId ?? "latest"} label=${opts.docVariant} answered=${items.length} judges=${opts.judgeProviders.join(",")}`);
 
   for (const item of items) {
     const candidateAnswer = answers.get(item.id)!;
     const startedAt = new Date().toISOString();
-    console.log(`[judge:${opts.judgeProvider}] item=${item.id}`);
+    let resultItem = findExistingResult(validation, item.id);
 
     try {
-      const judgeResult = await runAnswerJudge({
-        provider: opts.judgeProvider,
-        language,
-        prompt: buildJudgePrompt({
-          language,
+      if (!resultItem || resultItem.answer?.text.trim() !== candidateAnswer) {
+        removeResult(validation, item.id);
+        resultItem = {
+          itemId: item.id,
           question: item.question,
-          goldAnswer: item.goldAnswer,
-          scoringPoints: item.scoringPoints,
-          candidateAnswer,
-        }),
-        workdir,
-      });
+          category: item.category,
+          status: "done",
+          startedAt,
+          completedAt: startedAt,
+          answer: {
+            provider: opts.answerProvider,
+            sessionId: `manual:${opts.docVariant}:${item.id}:${startedAt}`,
+            text: candidateAnswer,
+          },
+          judges: [],
+        };
+        validation.results.push(resultItem);
+      } else if (resultItem.answer) {
+        resultItem.answer.provider = opts.answerProvider;
+      }
 
-      const judgeOutput = normalizeJudge(
-        RawJudgeOutput.parse(JSON.parse(judgeResult.text)),
-        item.scoringPoints,
-      );
+      for (const judgeProvider of opts.judgeProviders) {
+        console.log(`[judge:${judgeProvider}] item=${item.id}`);
+        const judgeResult = await runAnswerJudge({
+          provider: judgeProvider,
+          language,
+          prompt: buildJudgePrompt({
+            language,
+            question: item.question,
+            goldAnswer: item.goldAnswer,
+            scoringPoints: item.scoringPoints,
+            candidateAnswer,
+          }),
+          workdir,
+        });
 
-      validation.results.push({
-        itemId: item.id,
-        question: item.question,
-        category: item.category,
-        status: "done",
-        startedAt,
-        completedAt: new Date().toISOString(),
-        answer: {
-          provider: opts.answerProvider,
-          sessionId: `manual:${opts.docVariant}:${item.id}:${startedAt}`,
-          text: candidateAnswer,
-        },
-        judge: {
-          provider: opts.judgeProvider,
-          sessionId: judgeResult.sessionId,
-          output: judgeOutput,
-          metrics: judgeResult.metrics,
-        },
-      });
+        const judgeOutput = normalizeJudge(
+          RawJudgeOutput.parse(JSON.parse(judgeResult.text)),
+          item.scoringPoints,
+        );
 
+        upsertJudge(resultItem, makeJudge(judgeProvider, judgeResult.sessionId, judgeOutput, judgeResult.metrics));
+        await writeValidation(outFile, validation);
+        console.log(`[manual-validation] item=${item.id} judge=${judgeProvider} score=${judgeOutput.normalizedScore}`);
+      }
+
+      resultItem.completedAt = new Date().toISOString();
       await writeValidation(outFile, validation);
-      console.log(`[manual-validation] item=${item.id} score=${judgeOutput.normalizedScore}`);
+      console.log(`[manual-validation] item=${item.id} done`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      validation.results.push({
-        itemId: item.id,
-        question: item.question,
-        category: item.category,
-        status: "error",
-        startedAt,
-        completedAt: new Date().toISOString(),
-        answer: {
-          provider: opts.answerProvider,
-          sessionId: `manual:${opts.docVariant}:${item.id}:${startedAt}`,
-          text: candidateAnswer,
-        },
-        error: message,
-      });
+      if (resultItem?.answer) {
+        resultItem.status = judgesFor(resultItem).length > 0 ? "done" : "error";
+        resultItem.error = message;
+        resultItem.completedAt = new Date().toISOString();
+      } else {
+        removeResult(validation, item.id);
+        validation.results.push({
+          itemId: item.id,
+          question: item.question,
+          category: item.category,
+          status: "error",
+          startedAt,
+          completedAt: new Date().toISOString(),
+          answer: {
+            provider: opts.answerProvider,
+            sessionId: `manual:${opts.docVariant}:${item.id}:${startedAt}`,
+            text: candidateAnswer,
+          },
+          error: message,
+        });
+      }
       await writeValidation(outFile, validation);
       console.error(`[manual-validation] item=${item.id} error=${message}`);
     }
